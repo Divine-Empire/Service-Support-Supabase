@@ -564,6 +564,27 @@ export const SCHEMA_MAPPING = {
     ],
   },
 
+  pipelineOverview: {
+    supabaseTable: "pipeline_overview",
+    sourceSheet: null,
+    primaryKey: "ticket_uuid",
+    description:
+      "Migration 0039. A read-only Postgres VIEW (not a table) joining every migrated stage side by side, one " +
+      "row per ticket_uuid — mirrors the old wide Google Sheet layout (each stage's columns grouped together) " +
+      "for MIS-style flattened reporting. NOT used by any page's pending/history gating logic — every page " +
+      "still queries its own stage table(s) directly, exactly as documented elsewhere in this file. " +
+      "video_call and follow_up (both allow multiple rows per ticket) are joined via a LATERAL subquery " +
+      "picking only the LATEST row per ticket (by created_at) — full multi-attempt history is only in those " +
+      "underlying tables, not here. Columns are prefixed per stage to avoid collisions: wc_ (Warranty-Check), " +
+      "vc_ (Video-Call), wh_ (Warehouse), qt_ (Quotation), fu_ (Follow-Up), sv_ (Site Visit), td_ (TADA), " +
+      "otp_ (OTP Verification), or_ (Order Received), inv_ (Invoice); tickets' own columns are unprefixed " +
+      "except where they'd collide with a stage's own field of the same name (ticket_video_call, " +
+      "ticket_video_call_time, ticket_otp, ticket_site_visit_otp, ticket_engineer_assign). Granted SELECT to " +
+      "anon and authenticated explicitly (views need their own grant even when every underlying table already " +
+      "has RLS policies for anon).",
+    fields: [],
+  },
+
   quotationItems: {
     supabaseTable: "quotation_items",
     sourceSheet: "Quotation Items",
