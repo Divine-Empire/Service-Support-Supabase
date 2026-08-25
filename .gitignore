@@ -26,5 +26,5 @@ dist-ssr
 .env
 Code.gs
 task.txt
-supabase
+/supabase
 .tmp_scratch

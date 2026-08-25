@@ -203,10 +203,15 @@ export default function WarrantyCheck() {
       }
 
       const submittedAt = new Date();
-      const videoCallPlanned = await computeStagePlanned("videoCall", {
-        ticket: selectedTicket,
-        warrantyCheckSubmittedAt: submittedAt,
-      });
+
+      // Warranty-Check branches into exactly one of three outcomes — see
+      // stagePlanning.js: service_location='Warehouse' wins first, then
+      // video_call='Yes', then a direct-to-Quotation fallback. Only one of
+      // these three ever comes back non-null.
+      const planningCtx = { ticket: selectedTicket, warrantyCheckSubmittedAt: submittedAt };
+      const warehousePlanned = await computeStagePlanned("warehouse", planningCtx);
+      const videoCallPlanned = await computeStagePlanned("videoCall", planningCtx);
+      const quotationPlanned = await computeStagePlanned("quotationDirect", planningCtx);
 
       const { error } = await supabase.from("warranty_check").insert({
         ticket_id: selectedTicket.ticketId,
@@ -214,9 +219,11 @@ export default function WarrantyCheck() {
         warranty_check: formData.warrantyCheck,
         bill_number: formData.warrantyCheck === "yes" ? formData.billNumber : "",
         bill_attachment: formData.warrantyCheck === "yes" ? billAttachmentUrl : "",
-        // Null when the ticket doesn't need a video call — it then skips
-        // the Video-Call stage entirely. See stagePlanning.js.
+        // Mutually exclusive — exactly one of these three is non-null. See
+        // stagePlanning.js's warehouse/videoCall/quotationDirect rules.
+        warehouse_planned: warehousePlanned,
         video_call_planned: videoCallPlanned,
+        quotation_planned: quotationPlanned,
       });
 
       if (error) throw error;
