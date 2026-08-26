@@ -110,6 +110,9 @@ export default function Invoice() {
           companyName: t.company_name || "",
           siteAddress: t.site_address || "",
           CREName: t.cre_name || "",
+          // Drives whether this ticket gets calibration_planned/spare_dispatch_planned
+          // at submit time — see stagePlanning.js's 'calibration'/'sparedispatch' rules.
+          enquiryType: t.enquiry_type || "",
           quotationNo: q?.quotation_no || "",
           quotationPdfLink: q?.quotation_pdf_link || "",
         };
@@ -252,9 +255,12 @@ export default function Invoice() {
       ]);
 
       const submittedAt = new Date();
-      const calibrationPlanned = await computeStagePlanned("calibration", {
-        invoiceSubmittedAt: submittedAt,
-      });
+      // Both are conditional on tickets.enquiry_type — only one (or neither)
+      // ever comes back non-null for a given ticket. See stagePlanning.js's
+      // 'calibration'/'sparedispatch' rules.
+      const planningCtx = { ticket: selectedTicket, invoiceSubmittedAt: submittedAt };
+      const calibrationPlanned = await computeStagePlanned("calibration", planningCtx);
+      const spareDispatchPlanned = await computeStagePlanned("sparedispatch", planningCtx);
 
       const { error } = await supabase.from("invoice").insert({
         ticket_id: selectedTicket.ticketId,
@@ -274,8 +280,10 @@ export default function Invoice() {
         attachment_spear: attachmentSpearUrl,
         attachment_nabl: attachmentNABLUrl,
         otp: generateSixDigitNumber(),
-        // Readiness stamp for the next stage (Calibration) — see stagePlanning.js.
+        // Readiness stamp for Calibration.jsx — only set when tickets.enquiry_type = 'NABL'.
         calibration_planned: calibrationPlanned,
+        // Readiness stamp for SpareDispatchDetails.jsx — only set when tickets.enquiry_type = 'SPARE'.
+        spare_dispatch_planned: spareDispatchPlanned,
       });
 
       if (error) throw error;

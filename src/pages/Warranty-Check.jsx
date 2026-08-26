@@ -93,7 +93,7 @@ export default function WarrantyCheck() {
           siteAddress: t.site_address || "",
           gstNo: t.gst_no || "",
           machineName: t.machine_name || "",
-          category: t.enquiry_type || "",
+          category: t.category || "",
           mentionIssue: t.mention_issue || "",
           serviceLocation: t.service_location || "",
           CREName: t.cre_name || "",
@@ -357,7 +357,7 @@ export default function WarrantyCheck() {
                         <th className="border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">Site Address</th>
                         <th className="border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">GST No.</th>
                         <th className="border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Machine Name</th>
-                        <th className="border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Enquiry-Type</th>
+                        <th className="border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Category</th>
                         <th className="border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">Mention Issue</th>
                         <th className="border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Service Location</th>
                       </tr>
@@ -479,7 +479,7 @@ export default function WarrantyCheck() {
                                 <p className="text-blue-900">{ticket.machineName || "N/A"}</p>
                               </div>
                               <div>
-                                <p className="text-gray-500 font-medium">Enquiry-Type</p>
+                                <p className="text-gray-500 font-medium">Category</p>
                                 <p className="text-blue-900">{ticket.category || "N/A"}</p>
                               </div>
                             </div>
@@ -510,7 +510,7 @@ export default function WarrantyCheck() {
                         <th className="border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">Site Address</th>
                         <th className="border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">GST No.</th>
                         <th className="border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Machine Name</th>
-                        <th className="border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Enquiry-Type</th>
+                        <th className="border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Category</th>
                         <th className="border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">Mention Issue</th>
                         <th className="border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Service Location</th>
                         <th className="border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Warranty Check</th>

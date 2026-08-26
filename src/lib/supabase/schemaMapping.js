@@ -54,13 +54,14 @@ export const SCHEMA_MAPPING = {
       { sheetColumn: "K", sheetIndex: 10, sheetField: "siteAddress", supabaseColumn: "site_address", type: "text" },
       { sheetColumn: "L", sheetIndex: 11, sheetField: "gstNo", supabaseColumn: "gst_no", type: "text" },
       { sheetColumn: "M", sheetIndex: 12, sheetField: "machineName", supabaseColumn: "machine_name", type: "text", note: "Comma-joined list of selected machines." },
-      { sheetColumn: "N", sheetIndex: 13, sheetField: "category", supabaseColumn: "enquiry_type", type: "text", note: "Labeled 'Enquiry-Type' in the UI (single-select). Column renamed from 'category' to 'enquiry_type' in migration 0015 to match the UI label — it used to collide confusingly with column T below." },
+      { sheetColumn: "N", sheetIndex: 13, sheetField: "category", supabaseColumn: "category", type: "text", note: "Labeled 'Category' in the UI (single-select). History: sheet col N -> 'category' -> renamed to 'enquiry_type' in migration 0015 -> renamed BACK to 'category' in migration 0043 (freed up by column T's field moving to 'sub_category' first), when a genuinely new 'enquiry_type' field was introduced. Sourced from dropdown category='category' (NABL/Service/Spare-style values)." },
       { sheetColumn: "O", sheetIndex: 14, sheetField: "mentionIssue", supabaseColumn: "mention_issue", type: "text" },
       { sheetColumn: "P", sheetIndex: 15, sheetField: "serviceLocation", supabaseColumn: "service_location", type: "text" },
       { sheetColumn: "Q", sheetIndex: 16, sheetField: "challanCopy", supabaseColumn: "challan_copy", type: "text", note: "Drive file URL; only set when serviceLocation === 'Warehouse'." },
       { sheetColumn: "R", sheetIndex: 17, sheetField: "machinePhoto", supabaseColumn: "machine_photo", type: "text", note: "Drive file URL; only set when serviceLocation === 'Warehouse'." },
       { sheetColumn: "S", sheetIndex: 18, sheetField: "videoCall", supabaseColumn: "video_call", type: "text", note: "'Yes' or 'No'." },
-      { sheetColumn: "T", sheetIndex: 19, sheetField: "newCategory", supabaseColumn: "category", type: "text", note: "Labeled 'Category' in the UI (multi-select, comma-joined). Column renamed from 'new_category' to 'category' in migration 0015 to match the UI label — distinct from column N's 'Enquiry-Type', now stored in the 'enquiry_type' column." },
+      { sheetColumn: "T", sheetIndex: 19, sheetField: "subCategory", supabaseColumn: "sub_category", type: "text", note: "Labeled 'Sub-Category' in the UI (multi-select, comma-joined). History: sheet col T -> 'new_category' -> renamed to 'category' in migration 0015 -> renamed to 'sub_category' in migration 0043 (to free up the 'category' name for column N above). Sourced from dropdown category='sub_category' (machine-group values)." },
+      { sheetColumn: null, sheetIndex: null, sheetField: "enquiryType", supabaseColumn: "enquiry_type", type: "text", note: "NEW column, migration 0043 — not from the legacy sheet. Labeled 'Enquiry Type' in the UI (single-select), sourced from dropdown category='enquiry_type' (brand new, initially empty — seed via Master > Dropdown). Intended to drive planned/TAT calculation for stages AFTER Invoice (not yet implemented as of this migration)." },
       { sheetColumn: "U", sheetIndex: 20, sheetField: "videoCallTime", supabaseColumn: "video_call_time", type: "text" },
       { sheetColumn: "V", sheetIndex: 21, sheetField: "engineerAssign", supabaseColumn: "engineer_assign", type: "text" },
       { sheetColumn: "AJ", sheetIndex: 35, sheetField: "otp", supabaseColumn: "otp", type: "text", note: "Only generated when videoCall === 'Yes'." },
@@ -129,12 +130,13 @@ export const SCHEMA_MAPPING = {
       "exceeds (~1400 rows). A plain unpaginated fetch silently truncates and was a real live bug in " +
       "Ticket-and-Enquiry.jsx and VideoCallSolution.jsx (fixed once discovered) before this helper existed.",
     fields: [
-      { sheetColumn: null, sheetField: null, supabaseColumn: "category", type: "text", note: "One of: call_type, source_of_enquiry, enquiry_receiver_name, enquiry_type, category, service_location, engineer_assign_name, machine_name, item_name, quotation_share_by, transportation, payment_term, payment_mode, invoice_posted_by." },
+      { sheetColumn: null, sheetField: null, supabaseColumn: "category", type: "text", note: "One of: call_type, source_of_enquiry, enquiry_receiver_name, category, sub_category, enquiry_type, service_location, engineer_assign_name, machine_name, item_name, quotation_share_by, transportation, payment_term, payment_mode, invoice_posted_by." },
       { sheetColumn: null, sheetField: null, supabaseColumn: "value", type: "text" },
     ],
     notFields: [
-      "category='enquiry_type' corresponds to sheet header 'Requirement Service Category' (masterData[0][\"Requirement Service Category\"]), labeled 'Enquiry-Type' in the UI — not to be confused with...",
-      "category='category' corresponds to sheet header 'Category' (masterData[0][\"Category\"]), labeled 'Category' in the UI (multi-select) — a completely different option list from enquiry_type above, despite the similar naming.",
+      "category='category' corresponds to sheet header 'Requirement Service Category' (masterData[0][\"Category\"] in Ticket-and-Enquiry.jsx), labeled 'Category' in the UI (single-select) — renamed from dropdown category='enquiry_type' in migration 0043 (values unchanged: NABL/Service/Spare-style combos) when tickets.enquiry_type was renamed to tickets.category. Not to be confused with...",
+      "category='sub_category' corresponds to sheet header 'Category' (masterData[0][\"Sub-Category\"] in Ticket-and-Enquiry.jsx), labeled 'Sub-Category' in the UI (multi-select) — renamed from dropdown category='category' in migration 0043 (values unchanged: machine-group names) when tickets.category was renamed to tickets.sub_category. A completely different option list from 'category' above, despite the similar naming.",
+      "category='enquiry_type' is a BRAND NEW category introduced in migration 0043 (initially empty, no rows seeded yet) — sources Ticket-and-Enquiry.jsx's brand new 'Enquiry Type' field (tickets.enquiry_type, also new), intended to drive planned/TAT calculation for stages after Invoice. Seed via Master > Dropdown once the actual option list is decided.",
       "category='item_name' corresponds to sheet header 'Item-Name' (masterData[0][\"Item-Name\"] in VideoCallSolution.jsx) — seeded in migration 0025, 1414 unique values (case-insensitive de-dup) extracted live from the DROPDOWN sheet, a real spare-parts catalog rather than a short fixed list.",
       "category='quotation_share_by' corresponds to sheet header 'Quotation shared by' (masterData[0][\"Quotation Share by\"] in Quotation.jsx) — seeded in migration 0026, 14 unique values.",
       "category='payment_term' corresponds to the Master sheet's 'Payment Terms' column (masterData[0][\"Payment Terms\"] in OrderReceived.jsx) — seeded in migration 0034, 8 unique values (e.g. 'Against Delivery', '1'..'45' day terms, 'FOC').",
@@ -502,10 +504,14 @@ export const SCHEMA_MAPPING = {
     primaryKey: "id",
     description:
       "Stage 10, owned by src/pages/Invoice.jsx. Gated by order_received.invoice_planned. One row per ticket, " +
-      "inserted once at submission (no revision support, same as prior stages). calibration_planned is " +
-      "submitted by the frontend at insert time, computed via src/lib/supabase/stagePlanning.js's " +
-      "'calibration' rule as this row's own created_at + tat_config['Calibration'].duration_minutes — gates " +
-      "the (not yet migrated) Calibration stage (src/pages/Calibration.jsx) that follows Invoice. " +
+      "inserted once at submission (no revision support, same as prior stages). Branches into TWO independent " +
+      "(non-exclusive-in-code, but practically exclusive since enquiry_type is single-select) next-stage " +
+      "readiness stamps, both computed at insert time via src/lib/supabase/stagePlanning.js, migration 0045: " +
+      "calibration_planned (this row's own created_at + tat_config['Calibration'].duration_minutes) ONLY when " +
+      "tickets.enquiry_type = 'NABL' — gates Calibration (src/pages/Calibration.jsx); spare_dispatch_planned " +
+      "(created_at + tat_config['Spare Dispatch'].duration_minutes) ONLY when tickets.enquiry_type = 'SPARE' " +
+      "— gates Spare Dispatch Details (src/pages/SpareDispatchDetails.jsx). Any other enquiry_type value (or " +
+      "none set) skips both branches entirely. " +
       "delay_minutes is trigger-computed (public.invoice_set_delay(), migration 0036) as " +
       "round((order_received.invoice_planned - invoice.created_at)) in minutes — the ORIGINAL " +
       "negative-when-late/positive-when-early convention (matching predecessor Order Received). The legacy " +
@@ -531,7 +537,8 @@ export const SCHEMA_MAPPING = {
       { sheetColumn: null, sheetIndex: null, sheetField: "attachmentNABL", supabaseColumn: "attachment_nabl", type: "text", note: "Same Storage bucket/prefix as attachment_service." },
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "otp", type: "text", note: "Legacy 6-digit code generated client-side on submission — purpose unclear (nothing downstream verifies it), preserved as-is." },
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "created_at", type: "timestamptz", note: "Defaults to now() at insert time; doubles as this stage's completion timestamp." },
-      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "calibration_planned", type: "timestamptz", note: "Readiness stamp for the next stage (Calibration, not yet migrated). Submitted by the frontend, see description above." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "calibration_planned", type: "timestamptz", note: "Readiness stamp for Calibration.jsx — only set when tickets.enquiry_type='NABL'. See description above." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "spare_dispatch_planned", type: "timestamptz", note: "Migration 0045. Readiness stamp for SpareDispatchDetails.jsx — only set when tickets.enquiry_type='SPARE'. See description above." },
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "delay_minutes", type: "integer", note: "Trigger-computed only, see description above. Never written by the frontend." },
     ],
     notFields: [
@@ -542,6 +549,92 @@ export const SCHEMA_MAPPING = {
       "legacy sheet's Invoice row but are pure denormalized copies of data already available via tickets/" +
       "quotation joins — dropped, matching the convention every other stage table already follows (display " +
       "fields come from joins, not duplicated columns).",
+    ],
+  },
+
+  calibration: {
+    supabaseTable: "calibration",
+    sourceSheet: null,
+    primaryKey: "id",
+    description:
+      "Calibration stage, owned by src/pages/Calibration.jsx (migration 0045 — previously an unmigrated, " +
+      "sheet-wired page). Gated by invoice.calibration_planned, which is only ever set for " +
+      "tickets.enquiry_type='NABL'. One row per ticket, inserted once at submission. " +
+      "calibration_certificate_planned is submitted by the frontend at insert time, computed via " +
+      "src/lib/supabase/stagePlanning.js's 'calibrationCertificate' rule as this row's own created_at + " +
+      "tat_config['Calibration Certificate'].duration_minutes — gates the next stage, " +
+      "src/pages/CalibrationCertificate.jsx (every Calibration submission gets this, no branching). " +
+      "delay_minutes is trigger-computed (public.calibration_set_delay()) as " +
+      "round((invoice.calibration_planned - calibration.created_at)) in minutes — the ORIGINAL " +
+      "negative-when-late/positive-when-early convention (matching predecessor Invoice).",
+    fields: [
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "ticket_uuid", type: "uuid", note: "FK -> tickets(uuid), the real relational key. Unique — a ticket can only pass through this stage once." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "ticket_id", type: "text", note: "Plain denormalized column (not the FK) — populated at insert, used for display/search." },
+      { sheetColumn: null, sheetIndex: null, sheetField: "calibrationDate", supabaseColumn: "calibration_date", type: "date" },
+      { sheetColumn: null, sheetIndex: null, sheetField: "calibrationPeriodMonth", supabaseColumn: "calibration_period_month", type: "integer" },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "calibration_due_date", type: "date", note: "calibration_date + calibration_period_month, computed client-side (informational only — when this calibration itself expires, not a stage-gating column)." },
+      { sheetColumn: null, sheetIndex: null, sheetField: "calibrationUploadFile", supabaseColumn: "calibration_upload_file", type: "text", note: "File URL in the 'ticket_enquiry' Supabase Storage bucket (path prefix 'calibration/')." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "created_at", type: "timestamptz", note: "Defaults to now() at insert time; doubles as this stage's completion timestamp." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "calibration_certificate_planned", type: "timestamptz", note: "Readiness stamp for the next stage (Calibration Certificate). Submitted by the frontend, see description above." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "delay_minutes", type: "integer", note: "Trigger-computed only, see description above. Never written by the frontend." },
+    ],
+    notFields: [
+      "The legacy page's Accountability/Approval and hard-copy/soft-copy status fields (accountablityApproval, " +
+      "hardCopyStatus, hardCopyAttachment, softCopyStatus, softCopyAttachment, senderName) were part of a " +
+      "separate AccountablityApproval.jsx flow that was explicitly removed from this app (not migrated) — " +
+      "not modeled here.",
+    ],
+  },
+
+  calibrationCertificate: {
+    supabaseTable: "calibration_certificate",
+    sourceSheet: null,
+    primaryKey: "id",
+    description:
+      "Calibration Certificate stage, owned by src/pages/CalibrationCertificate.jsx (migration 0045 — " +
+      "previously an unmigrated, sheet-wired page). Gated by calibration.calibration_certificate_planned. " +
+      "One row per ticket, inserted once at submission. No `<next_stage>_planned` column — per explicit " +
+      "instruction, nothing comes after this stage yet (the final stage in the NABL/Calibration branch). " +
+      "delay_minutes is trigger-computed (public.calibration_certificate_set_delay()) as " +
+      "round((calibration.calibration_certificate_planned - calibration_certificate.created_at)) in minutes " +
+      "— the ORIGINAL negative-when-late/positive-when-early convention (matching predecessor Calibration).",
+    fields: [
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "ticket_uuid", type: "uuid", note: "FK -> tickets(uuid), the real relational key. Unique — a ticket can only pass through this stage once." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "ticket_id", type: "text", note: "Plain denormalized column (not the FK) — populated at insert, used for display/search." },
+      { sheetColumn: null, sheetIndex: null, sheetField: "certificateTypeName", supabaseColumn: "certificate_type_name", type: "text" },
+      { sheetColumn: null, sheetIndex: null, sheetField: "numberOfCertificatesDocuments", supabaseColumn: "number_of_certificates_documents", type: "integer" },
+      { sheetColumn: null, sheetIndex: null, sheetField: "fullDestinationAddress", supabaseColumn: "full_destination_address", type: "text" },
+      { sheetColumn: null, sheetIndex: null, sheetField: "dateOfDispatch", supabaseColumn: "date_of_dispatch", type: "date" },
+      { sheetColumn: null, sheetIndex: null, sheetField: "courierCompanyName", supabaseColumn: "courier_company_name", type: "text" },
+      { sheetColumn: null, sheetIndex: null, sheetField: "courierTrackingNumber", supabaseColumn: "courier_tracking_number", type: "text" },
+      { sheetColumn: null, sheetIndex: null, sheetField: "expectedDeliveryDate", supabaseColumn: "expected_delivery_date", type: "date" },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "attachment", type: "text", note: "File URL in the 'ticket_enquiry' Supabase Storage bucket (path prefix 'calibration_certificate/')." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "created_at", type: "timestamptz", note: "Defaults to now() at insert time; doubles as this stage's completion timestamp." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "delay_minutes", type: "integer", note: "Trigger-computed only, see description above. Never written by the frontend." },
+    ],
+  },
+
+  spareDispatchDetails: {
+    supabaseTable: "spare_dispatch_details",
+    sourceSheet: null,
+    primaryKey: "id",
+    description:
+      "Spare Dispatch stage, owned by src/pages/SpareDispatchDetails.jsx (new page, migration 0045). Gated " +
+      "by invoice.spare_dispatch_planned, which is only ever set for tickets.enquiry_type='SPARE'. One row " +
+      "per ticket, inserted once at submission. No `<next_stage>_planned` column — nothing comes after this " +
+      "stage yet. delay_minutes is trigger-computed (public.spare_dispatch_details_set_delay()) as " +
+      "round((invoice.spare_dispatch_planned - spare_dispatch_details.created_at)) in minutes — the " +
+      "ORIGINAL negative-when-late/positive-when-early convention (matching predecessor Invoice).",
+    fields: [
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "ticket_uuid", type: "uuid", note: "FK -> tickets(uuid), the real relational key. Unique — a ticket can only pass through this stage once." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "ticket_id", type: "text", note: "Plain denormalized column (not the FK) — populated at insert, used for display/search." },
+      { sheetColumn: null, sheetIndex: null, sheetField: "transporterName", supabaseColumn: "transporter_name", type: "text" },
+      { sheetColumn: null, sheetIndex: null, sheetField: "docketBiltyNo", supabaseColumn: "docket_bilty_no", type: "text" },
+      { sheetColumn: null, sheetIndex: null, sheetField: "dispatchDate", supabaseColumn: "dispatch_date", type: "date" },
+      { sheetColumn: null, sheetIndex: null, sheetField: "courierTransportDetails", supabaseColumn: "courier_transport_details", type: "text" },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "bilty_copy_attachment", type: "text", note: "File URL in the 'ticket_enquiry' Supabase Storage bucket (path prefix 'spare_dispatch/')." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "created_at", type: "timestamptz", note: "Defaults to now() at insert time; doubles as this stage's completion timestamp." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "delay_minutes", type: "integer", note: "Trigger-computed only, see description above. Never written by the frontend." },
     ],
   },
 

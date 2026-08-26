@@ -18,7 +18,7 @@ import { useToast } from "../hooks/use-toast";
 import { Loader2Icon, LoaderIcon } from "lucide-react";
 import { supabase } from "../lib/supabase/client";
 
-export default function CalibrationCertificate() {
+export default function SpareDispatchDetails() {
   const [activeTab, setActiveTab] = useState("pending");
   const [showModal, setShowModal] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
@@ -33,21 +33,21 @@ export default function CalibrationCertificate() {
   // File is only HELD here on selection — actual upload happens at submit
   // time in handleSubmit, so cancelling the form never leaves an orphaned
   // upload behind, and nothing hits Storage until Submit is clicked.
-  const [attachmentFile, setAttachmentFile] = useState(null);
+  const [biltyCopyFile, setBiltyCopyFile] = useState(null);
 
   const fetchData = async () => {
     setFetchLoading(true);
     try {
-      // Tickets ready for Calibration Certificate
-      // (calibration.calibration_certificate_planned set).
-      const { data: calibrationRows, error: calibrationError } = await supabase
-        .from("calibration")
-        .select("ticket_id, calibration_certificate_planned")
-        .not("calibration_certificate_planned", "is", null);
+      // Tickets ready for Spare Dispatch Details (invoice.spare_dispatch_planned
+      // set — only true when tickets.enquiry_type = 'SPARE').
+      const { data: invoiceRows, error: invoiceError } = await supabase
+        .from("invoice")
+        .select("ticket_id, spare_dispatch_planned")
+        .not("spare_dispatch_planned", "is", null);
 
-      if (calibrationError) throw calibrationError;
+      if (invoiceError) throw invoiceError;
 
-      const ticketIds = [...new Set((calibrationRows || []).map((c) => c.ticket_id))];
+      const ticketIds = [...new Set((invoiceRows || []).map((i) => i.ticket_id))];
 
       if (ticketIds.length === 0) {
         setPendingData([]);
@@ -63,14 +63,14 @@ export default function CalibrationCertificate() {
 
       if (ticketsError) throw ticketsError;
 
-      const { data: certificateRows, error: certificateError } = await supabase
-        .from("calibration_certificate")
+      const { data: dispatchRows, error: dispatchError } = await supabase
+        .from("spare_dispatch_details")
         .select("*")
         .in("ticket_id", ticketIds);
 
-      if (certificateError) throw certificateError;
+      if (dispatchError) throw dispatchError;
 
-      const certificateByTicket = new Map((certificateRows || []).map((c) => [c.ticket_id, c]));
+      const dispatchByTicket = new Map((dispatchRows || []).map((d) => [d.ticket_id, d]));
 
       const pending = [];
       const history = [];
@@ -86,19 +86,16 @@ export default function CalibrationCertificate() {
           CREName: t.cre_name || "",
         };
 
-        const cert = certificateByTicket.get(t.ticket_id);
-        if (cert) {
+        const d = dispatchByTicket.get(t.ticket_id);
+        if (d) {
           history.push({
             ...base,
-            certificateTypeName: cert.certificate_type_name || "",
-            numberOfCertificatesDocuments: cert.number_of_certificates_documents ?? "",
-            fullDestinationAddress: cert.full_destination_address || "",
-            dateOfDispatch: cert.date_of_dispatch || "",
-            courierCompanyName: cert.courier_company_name || "",
-            courierTrackingNumber: cert.courier_tracking_number || "",
-            expectedDeliveryDate: cert.expected_delivery_date || "",
-            attachment: cert.attachment || "",
-            delayMinutes: cert.delay_minutes,
+            transporterName: d.transporter_name || "",
+            docketBiltyNo: d.docket_bilty_no || "",
+            dispatchDate: d.dispatch_date || "",
+            courierTransportDetails: d.courier_transport_details || "",
+            biltyCopyAttachment: d.bilty_copy_attachment || "",
+            delayMinutes: d.delay_minutes,
           });
         } else {
           pending.push(base);
@@ -130,15 +127,12 @@ export default function CalibrationCertificate() {
       clientName: ticket.clientName,
       phoneNumber: ticket.phoneNumber,
       companyName: ticket.companyName || "",
-      certificateTypeName: "",
-      numberOfCertificatesDocuments: "",
-      fullDestinationAddress: "",
-      dateOfDispatch: "",
-      courierCompanyName: "",
-      courierTrackingNumber: "",
-      expectedDeliveryDate: "",
+      transporterName: "",
+      docketBiltyNo: "",
+      dispatchDate: "",
+      courierTransportDetails: "",
     });
-    setAttachmentFile(null);
+    setBiltyCopyFile(null);
     setShowModal(true);
   };
 
@@ -147,7 +141,7 @@ export default function CalibrationCertificate() {
   };
 
   const uploadToStorage = async (file) => {
-    const path = `calibration_certificate/${selectedTicket?.ticketId}_${Date.now()}_${file.name}`;
+    const path = `spare_dispatch/${selectedTicket?.ticketId}_${Date.now()}_${file.name}`;
 
     const { error: uploadError } = await supabase.storage
       .from("ticket_enquiry")
@@ -162,18 +156,22 @@ export default function CalibrationCertificate() {
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    setAttachmentFile(file);
+    setBiltyCopyFile(file);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!formData.certificateTypeName) {
-      alert("Please enter Certificate Type/Name");
+    if (!formData.transporterName) {
+      alert("Please enter Transporter Name");
       return;
     }
-    if (!formData.dateOfDispatch) {
-      alert("Please select Date of Dispatch");
+    if (!formData.docketBiltyNo) {
+      alert("Please enter Docket/Bilty No.");
+      return;
+    }
+    if (!formData.dispatchDate) {
+      alert("Please select Dispatch Date");
       return;
     }
 
@@ -182,19 +180,16 @@ export default function CalibrationCertificate() {
     try {
       // Upload only now that Submit was actually clicked — nothing was
       // uploaded on file selection.
-      const attachmentUrl = attachmentFile ? await uploadToStorage(attachmentFile) : null;
+      const biltyCopyUrl = biltyCopyFile ? await uploadToStorage(biltyCopyFile) : null;
 
-      const { error } = await supabase.from("calibration_certificate").insert({
+      const { error } = await supabase.from("spare_dispatch_details").insert({
         ticket_id: selectedTicket.ticketId,
         ticket_uuid: selectedTicket.ticketUuid,
-        certificate_type_name: formData.certificateTypeName || null,
-        number_of_certificates_documents: formData.numberOfCertificatesDocuments || null,
-        full_destination_address: formData.fullDestinationAddress || null,
-        date_of_dispatch: formData.dateOfDispatch || null,
-        courier_company_name: formData.courierCompanyName || null,
-        courier_tracking_number: formData.courierTrackingNumber || null,
-        expected_delivery_date: formData.expectedDeliveryDate || null,
-        attachment: attachmentUrl,
+        transporter_name: formData.transporterName || null,
+        docket_bilty_no: formData.docketBiltyNo || null,
+        dispatch_date: formData.dispatchDate || null,
+        courier_transport_details: formData.courierTransportDetails || null,
+        bilty_copy_attachment: biltyCopyUrl,
         // No <next_stage>_planned column — nothing comes after this stage yet.
       });
 
@@ -202,16 +197,16 @@ export default function CalibrationCertificate() {
 
       toast({
         title: "Success",
-        description: "Calibration certificate details saved successfully",
+        description: "Spare dispatch details saved successfully",
       });
 
       setShowModal(false);
       fetchData();
     } catch (error) {
-      console.error("Error submitting calibration certificate:", error);
+      console.error("Error submitting spare dispatch details:", error);
       toast({
         title: "Error",
-        description: error.message || "Failed to save calibration certificate details",
+        description: error.message || "Failed to save spare dispatch details",
         variant: "destructive",
       });
     } finally {
@@ -230,8 +225,8 @@ export default function CalibrationCertificate() {
   };
 
   // Minutes late (negative) or early (positive) — the ORIGINAL delay
-  // convention, matching predecessor Calibration. See
-  // calibration_certificate.delay_minutes.
+  // convention, matching predecessor Invoice. See
+  // spare_dispatch_details.delay_minutes.
   const formatDelay = (minutes) => {
     if (minutes === null || minutes === undefined) return "-";
     if (minutes < 0) return `${Math.abs(minutes)} min late`;
@@ -337,7 +332,7 @@ export default function CalibrationCertificate() {
                                   <LoaderIcon className="animate-spin w-8 h-8" />
                                 </div>
                               ) : (
-                                <h1 className="text-blue-700">No pending calibration certificates found.</h1>
+                                <h1 className="text-blue-700">No pending spare dispatches found.</h1>
                               )}
                             </td>
                           </tr>
@@ -350,7 +345,7 @@ export default function CalibrationCertificate() {
                                   onClick={() => handleClick(ticket)}
                                   variant="outline"
                                   className="bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 hover:from-blue-100 hover:to-indigo-100 hover:text-blue-700 transition-all duration-300 border border-blue-200 hover:border-blue-300 rounded-lg px-3 py-1.5 shadow-sm hover:shadow-md group"
-                                  data-testid={`button-certificate-${ticket.ticketId}`}
+                                  data-testid={`button-dispatch-${ticket.ticketId}`}
                                 >
                                   <span className="font-medium">Process</span>
                                 </Button>
@@ -375,7 +370,7 @@ export default function CalibrationCertificate() {
                               <LoaderIcon className="animate-spin w-8 h-8" />
                             </div>
                           ) : (
-                            <h1 className="text-blue-700">No pending calibration certificates found.</h1>
+                            <h1 className="text-blue-700">No pending spare dispatches found.</h1>
                           )}
                         </div>
                       ) : (
@@ -423,27 +418,24 @@ export default function CalibrationCertificate() {
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Ticket ID</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Client Name</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Phone Number</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Certificate Type/Name</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">No. of Certificates</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">Destination Address</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Date of Dispatch</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Courier Company</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Tracking No.</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Expected Delivery</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Attachment</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Transporter Name</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Docket/Bilty No.</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Dispatch Date</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">Courier/Transport Details</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Bilty Copy</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Delay</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-blue-100">
                         {filteredHistoryData.length === 0 ? (
                           <tr>
-                            <td colSpan={13} className="text-center py-8 bg-white" data-testid="text-no-history">
+                            <td colSpan={10} className="text-center py-8 bg-white" data-testid="text-no-history">
                               {fetchLoading ? (
                                 <div className="flex justify-center items-center text-blue-700">
                                   <LoaderIcon className="animate-spin w-8 h-8" />
                                 </div>
                               ) : (
-                                <h1 className="text-blue-700">No calibration certificate history found.</h1>
+                                <h1 className="text-blue-700">No spare dispatch history found.</h1>
                               )}
                             </td>
                           </tr>
@@ -454,17 +446,14 @@ export default function CalibrationCertificate() {
                               <td className="px-4 py-3 font-medium text-blue-800">{ticket.ticketId}</td>
                               <td className="px-4 py-3 text-blue-900">{ticket.clientName}</td>
                               <td className="px-4 py-3 text-blue-900">{ticket.phoneNumber}</td>
-                              <td className="px-4 py-3 text-blue-900">{ticket.certificateTypeName}</td>
-                              <td className="px-4 py-3 text-blue-900">{ticket.numberOfCertificatesDocuments}</td>
-                              <td className="px-4 py-3 text-blue-900 truncate max-w-xs hover:whitespace-normal">{ticket.fullDestinationAddress}</td>
-                              <td className="px-4 py-3 text-blue-900">{formatDate(ticket.dateOfDispatch) || ""}</td>
-                              <td className="px-4 py-3 text-blue-900">{ticket.courierCompanyName}</td>
-                              <td className="px-4 py-3 text-blue-900">{ticket.courierTrackingNumber}</td>
-                              <td className="px-4 py-3 text-blue-900">{formatDate(ticket.expectedDeliveryDate) || ""}</td>
+                              <td className="px-4 py-3 text-blue-900">{ticket.transporterName}</td>
+                              <td className="px-4 py-3 text-blue-900">{ticket.docketBiltyNo}</td>
+                              <td className="px-4 py-3 text-blue-900">{formatDate(ticket.dispatchDate) || ""}</td>
+                              <td className="px-4 py-3 text-blue-900 truncate max-w-xs hover:whitespace-normal">{ticket.courierTransportDetails}</td>
                               <td className="px-4 py-3">
-                                {ticket.attachment ? (
+                                {ticket.biltyCopyAttachment ? (
                                   <a
-                                    href={ticket.attachment}
+                                    href={ticket.biltyCopyAttachment}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
@@ -501,7 +490,7 @@ export default function CalibrationCertificate() {
                               <LoaderIcon className="animate-spin w-8 h-8" />
                             </div>
                           ) : (
-                            <h1 className="text-blue-700">No calibration certificate history found.</h1>
+                            <h1 className="text-blue-700">No spare dispatch history found.</h1>
                           )}
                         </div>
                       ) : (
@@ -517,53 +506,18 @@ export default function CalibrationCertificate() {
                               </div>
                               <div className="grid grid-cols-2 gap-3 text-sm">
                                 <div>
-                                  <p className="text-gray-500 font-medium">Certificate Type</p>
-                                  <p className="text-blue-900">{ticket.certificateTypeName || "N/A"}</p>
+                                  <p className="text-gray-500 font-medium">Transporter Name</p>
+                                  <p className="text-blue-900">{ticket.transporterName || "N/A"}</p>
                                 </div>
                                 <div>
-                                  <p className="text-gray-500 font-medium">No. of Certificates</p>
-                                  <p className="text-blue-900">{ticket.numberOfCertificatesDocuments || "N/A"}</p>
+                                  <p className="text-gray-500 font-medium">Docket/Bilty No.</p>
+                                  <p className="text-blue-900">{ticket.docketBiltyNo || "N/A"}</p>
                                 </div>
-                              </div>
-                              <div>
-                                <p className="text-gray-500 font-medium text-sm">Destination Address</p>
-                                <p className="text-blue-900 line-clamp-2">{ticket.fullDestinationAddress || "N/A"}</p>
                               </div>
                               <div className="grid grid-cols-2 gap-3 text-sm">
                                 <div>
                                   <p className="text-gray-500 font-medium">Dispatch Date</p>
-                                  <p className="text-blue-900">{formatDate(ticket.dateOfDispatch) || "N/A"}</p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-500 font-medium">Courier Company</p>
-                                  <p className="text-blue-900">{ticket.courierCompanyName || "N/A"}</p>
-                                </div>
-                              </div>
-                              <div className="grid grid-cols-2 gap-3 text-sm">
-                                <div>
-                                  <p className="text-gray-500 font-medium">Tracking Number</p>
-                                  <p className="text-blue-900">{ticket.courierTrackingNumber || "N/A"}</p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-500 font-medium">Expected Delivery</p>
-                                  <p className="text-blue-900">{formatDate(ticket.expectedDeliveryDate) || "N/A"}</p>
-                                </div>
-                              </div>
-                              <div className="grid grid-cols-2 gap-3 text-sm">
-                                <div>
-                                  <p className="text-gray-500 font-medium">Attachment</p>
-                                  {ticket.attachment ? (
-                                    <a
-                                      href={ticket.attachment}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-blue-600 hover:text-blue-800 text-sm"
-                                    >
-                                      View
-                                    </a>
-                                  ) : (
-                                    <p className="text-blue-900 text-sm">N/A</p>
-                                  )}
+                                  <p className="text-blue-900">{formatDate(ticket.dispatchDate) || "N/A"}</p>
                                 </div>
                                 <div>
                                   <p className="text-gray-500 font-medium">Delay</p>
@@ -578,6 +532,23 @@ export default function CalibrationCertificate() {
                                   </span>
                                 </div>
                               </div>
+                              <div>
+                                <p className="text-gray-500 font-medium text-sm">Courier/Transport Details</p>
+                                <p className="text-blue-900 line-clamp-2">{ticket.courierTransportDetails || "N/A"}</p>
+                              </div>
+                              {ticket.biltyCopyAttachment && (
+                                <div>
+                                  <p className="text-gray-500 font-medium text-sm">Bilty Copy</p>
+                                  <a
+                                    href={ticket.biltyCopyAttachment}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:text-blue-800 text-sm"
+                                  >
+                                    View File
+                                  </a>
+                                </div>
+                              )}
                             </CardContent>
                           </Card>
                         ))
@@ -591,11 +562,11 @@ export default function CalibrationCertificate() {
         </Card>
       </Tabs>
 
-      {/* Calibration Certificate Modal */}
+      {/* Spare Dispatch Details Modal */}
       <Modal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        title="Calibration Certificate"
+        title="Spare Dispatch Details"
         size="2xl"
       >
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -617,80 +588,51 @@ export default function CalibrationCertificate() {
           </div>
 
           <div>
-            <Label>Certificate Type/Name *</Label>
+            <Label>Transporter Name *</Label>
             <Input
-              placeholder="Enter certificate type"
-              value={formData.certificateTypeName || ""}
-              onChange={(e) => handleInputChange("certificateTypeName", e.target.value)}
-              data-testid="input-certificate-type"
+              placeholder="Enter transporter name"
+              value={formData.transporterName || ""}
+              onChange={(e) => handleInputChange("transporterName", e.target.value)}
+              data-testid="input-transporter-name"
             />
           </div>
           <div>
-            <Label>Number of Certificates/Documents</Label>
+            <Label>Docket/Bilty No. *</Label>
             <Input
-              type="number"
-              min="0"
-              placeholder="Enter number"
-              value={formData.numberOfCertificatesDocuments || ""}
-              onChange={(e) => handleInputChange("numberOfCertificatesDocuments", e.target.value)}
-              data-testid="input-certificate-count"
+              placeholder="Enter docket/bilty no."
+              value={formData.docketBiltyNo || ""}
+              onChange={(e) => handleInputChange("docketBiltyNo", e.target.value)}
+              data-testid="input-docket-bilty-no"
             />
           </div>
           <div>
-            <Label>Date of Dispatch *</Label>
+            <Label>Dispatch Date *</Label>
             <Input
               type="date"
-              value={formData.dateOfDispatch || ""}
-              onChange={(e) => handleInputChange("dateOfDispatch", e.target.value)}
+              value={formData.dispatchDate || ""}
+              onChange={(e) => handleInputChange("dispatchDate", e.target.value)}
               data-testid="input-dispatch-date"
             />
           </div>
           <div>
-            <Label>Courier Company Name</Label>
+            <Label>Courier/Transport Details</Label>
             <Input
-              placeholder="Enter courier company"
-              value={formData.courierCompanyName || ""}
-              onChange={(e) => handleInputChange("courierCompanyName", e.target.value)}
-              data-testid="input-courier-company"
-            />
-          </div>
-          <div>
-            <Label>Courier Tracking Number</Label>
-            <Input
-              placeholder="Enter tracking number"
-              value={formData.courierTrackingNumber || ""}
-              onChange={(e) => handleInputChange("courierTrackingNumber", e.target.value)}
-              data-testid="input-tracking-number"
+              placeholder="Enter courier/transport details"
+              value={formData.courierTransportDetails || ""}
+              onChange={(e) => handleInputChange("courierTransportDetails", e.target.value)}
+              data-testid="input-courier-transport-details"
             />
           </div>
           <div className="md:col-span-2">
-            <Label>Full Destination Address</Label>
-            <Input
-              placeholder="Enter full address"
-              value={formData.fullDestinationAddress || ""}
-              onChange={(e) => handleInputChange("fullDestinationAddress", e.target.value)}
-              data-testid="input-destination-address"
-            />
-          </div>
-          <div>
-            <Label>Expected Delivery Date</Label>
-            <Input
-              type="date"
-              value={formData.expectedDeliveryDate || ""}
-              onChange={(e) => handleInputChange("expectedDeliveryDate", e.target.value)}
-              data-testid="input-delivery-date"
-            />
-          </div>
-          <div>
-            <Label>Attachment</Label>
+            <Label>Bilty Copy Upload</Label>
             <Input
               type="file"
               onChange={handleFileSelect}
               disabled={isSubmitting}
-              data-testid="input-attachment"
+              data-testid="input-bilty-copy"
             />
-            {attachmentFile && (
-              <p className="text-xs text-emerald-700 mt-1 truncate">Selected: {attachmentFile.name}</p>
+            {biltyCopyFile && (
+              <p className="text-xs text-emerald-700 mt-1 truncate">Selected: {biltyCopyFile.name}</p>
             )}
           </div>
 
@@ -698,7 +640,7 @@ export default function CalibrationCertificate() {
             <Button
               type="submit"
               disabled={isSubmitting}
-              data-testid="button-submit-certificate"
+              data-testid="button-submit-dispatch"
               className="px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-70 disabled:transform-none"
             >
               {isSubmitting ? (
@@ -714,7 +656,7 @@ export default function CalibrationCertificate() {
               type="button"
               variant="outline"
               onClick={() => setShowModal(false)}
-              data-testid="button-cancel-certificate"
+              data-testid="button-cancel-dispatch"
             >
               Cancel
             </Button>

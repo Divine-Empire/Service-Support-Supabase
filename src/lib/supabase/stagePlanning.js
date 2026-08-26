@@ -105,12 +105,33 @@ export const STAGE_PLANNING_RULES = {
     baseTime: (ctx) => ctx.orderReceivedSubmittedAt,
   },
 
-  // Invoice -> Calibration. Every Invoice submission moves on to Calibration
-  // (no branching); base time is Invoice's own submit-time timestamp.
+  // Invoice -> Calibration. Only when tickets.enquiry_type = 'NABL' — every
+  // other enquiry_type skips Calibration entirely (planned stays null).
+  // Base time is Invoice's own submit-time timestamp.
   calibration: {
     tatStageName: "Calibration",
-    shouldPlan: () => true,
+    shouldPlan: (ctx) => ctx.ticket?.enquiryType === "NABL",
     baseTime: (ctx) => ctx.invoiceSubmittedAt,
+  },
+
+  // Invoice -> Spare Dispatch Details. Only when tickets.enquiry_type =
+  // 'SPARE' — mutually exclusive with 'calibration' above in practice
+  // (enquiry_type is single-select), but not enforced here; both rules are
+  // independent and simply check their own condition. Base time is
+  // Invoice's own submit-time timestamp.
+  sparedispatch: {
+    tatStageName: "Spare Dispatch",
+    shouldPlan: (ctx) => ctx.ticket?.enquiryType === "SPARE",
+    baseTime: (ctx) => ctx.invoiceSubmittedAt,
+  },
+
+  // Calibration -> Calibration Certificate. Every Calibration submission
+  // moves on to Calibration Certificate (no branching); base time is
+  // Calibration's own submit-time timestamp.
+  calibrationCertificate: {
+    tatStageName: "Calibration Certificate",
+    shouldPlan: () => true,
+    baseTime: (ctx) => ctx.calibrationSubmittedAt,
   },
 };
 

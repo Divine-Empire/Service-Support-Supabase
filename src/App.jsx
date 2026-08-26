@@ -17,6 +17,7 @@ import TADA from "./pages/TADA";
 import EngineerApproval from "./pages/SiteVisitOTPVerification";
 import Invoice from "./pages/Invoice";
 import Calibration from "./pages/Calibration";
+import SpareDispatchDetails from "./pages/SpareDispatchDetails";
 import IMS from "./pages/IMS";
 import NotFound from "./pages/not-found";
 import Layout from './components/Layout';
@@ -57,6 +58,7 @@ function App() {
           <Route path="/orderreceived" element={<OrderReceived />} />
           <Route path="/invoice" element={<Invoice />} />
           <Route path="/calibration" element={<Calibration />} />
+          <Route path="/sparedispatch" element={<SpareDispatchDetails />} />
           <Route path="/ims" element={<IMS />} />
           <Route path="/calibrationCertificate" element={<CalibrationCertificate />} />
           <Route path="/cancel" element={<Cancle />} />

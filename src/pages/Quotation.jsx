@@ -152,7 +152,7 @@ export default function Quotation() {
           siteAddress: t.site_address || "",
           gstNo: t.gst_no || "",
           machineName: t.machine_name || "",
-          category: t.enquiry_type || "",
+          category: t.category || "",
           mentionIssue: t.mention_issue || "",
           serviceLocation: t.service_location || "",
           CREName: t.cre_name || "",

@@ -19,12 +19,20 @@ import { Loader2Icon, LoaderIcon, Plus, Pencil, Trash2 } from "lucide-react";
 import { supabase } from "../../lib/supabase/client";
 import { fetchDropdownRows } from "../../lib/supabase/dropdown";
 
+// Renamed in migration 0043 to match the renamed tickets columns:
+// 'category' now holds the NABL/Service/Spare-style values (source for
+// Ticket-and-Enquiry.jsx's "Category" field, formerly "Enquiry-Type"),
+// 'sub_category' holds the machine-group values (source for its
+// "Sub-Category" field, formerly "Category"), and 'enquiry_type' is a
+// brand new, initially-empty category sourcing the brand new "Enquiry
+// Type" field (used for TAT/planning on stages after Invoice).
 const CATEGORY_LABELS = {
   call_type: "Call Type",
   source_of_enquiry: "Source of Enquiry",
   enquiry_receiver_name: "Enquiry Receiver Name",
-  enquiry_type: "Enquiry-Type (Requirement Service Category)",
-  category: "Category (Machine Group)",
+  category: "Category (Requirement Service Type)",
+  sub_category: "Sub-Category (Machine Group)",
+  enquiry_type: "Enquiry Type",
   service_location: "Service Location",
   engineer_assign_name: "Engineer Assign Name",
   machine_name: "Machine Name",

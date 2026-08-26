@@ -63,13 +63,14 @@ export default function TicketAndEnquiry() {
     siteAddress: "",
     gstNo: "",
     machineName: "",
+    enquiryType: "",
     category: "",
     mentionIssue: "",
     serviceLocation: "",
     challanCopy: "",
     machinePhoto: "",
     videoCall: "",
-    newCategory: "",
+    subCategory: "",
     videoCallTime: "",
     engineerAssign: ""
   });
@@ -107,13 +108,14 @@ export default function TicketAndEnquiry() {
       siteAddress: ticket.siteAddress || "",
       gstNo: ticket.gstNo || "",
       machineName: ticket.machineName || "",
+      enquiryType: ticket.enquiryType || "",
       category: ticket.category || "",
       mentionIssue: ticket.mentionIssue || "",
       serviceLocation: ticket.serviceLocation || "",
       challanCopy: ticket.challanCopy || "",
       machinePhoto: ticket.machinePhoto || "",
       videoCall: ticket.videoCall || "",
-      newCategory: ticket.newCategory || "",
+      subCategory: ticket.subCategory || "",
       videoCallTime: ticket.videoCallTime || "",
       engineerAssign: ticket.engineerAssign || ""
     });
@@ -123,8 +125,8 @@ export default function TicketAndEnquiry() {
       : [];
     setNewFormSelectedMachines(machines);
 
-    const categories = ticket.newCategory
-      ? ticket.newCategory.split(",").map((c) => c.trim()).filter(Boolean)
+    const categories = ticket.subCategory
+      ? ticket.subCategory.split(",").map((c) => c.trim()).filter(Boolean)
       : [];
     setNewFormSelectedCategories(categories);
     setWarehouseFiles({ challanCopy: null, machinePhoto: null });
@@ -179,13 +181,14 @@ export default function TicketAndEnquiry() {
         siteAddress: row.site_address || "",
         gstNo: row.gst_no || "",
         machineName: row.machine_name || "",
-        category: row.enquiry_type || "",
+        enquiryType: row.enquiry_type || "",
+        category: row.category || "",
         mentionIssue: row.mention_issue || "",
         serviceLocation: row.service_location || "",
         challanCopy: row.challan_copy || "",
         machinePhoto: row.machine_photo || "",
         videoCall: row.video_call || "",
-        newCategory: row.category || "",
+        subCategory: row.sub_category || "",
         videoCallTime: row.video_call_time || "",
         engineerAssign: row.engineer_assign || "",
         otp: row.otp || "",
@@ -208,12 +211,21 @@ export default function TicketAndEnquiry() {
 
   // Maps public.dropdown's `category` keys to the display keys the rest of
   // this component's JSX already expects (masterData[0]["Call type"], etc.)
+  // Maps public.dropdown's `category` keys to the display keys the rest of
+  // this component's JSX expects. Renamed in migration 0043 to match the
+  // renamed tickets columns: dropdown category='category' now holds the
+  // NABL/Service/Spare-style values (source for the "Category" field,
+  // formerly "Enquiry-Type"), 'sub_category' holds the machine-group values
+  // (source for "Sub-Category", formerly "Category"), and 'enquiry_type' is
+  // a brand new, initially-empty category sourcing the brand new "Enquiry
+  // Type" field.
   const DROPDOWN_CATEGORY_TO_KEY = {
     call_type: "Call type",
     source_of_enquiry: "Source of enquiry",
     enquiry_receiver_name: "Enquiry Receiver Name",
-    enquiry_type: "Requirement Service Category",
     category: "Category",
+    sub_category: "Sub-Category",
+    enquiry_type: "Enquiry Type",
     service_location: "Service Location",
     engineer_assign_name: "Engineer Assign Name",
     machine_name: "Machine Name",
@@ -344,12 +356,16 @@ export default function TicketAndEnquiry() {
       alert("Error: Phone Number is required");
       return;
     }
+    if (!newEnquiryData.enquiryType) {
+      alert("Error: Enquiry Type is required");
+      return;
+    }
     if (!newEnquiryData.category) {
-      alert("Error: Enquiry-Type is required");
+      alert("Error: Category is required");
       return;
     }
     if (newFormSelectedCategories.length === 0) {
-      alert("Error: Category is required");
+      alert("Error: Sub-Category is required");
       return;
     }
     if (newEnquiryData.videoCall === "Yes") {
@@ -423,13 +439,14 @@ export default function TicketAndEnquiry() {
           site_address: newEnquiryData.siteAddress || "",
           gst_no: newEnquiryData.gstNo || "",
           machine_name: newFormSelectedMachines.join(", "),
-          enquiry_type: newEnquiryData.category || "",
+          enquiry_type: newEnquiryData.enquiryType || "",
+          category: newEnquiryData.category || "",
           mention_issue: newEnquiryData.mentionIssue || "",
           service_location: newEnquiryData.serviceLocation || "",
           challan_copy: challanCopyUrl,
           machine_photo: machinePhotoUrl,
           video_call: newEnquiryData.videoCall || "",
-          category: newFormSelectedCategories.join(", "),
+          sub_category: newFormSelectedCategories.join(", "),
           video_call_time: newEnquiryData.videoCallTime || "",
           engineer_assign: newEnquiryData.engineerAssign || "",
           updated_at: new Date().toISOString(),
@@ -459,13 +476,14 @@ export default function TicketAndEnquiry() {
             siteAddress: "",
             gstNo: "",
             machineName: "",
+            enquiryType: "",
             category: "",
             mentionIssue: "",
             serviceLocation: "",
             challanCopy: "",
             machinePhoto: "",
             videoCall: "",
-            newCategory: "",
+            subCategory: "",
             videoCallTime: "",
             engineerAssign: ""
           });
@@ -495,13 +513,14 @@ export default function TicketAndEnquiry() {
           site_address: newEnquiryData.siteAddress || "",
           gst_no: newEnquiryData.gstNo || "",
           machine_name: newFormSelectedMachines.join(", "),
-          enquiry_type: newEnquiryData.category || "",
+          enquiry_type: newEnquiryData.enquiryType || "",
+          category: newEnquiryData.category || "",
           mention_issue: newEnquiryData.mentionIssue || "",
           service_location: newEnquiryData.serviceLocation || "",
           challan_copy: challanCopyUrl,
           machine_photo: machinePhotoUrl,
           video_call: newEnquiryData.videoCall || "",
-          category: newFormSelectedCategories.join(", "),
+          sub_category: newFormSelectedCategories.join(", "),
           video_call_time: newEnquiryData.videoCallTime || "",
           engineer_assign: newEnquiryData.engineerAssign || "",
           // Only generate an OTP when Video-Call is "Yes"
@@ -540,13 +559,14 @@ export default function TicketAndEnquiry() {
             siteAddress: "",
             gstNo: "",
             machineName: "",
+            enquiryType: "",
             category: "",
             mentionIssue: "",
             serviceLocation: "",
             challanCopy: "",
             machinePhoto: "",
             videoCall: "",
-            newCategory: "",
+            subCategory: "",
             videoCallTime: "",
             engineerAssign: ""
           });
@@ -676,10 +696,10 @@ export default function TicketAndEnquiry() {
 
             <Select value={categoryFilter} onValueChange={setCategoryFilter}>
               <SelectTrigger className="bg-white border-blue-200 shadow-sm w-full sm:w-[150px] h-9 text-sm text-blue-800">
-                <SelectValue placeholder="All Enquiry-Types" />
+                <SelectValue placeholder="All Categories" />
               </SelectTrigger>
               <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
-                <SelectItem value="all">All Enquiry-Types</SelectItem>
+                <SelectItem value="all">All Categories</SelectItem>
                 {availableCategories.map((option) => (
                   <SelectItem key={option} value={option}>
                     {option}
@@ -720,13 +740,14 @@ export default function TicketAndEnquiry() {
                   siteAddress: "",
                   gstNo: "",
                   machineName: "",
+                  enquiryType: "",
                   category: "",
                   mentionIssue: "",
                   serviceLocation: "",
                   challanCopy: "",
                   machinePhoto: "",
                   videoCall: "",
-                  newCategory: "",
+                  subCategory: "",
                   videoCallTime: "",
                   engineerAssign: "",
                   serialNumOfMachines: ""
@@ -762,7 +783,8 @@ export default function TicketAndEnquiry() {
                     <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">Site Address</th>
                     <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">GST No.</th>
                     <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[180px] sticky top-0">Machine Name</th>
-                    <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Enquiry-Type</th>
+                    <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Enquiry Type</th>
+                    <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Category</th>
                     <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[250px] sticky top-0">Mention Issue</th>
                     <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Service Location</th>
                   </tr>
@@ -770,7 +792,7 @@ export default function TicketAndEnquiry() {
                 <tbody className="bg-white divide-y divide-blue-100">
                   {filteredPendingData.length === 0 ? (
                     <tr>
-                      <td colSpan={16} className="text-center py-8 bg-white">
+                      <td colSpan={17} className="text-center py-8 bg-white">
                         {fetchLoading ? (
                           <div className="flex justify-center items-center text-blue-700">
                             <LoaderIcon className="animate-spin w-8 h-8" />
@@ -805,6 +827,7 @@ export default function TicketAndEnquiry() {
                         <td className="px-4 py-3 text-blue-900 truncate max-w-xs hover:whitespace-normal">{ticket.siteAddress}</td>
                         <td className="px-4 py-3 text-blue-900">{ticket.gstNo}</td>
                         <td className="px-4 py-3 text-blue-900 truncate max-w-xs hover:whitespace-normal">{ticket.machineName}</td>
+                        <td className="px-4 py-3 text-blue-900">{ticket.enquiryType}</td>
                         <td className="px-4 py-3 text-blue-900">{ticket.category}</td>
                         <td className="px-4 py-3 text-blue-900 max-w-xs truncate hover:whitespace-normal">{ticket.mentionIssue}</td>
                         <td className="px-4 py-3 text-blue-900">{ticket.serviceLocation}</td>
@@ -874,7 +897,11 @@ export default function TicketAndEnquiry() {
                             <p className="text-blue-900">{ticket.phoneNumber}</p>
                           </div>
                           <div>
-                            <p className="text-gray-500 font-medium">Enquiry-Type</p>
+                            <p className="text-gray-500 font-medium">Enquiry Type</p>
+                            <p className="text-blue-900">{ticket.enquiryType}</p>
+                          </div>
+                          <div>
+                            <p className="text-gray-500 font-medium">Category</p>
                             <p className="text-blue-900">{ticket.category}</p>
                           </div>
                           <div>
@@ -1009,77 +1036,106 @@ export default function TicketAndEnquiry() {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label className="text-sm">Call Type *</Label>
-                <Select
-                  onValueChange={(value) => setNewEnquiryData(prev => ({ ...prev, callType: value }))}
-                  value={newEnquiryData.callType}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select Call Type" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
-                    {(masterData[0]?.["Call type"] || [])
-                      .filter(Boolean)
-                      .map((option) => (
-                        <SelectItem key={option} value={option}>
-                          {option}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1">
-                <Label className="text-sm">Source of Enquiry *</Label>
-                <div className="relative">
-                  <Input
-                    value={newEnquiryData.sourceOfEnquiry || ""}
-                    onChange={(e) => setNewEnquiryData(prev => ({ ...prev, sourceOfEnquiry: e.target.value }))}
-                    placeholder="Search or enter source"
-                    list="new-source-suggestions"
-                  />
-                  <datalist id="new-source-suggestions">
-                    {(masterData[0]?.["Source of enquiry"] || [])
-                      .filter((name, index, self) => name && self.indexOf(name) === index)
-                      .map((name, index) => (
-                        <option key={index} value={name} />
-                      ))}
-                  </datalist>
-                </div>
-              </div>
-
+              {/* Row 1: Call Type, Source of Enquiry, Enquiry Receiver Name */}
               <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1">
-                  <Label className="text-sm">Enquiry Receiver Name *</Label>
-                  <div className="relative">
-                    <Input
-                      value={newEnquiryData.enquiryReceiverName || ""}
-                      onChange={(e) => setNewEnquiryData(prev => ({ ...prev, enquiryReceiverName: e.target.value }))}
-                      placeholder="Search or enter receiver name"
-                      list="new-receiver-suggestions"
-                    />
-                    <datalist id="new-receiver-suggestions">
-                      {(masterData[0]?.["Enquiry Receiver Name"] || [])
-                        .filter((name, index, self) => name && self.indexOf(name) === index)
-                        .map((name, index) => (
-                          <option key={index} value={name} />
+                  <Label className="text-sm">Call Type *</Label>
+                  <Select
+                    onValueChange={(value) => setNewEnquiryData(prev => ({ ...prev, callType: value }))}
+                    value={newEnquiryData.callType}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Call Type" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
+                      {(masterData[0]?.["Call type"] || [])
+                        .filter(Boolean)
+                        .map((option) => (
+                          <SelectItem key={option} value={option}>
+                            {option}
+                          </SelectItem>
                         ))}
-                    </datalist>
-                  </div>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-1">
-                  <Label className="text-sm">Enquiry-Type *</Label>
+                  <Label className="text-sm">Source of Enquiry *</Label>
+                  <Select
+                    onValueChange={(value) => setNewEnquiryData(prev => ({ ...prev, sourceOfEnquiry: value }))}
+                    value={newEnquiryData.sourceOfEnquiry || undefined}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select source" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
+                      {[...new Set(masterData[0]?.["Source of enquiry"] || [])]
+                        .filter(Boolean)
+                        .map((option) => (
+                          <SelectItem key={option} value={option}>
+                            {option}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-sm">Enquiry Receiver Name *</Label>
+                  <Select
+                    onValueChange={(value) => setNewEnquiryData(prev => ({ ...prev, enquiryReceiverName: value }))}
+                    value={newEnquiryData.enquiryReceiverName || undefined}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select receiver name" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
+                      {[...new Set(masterData[0]?.["Enquiry Receiver Name"] || [])]
+                        .filter(Boolean)
+                        .map((option) => (
+                          <SelectItem key={option} value={option}>
+                            {option}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Row 2: Enquiry Type (new), Category (renamed from Enquiry-Type), Sub-Category (renamed from Category) */}
+              <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-sm">Enquiry Type *</Label>
+                  <Select
+                    onValueChange={(value) => setNewEnquiryData(prev => ({ ...prev, enquiryType: value }))}
+                    value={newEnquiryData.enquiryType}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Enquiry Type" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
+                      {[...new Set(masterData[0]?.["Enquiry Type"] || [])]
+                        .filter(Boolean)
+                        .map((option) => (
+                          <SelectItem key={option} value={option}>
+                            {option}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-sm">Category *</Label>
                   <Select
                     onValueChange={(value) => setNewEnquiryData(prev => ({ ...prev, category: value }))}
                     value={newEnquiryData.category}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select Enquiry-Type" />
+                      <SelectValue placeholder="Select Category" />
                     </SelectTrigger>
                     <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
-                      {[...new Set(masterData[0]?.["Requirement Service Category"] || [])]
+                      {[...new Set(masterData[0]?.["Category"] || [])]
                         .filter(Boolean)
                         .map((option) => (
                           <SelectItem key={option} value={option}>
@@ -1091,7 +1147,7 @@ export default function TicketAndEnquiry() {
                 </div>
 
                 <div className="space-y-1 relative dropdown-container">
-                  <Label className="text-sm">Category *</Label>
+                  <Label className="text-sm">Sub-Category *</Label>
                   <div className="relative">
                     <button
                       type="button"
@@ -1101,7 +1157,7 @@ export default function TicketAndEnquiry() {
                       }}
                       className="flex h-10 w-full items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      <span className="text-gray-500">Select category(ies)</span>
+                      <span className="text-gray-500">Select sub-category(ies)</span>
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
                         width="24"
@@ -1122,14 +1178,14 @@ export default function TicketAndEnquiry() {
                       <div className="absolute left-0 right-0 z-50 mt-1 max-h-60 overflow-y-auto rounded-md border border-gray-200 bg-white p-1 shadow-lg">
                         <div className="px-2 py-1 sticky top-0 bg-white z-10">
                           <Input
-                            placeholder="Search category..."
+                            placeholder="Search sub-category..."
                             value={categorySearchQuery}
                             onChange={(e) => setCategorySearchQuery(e.target.value)}
                             className="h-8 text-xs border-gray-200"
                           />
                         </div>
                         <div className="mt-1">
-                          {[...new Set(masterData[0]?.["Category"] || [])]
+                          {[...new Set(masterData[0]?.["Sub-Category"] || [])]
                             .filter(Boolean)
                             .filter(option =>
                               option.toLowerCase().includes(categorySearchQuery.toLowerCase())
@@ -1151,12 +1207,12 @@ export default function TicketAndEnquiry() {
                                 {option}
                               </button>
                             ))}
-                          {[...new Set(masterData[0]?.["Category"] || [])]
+                          {[...new Set(masterData[0]?.["Sub-Category"] || [])]
                             .filter(Boolean)
                             .filter(option =>
                               option.toLowerCase().includes(categorySearchQuery.toLowerCase())
                             ).length === 0 && (
-                            <p className="text-xs text-gray-500 text-center py-2">No category found</p>
+                            <p className="text-xs text-gray-500 text-center py-2">No sub-category found</p>
                           )}
                         </div>
                       </div>

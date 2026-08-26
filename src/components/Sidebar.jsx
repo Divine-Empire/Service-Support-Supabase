@@ -19,6 +19,7 @@ import {
   UserCog,
   Database,
   Timer,
+  Truck,
 } from "lucide-react";
 import useAuthStore from "../store/authStore";
 
@@ -46,6 +47,7 @@ export const navigation = [
     href: "/calibrationCertificate",
     icon: Settings,
   },
+  { name: "Spare Dispatch Details", href: "/sparedispatch", icon: Truck },
   { name: "Cancel", href: "/cancel", icon: Settings },
   { name: "Master", href: "/master", icon: Database },
   { name: "TAT Config", href: "/tat-config", icon: Timer },
