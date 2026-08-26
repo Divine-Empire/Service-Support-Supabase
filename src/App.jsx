@@ -16,16 +16,13 @@ import SiteVisitPlan from "./pages/SiteVisitPlan";
 import TADA from "./pages/TADA";
 import EngineerApproval from "./pages/SiteVisitOTPVerification";
 import Invoice from "./pages/Invoice";
-import AccountVerification from "./pages/AccountVerification";
 import Calibration from "./pages/Calibration";
 import IMS from "./pages/IMS";
 import NotFound from "./pages/not-found";
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
-import AccountablityApproval from './pages/AccountablityApproval';
 import CalibrationCertificate from './pages/CalibrationCertificate';
-import Conformation from './pages/Conformation';
 import Cancle from './pages/Cancle';
 import Settings from './pages/Master/Settings';
 import Master from './pages/Master/Dropdown';
@@ -59,13 +56,9 @@ function App() {
           <Route path="/approval" element={<EngineerApproval />} />
           <Route path="/orderreceived" element={<OrderReceived />} />
           <Route path="/invoice" element={<Invoice />} />
-          <Route path="/account" element={<AccountVerification />} />
           <Route path="/calibration" element={<Calibration />} />
           <Route path="/ims" element={<IMS />} />
-
-          <Route path="/accountabilityApprovals" element={<AccountablityApproval />} />
           <Route path="/calibrationCertificate" element={<CalibrationCertificate />} />
-          <Route path="/conformation" element={<Conformation />} />
           <Route path="/cancel" element={<Cancle />} />
           <Route
             path="/master"

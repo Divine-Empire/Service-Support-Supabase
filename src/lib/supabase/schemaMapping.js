@@ -185,8 +185,8 @@ export const SCHEMA_MAPPING = {
       { sheetColumn: "X", sheetIndex: 23, sheetField: "actual3", supabaseColumn: "created_at", type: "timestamptz", note: "Defaults to now() at insert time; doubles as this stage's completion timestamp." },
       { sheetColumn: "AO", sheetIndex: 37, sheetField: null, supabaseColumn: "video_call_planned", type: "timestamp without time zone", note: "Renamed from 'planned_at' in migration 0019 to match the <next_stage>_planned convention. Computed by src/lib/supabase/stagePlanning.js's 'videoCall' rule and submitted by the frontend at insert time: NULL unless tickets.service_location != 'Warehouse' AND tickets.video_call = 'Yes' (see warehouse_planned/quotation_planned below — the three are mutually exclusive, checked in that priority order in Warranty-Check.jsx's handleSubmit); otherwise warranty_check's own submit-time timestamp + tat_config['Video-Call'].duration_minutes. Gates src/pages/VideoCallSolution.jsx." },
       { sheetColumn: "Y", sheetIndex: 24, sheetField: null, supabaseColumn: "delay_minutes", type: "integer", note: "Trigger-computed only, see description above. Never written by the frontend." },
-      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "warehouse_planned", type: "timestamptz", note: "Added in migration 0035, reworked in 0038 (moved off a DB trigger onto the frontend, and the gating condition corrected from tickets.video_call to tickets.service_location). Readiness stamp for Warehouse (src/pages/Warehouse.jsx). Computed by stagePlanning.js's 'warehouse' rule and submitted by the frontend at insert time: set (as this row's own submit-time timestamp + tat_config['Warehouse'].duration_minutes) ONLY when tickets.service_location = 'Warehouse' — takes priority over video_call_planned." },
-      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "quotation_planned", type: "timestamptz", note: "Added in migration 0021, reworked in 0035 and 0038. Readiness stamp for Quotation, centralized here regardless of which path a ticket took. THREE writers: (1) stagePlanning.js's 'quotationDirect' rule, submitted by the frontend at insert time on THIS row when the ticket matches neither warehouse_planned's nor video_call_planned's condition (service_location != 'Warehouse' AND video_call != 'Yes') — the ticket skips both Warehouse and Video-Call entirely; (2) public.warehouse_apply_quotation_planned() (AFTER INSERT on warehouse) once the Warehouse path completes; (3) public.video_call_apply_quotation_planned() once a video_call attempt resolves with enquiry_solved='no' on the Video-Call path. Lives here rather than on video_call/warehouse/tickets specifically so Quotation.jsx only ever has to check one column regardless of which path a ticket took." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "warehouse_planned", type: "timestamptz", note: "Added in migration 0035, reworked in 0038 and 0040. TWO writers: (1) stagePlanning.js's 'warehouse' rule, submitted by the frontend on THIS row at Warranty-Check submit time, ONLY when tickets.service_location = 'Warehouse' (takes priority over video_call_planned/quotation_planned that same submit); (2) public.video_call_apply_downstream_planned() (AFTER INSERT on video_call, migration 0040) once a video_call attempt resolves with enquiry_solved='no' AND that attempt's service_type = 'Warehouse' — NOT mutually exclusive with quotation_planned in that case (see below); both get stamped, so the ticket is pending in both Warehouse.jsx and Quotation.jsx simultaneously until each is completed independently (explicit, user-confirmed choice)." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "quotation_planned", type: "timestamptz", note: "Added in migration 0021, reworked in 0035, 0038 and 0040. Readiness stamp for Quotation, centralized here regardless of which path a ticket took. THREE writers: (1) stagePlanning.js's 'quotationDirect' rule, submitted by the frontend at insert time on THIS row when the ticket matches neither warehouse_planned's nor video_call_planned's condition (service_location != 'Warehouse' AND video_call != 'Yes') — the ticket skips both Warehouse and Video-Call entirely; (2) public.warehouse_apply_quotation_planned() (AFTER INSERT on warehouse) once the Warehouse path completes; (3) public.video_call_apply_downstream_planned() (AFTER INSERT on video_call, renamed from video_call_apply_quotation_planned in migration 0040) whenever a video_call attempt resolves with enquiry_solved='no' on the Video-Call path — regardless of service_type, so this always fires alongside warehouse_planned's writer (2) above when service_type='Warehouse'. Lives here rather than on video_call/warehouse/tickets specifically so Quotation.jsx only ever has to check one column regardless of which path a ticket took." },
     ],
   },
 
@@ -206,8 +206,11 @@ export const SCHEMA_MAPPING = {
       "verified at submit time (only set when enquiry_solved = 'yes'). delay_minutes is trigger-computed " +
       "(public.video_call_set_delay(), migration 0021) as warranty_check.video_call_planned - " +
       "video_call.created_at, in minutes — same negative-when-late/positive-when-early convention as " +
-      "warranty_check.delay_minutes. An AFTER INSERT trigger (public.video_call_apply_quotation_planned()) " +
-      "writes back to warranty_check.quotation_planned depending on enquiry_solved (see that field's note).",
+      "warranty_check.delay_minutes. An AFTER INSERT trigger (public.video_call_apply_downstream_planned(), " +
+      "renamed from video_call_apply_quotation_planned in migration 0040) writes back to " +
+      "warranty_check.quotation_planned whenever enquiry_solved='no', and ALSO to " +
+      "warranty_check.warehouse_planned when that same 'no' attempt's service_type = 'Warehouse' (not " +
+      "mutually exclusive — both get stamped in that case; see those fields' notes on the warrantyCheck entry).",
     fields: [
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "ticket_uuid", type: "uuid", note: "FK -> tickets(uuid), the real relational key (migration 0030). NOT unique — multiple attempts allowed (see description)." },
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "ticket_id", type: "text", note: "Plain denormalized column (no longer the FK, see ticket_uuid) — still populated at insert, used for display/search." },
@@ -234,19 +237,20 @@ export const SCHEMA_MAPPING = {
     sourceSheet: "Ticket_Enquiry",
     primaryKey: "id",
     description:
-      "Stage 4, owned by src/pages/Quotation.jsx. Gated by warranty_check.quotation_planned — and, unlike " +
-      "every other stage, THAT NEVER CLOSES: there's no signal yet that removes a ticket from Quotation's " +
-      "pending list (a future OrderReceived.jsx migration may add one). A ticket can be quoted, then revised " +
-      "any number of times — the frontend upserts by ticket_id (migration 0023 added the UPDATE policy this " +
-      "needs) rather than inserting once, so quotation_no/basic_amount/etc. just get overwritten in place on " +
-      "the same row. created_at is NOT touched by revisions (only set via the column default on the original " +
-      "insert), so it still means 'first quoted at' for delay_minutes purposes. follow_up_planned is only " +
-      "included in the upsert payload on the FIRST save for a ticket (Quotation.jsx checks a client-side " +
-      "hasQuotation flag) — omitted on every later revision so it's never overwritten; revising a quotation " +
-      "must not restart FollowUp's readiness clock. Quotation.jsx's own Pending/History tabs are NOT a " +
-      "partition any more: Pending = every gated ticket, always (revisable or not); History = the subset " +
-      "that's been quoted at least once, purely for browsing past quotations — a ticket can be, and usually " +
-      "is, in both simultaneously, and also simultaneously pending in FollowUp.jsx once quoted. " +
+      "Stage 4, owned by src/pages/Quotation.jsx. Gated by warranty_check.quotation_planned. A ticket can be " +
+      "quoted, then revised any number of times — the frontend upserts by ticket_id (migration 0023 added " +
+      "the UPDATE policy this needs) rather than inserting once, so quotation_no/basic_amount/etc. just get " +
+      "overwritten in place on the same row. created_at is NOT touched by revisions (only set via the column " +
+      "default on the original insert), so it still means 'first quoted at' for delay_minutes purposes. " +
+      "follow_up_planned is only included in the upsert payload on the FIRST save for a ticket (Quotation.jsx " +
+      "checks a client-side hasQuotation flag) — omitted on every later revision so it's never overwritten; " +
+      "revising a quotation must not restart FollowUp's readiness clock. Quotation.jsx's own Pending/History " +
+      "tabs are NOT a partition: Pending = every gated ticket whose LATEST follow_up row (if any) isn't " +
+      "stage='Order Received' (checked client-side in Quotation.jsx's fetchData, not a DB-level gate — a " +
+      "ticket can be revised right up until Order Received closes it out); History = the subset that's been " +
+      "quoted at least once, purely for browsing past quotations, UNAFFECTED by Order Received — a ticket " +
+      "can be, and usually is, in both simultaneously, and also simultaneously pending in FollowUp.jsx once " +
+      "quoted. " +
       "delay_minutes is trigger-computed (public.quotation_set_delay(), migration 0022) as " +
       "warranty_check.quotation_planned - quotation.created_at, in minutes — same " +
       "negative-when-late/positive-when-early convention as the prior stages.",
@@ -425,8 +429,14 @@ export const SCHEMA_MAPPING = {
     primaryKey: "id",
     description:
       "Stage 9, owned by src/pages/OrderReceived.jsx. Gated by follow_up.order_received_planned (latest " +
-      "non-null value per ticket, since follow_up is an append-only log). One row per ticket, inserted once " +
-      "at submission (no revision support, same as warranty_check/site_visit/tada/otp_verification). " +
+      "non-null value per ticket, since follow_up is an append-only log) — this is the ONLY gate. Warehouse " +
+      "tickets (both the direct Warranty-Check path and the video_call service_type='Warehouse' path) also " +
+      "flow through Quotation -> Follow-Up like every other ticket (confirmed by user 2026-08-26 — an earlier " +
+      "migration 0041 wrongly assumed the direct Warehouse path skipped Quotation/Follow-Up and added a " +
+      "separate warehouse.order_received_planned gate; reverted by migration 0042), so they reach Order " +
+      "Received the same way once their Follow-Up log records stage='Order Received'. One row per ticket, " +
+      "inserted once at submission (no revision support, same as warranty_check/site_visit/tada/" +
+      "otp_verification). " +
       "invoice_planned is submitted by the frontend at insert time, computed via " +
       "src/lib/supabase/stagePlanning.js's 'invoice' rule as this row's own created_at + " +
       "tat_config['Invoice'].duration_minutes — gates the (not yet migrated) Invoice stage that follows Order " +
@@ -457,17 +467,23 @@ export const SCHEMA_MAPPING = {
     sourceSheet: "Ticket_Enquiry",
     primaryKey: "id",
     description:
-      "Warehouse-repair stage, owned by src/pages/Warehouse.jsx. Gated by warranty_check.warehouse_planned " +
-      "(submitted by the frontend, migration 0038, only when tickets.service_location = 'Warehouse' — takes " +
-      "priority over the video_call='Yes' branch to VideoCallSolution). One row per " +
-      "ticket, inserted once at submission (no revision support, same as warranty_check/site_visit/tada). " +
+      "Warehouse-repair stage, owned by src/pages/Warehouse.jsx. Gated by warranty_check.warehouse_planned, " +
+      "set via TWO independent paths (migration 0040): (1) the frontend, at Warranty-Check submit time, when " +
+      "tickets.service_location = 'Warehouse' (takes priority over that same submit's video_call_planned/" +
+      "quotation_planned); (2) public.video_call_apply_downstream_planned() (AFTER INSERT on video_call) when " +
+      "a video_call attempt resolves with enquiry_solved='no' AND service_type = 'Warehouse' — this path is " +
+      "NOT mutually exclusive with Quotation, so such a ticket is pending in both Warehouse.jsx and " +
+      "Quotation.jsx at once. One row per ticket, inserted once at submission (no revision support, same as " +
+      "warranty_check/site_visit/tada). " +
       "delay_minutes is trigger-computed (public.warehouse_set_delay(), migration 0035) as " +
       "round((warranty_check.warehouse_planned - warehouse.created_at)) in minutes — the ORIGINAL " +
       "negative-when-late/positive-when-early convention, matching predecessor Warranty-Check. An AFTER " +
       "INSERT trigger (public.warehouse_apply_quotation_planned()) writes warranty_check.quotation_planned " +
       "once this stage completes — the SAME centralized column the video_call='Yes' path's " +
       "video_call_apply_quotation_planned() writes to, so Quotation.jsx's gating query needs no changes " +
-      "regardless of which branch a ticket took.",
+      "regardless of which branch a ticket took — Warehouse-direct tickets flow into Quotation/Follow-Up the " +
+      "same as every other path (confirmed by user 2026-08-26; a short-lived migration 0041 that tried to give " +
+      "this path a separate direct-to-Order-Received shortcut was reverted by migration 0042).",
     fields: [
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "ticket_uuid", type: "uuid", note: "FK -> tickets(uuid), the real relational key. Unique — one row per ticket." },
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "ticket_id", type: "text", note: "Plain denormalized column (not the FK) — populated at insert, used for display/search." },

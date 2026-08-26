@@ -41,11 +41,13 @@ export default function Invoice() {
   const [historyData, setHistoryData] = useState([]);
   const [fetchLoading, setFetchLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isUploadingAttachment, setIsUploadingAttachment] = useState({
-    service: false,
-    spear: false,
-    nabl: false,
-  });
+  // Files are only HELD here on selection — actual upload happens at submit
+  // time in handleSubmit (all three in parallel), so cancelling the form or
+  // switching tickets never leaves an orphaned upload behind, and nothing
+  // hits Storage until Submit is actually clicked.
+  const [attachmentServiceFile, setAttachmentServiceFile] = useState(null);
+  const [attachmentSpearFile, setAttachmentSpearFile] = useState(null);
+  const [attachmentNABLFile, setAttachmentNABLFile] = useState(null);
 
   const fetchData = async () => {
     setFetchLoading(true);
@@ -204,10 +206,10 @@ export default function Invoice() {
       serviceAmountGst: "",
       spareAmountBasic: "",
       spareAmountGst: "",
-      attachmentServiceUrl: "",
-      attachmentSpearUrl: "",
-      attachmentNABLUrl: "",
     });
+    setAttachmentServiceFile(null);
+    setAttachmentSpearFile(null);
+    setAttachmentNABLFile(null);
     setShowInvoiceModal(true);
   };
 
@@ -228,29 +230,6 @@ export default function Invoice() {
     return data.publicUrl;
   };
 
-  const handleAttachmentChange = async (e, key, field) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    setIsUploadingAttachment((prev) => ({ ...prev, [key]: true }));
-    try {
-      const url = await uploadToStorage(file, key);
-      handleInputChange(field, url);
-      toast({ title: "Success", description: "File uploaded successfully" });
-    } catch (error) {
-      console.error(error);
-      e.target.value = null;
-      handleInputChange(field, "");
-      toast({
-        title: "Error",
-        description: "Failed to upload file",
-        variant: "destructive",
-      });
-    } finally {
-      setIsUploadingAttachment((prev) => ({ ...prev, [key]: false }));
-    }
-  };
-
   function generateSixDigitNumber() {
     let result = "";
     for (let i = 0; i < 6; i++) {
@@ -264,6 +243,14 @@ export default function Invoice() {
     setIsSubmitting(true);
 
     try {
+      // All three uploads happen here, in parallel, only now that Submit was
+      // actually clicked — nothing was uploaded on file selection.
+      const [attachmentServiceUrl, attachmentSpearUrl, attachmentNABLUrl] = await Promise.all([
+        attachmentServiceFile ? uploadToStorage(attachmentServiceFile, "service") : Promise.resolve(null),
+        attachmentSpearFile ? uploadToStorage(attachmentSpearFile, "spear") : Promise.resolve(null),
+        attachmentNABLFile ? uploadToStorage(attachmentNABLFile, "nabl") : Promise.resolve(null),
+      ]);
+
       const submittedAt = new Date();
       const calibrationPlanned = await computeStagePlanned("calibration", {
         invoiceSubmittedAt: submittedAt,
@@ -283,9 +270,9 @@ export default function Invoice() {
         service_amount_gst: formData.serviceAmountGst || null,
         spare_amount_basic: formData.spareAmountBasic || null,
         spare_amount_gst: formData.spareAmountGst || null,
-        attachment_service: formData.attachmentServiceUrl || null,
-        attachment_spear: formData.attachmentSpearUrl || null,
-        attachment_nabl: formData.attachmentNABLUrl || null,
+        attachment_service: attachmentServiceUrl,
+        attachment_spear: attachmentSpearUrl,
+        attachment_nabl: attachmentNABLUrl,
         otp: generateSixDigitNumber(),
         // Readiness stamp for the next stage (Calibration) — see stagePlanning.js.
         calibration_planned: calibrationPlanned,
@@ -1123,43 +1110,37 @@ export default function Invoice() {
             </div>
 
             <div>
-              <Label className="flex items-center gap-2">
-                Attachment (Service)
-                {isUploadingAttachment.service && (
-                  <LoaderIcon className="animate-spin w-4 h-4 text-blue-600" />
-                )}
-              </Label>
+              <Label>Attachment (Service)</Label>
               <Input
                 type="file"
-                onChange={(e) => handleAttachmentChange(e, "service", "attachmentServiceUrl")}
-                disabled={isUploadingAttachment.service}
+                onChange={(e) => setAttachmentServiceFile(e.target.files[0] || null)}
+                disabled={isSubmitting}
               />
+              {attachmentServiceFile && (
+                <p className="text-xs text-emerald-700 mt-1 truncate">Selected: {attachmentServiceFile.name}</p>
+              )}
             </div>
             <div>
-              <Label className="flex items-center gap-2">
-                Attachment (Spear)
-                {isUploadingAttachment.spear && (
-                  <LoaderIcon className="animate-spin w-4 h-4 text-blue-600" />
-                )}
-              </Label>
+              <Label>Attachment (Spear)</Label>
               <Input
                 type="file"
-                onChange={(e) => handleAttachmentChange(e, "spear", "attachmentSpearUrl")}
-                disabled={isUploadingAttachment.spear}
+                onChange={(e) => setAttachmentSpearFile(e.target.files[0] || null)}
+                disabled={isSubmitting}
               />
+              {attachmentSpearFile && (
+                <p className="text-xs text-emerald-700 mt-1 truncate">Selected: {attachmentSpearFile.name}</p>
+              )}
             </div>
             <div>
-              <Label className="flex items-center gap-2">
-                Attachment (NABL)
-                {isUploadingAttachment.nabl && (
-                  <LoaderIcon className="animate-spin w-4 h-4 text-blue-600" />
-                )}
-              </Label>
+              <Label>Attachment (NABL)</Label>
               <Input
                 type="file"
-                onChange={(e) => handleAttachmentChange(e, "nabl", "attachmentNABLUrl")}
-                disabled={isUploadingAttachment.nabl}
+                onChange={(e) => setAttachmentNABLFile(e.target.files[0] || null)}
+                disabled={isSubmitting}
               />
+              {attachmentNABLFile && (
+                <p className="text-xs text-emerald-700 mt-1 truncate">Selected: {attachmentNABLFile.name}</p>
+              )}
             </div>
 
             <div className="md:col-span-2 flex justify-end space-x-4 pt-6 border-t border-gray-200 sticky bottom-0 bg-white py-4">
@@ -1173,19 +1154,14 @@ export default function Invoice() {
               </Button>
               <Button
                 type="submit"
-                disabled={
-                  isSubmitting ||
-                  isUploadingAttachment.service ||
-                  isUploadingAttachment.spear ||
-                  isUploadingAttachment.nabl
-                }
+                disabled={isSubmitting}
                 data-testid="button-submit-invoice"
                 className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-sm"
               >
                 {isSubmitting ? (
                   <span className="flex items-center">
                     <Loader2Icon className="animate-spin mr-2" />
-                    Processing...
+                    Uploading & Submitting...
                   </span>
                 ) : (
                   "Submit"

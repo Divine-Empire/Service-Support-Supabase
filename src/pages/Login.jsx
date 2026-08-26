@@ -43,11 +43,8 @@ const Login = () => {
         "Site Visit (Verification OTP)",
         "Order Received",
         "Invoice",
-        "Account Verification",
         "Calibration",
-        "Accountability & Approvals",
         "Calibration Certificate",
-        "Conformation",
         "Cancel"
       ];
 
@@ -79,16 +76,10 @@ const Login = () => {
         navigate("/orderreceived");
       } else if (pagesss === "Invoice") {
         navigate("/invoice");
-      } else if (pagesss === "Account Verification") {
-        navigate("/account");
       } else if (pagesss === "Calibration") {
         navigate("/calibration");
-      }else if (pagesss === "Accountability & Approvals") {
-        navigate("/accountabilityApprovals");
       }else if (pagesss === "Calibration Certificate") {
         navigate("/calibrationCertificate");
-      }else if (pagesss === "Conformation") {
-        navigate("/conformation");
       }else if (pagesss === "Cancel") {
         navigate("/cancel");
       }

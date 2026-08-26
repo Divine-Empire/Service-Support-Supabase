@@ -45,7 +45,12 @@ export default function OrderReceived() {
   const fetchData = async () => {
     setFetchLoading(true);
     try {
-      // Tickets ready for Order Received (follow_up.order_received_planned set).
+      // Tickets ready for Order Received (follow_up.order_received_planned
+      // set) — this is the ONLY gate. Warehouse tickets (both the direct
+      // Warranty-Check path and the video_call service_type='Warehouse'
+      // path) also flow through Quotation -> Follow-Up like every other
+      // ticket, so they reach here the same way once their Follow-Up log
+      // records stage='Order Received' — no separate warehouse-side gate.
       const { data: followUpRows, error: followUpError } = await supabase
         .from("follow_up")
         .select("ticket_id, order_received_planned")

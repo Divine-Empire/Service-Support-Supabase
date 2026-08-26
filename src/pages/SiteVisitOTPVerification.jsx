@@ -32,9 +32,13 @@ export default function SiteVisitOTPVerification() {
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [formData, setFormData] = useState({});
   const [searchItem, setSearchItem] = useState("");
-  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
-  const [isUploadingServiceReport, setIsUploadingServiceReport] = useState(false);
-  const [isUploadingQuotation, setIsUploadingQuotation] = useState(false);
+  // Files are only HELD here on selection — actual upload happens at submit
+  // time in handleSubmit (all three in parallel), so cancelling the form or
+  // switching tickets never leaves an orphaned upload behind, and nothing
+  // hits Storage until Submit is actually clicked.
+  const [serviceReportFile, setServiceReportFile] = useState(null);
+  const [quotationReceiveFile, setQuotationReceiveFile] = useState(null);
+  const [videoFile, setVideoFile] = useState(null);
   const { toast } = useToast();
 
   const [pendingData, setPendingData] = useState([]);
@@ -151,14 +155,12 @@ export default function SiteVisitOTPVerification() {
       returnDate: formatDate(ticket.returnDate) || "",
       siteVisitDate: "",
       otpVerification: "",
-      serviceReportFileUrl: "",
-      quatationReceiveUrl: "",
-      video: "",
       locallyPurchasedSpares: "",
       remarks: "",
     });
-    setIsUploadingServiceReport(false);
-    setIsUploadingQuotation(false);
+    setServiceReportFile(null);
+    setQuotationReceiveFile(null);
+    setVideoFile(null);
     setShowApprovalModal(true);
   };
 
@@ -179,83 +181,33 @@ export default function SiteVisitOTPVerification() {
     return data.publicUrl;
   };
 
-  const uploadVideoToStorage = async (file) => {
+  // These three just HOLD the picked file — no upload happens here. Actual
+  // upload happens in handleSubmit, all three in parallel, only once Submit
+  // is clicked.
+  const handleServiceReportChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setServiceReportFile(file);
+  };
+
+  const handleQuotationChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setQuotationReceiveFile(file);
+  };
+
+  const handleVideoChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
     const MAX_SIZE = 100 * 1024 * 1024; // 100MB
     if (file.size > MAX_SIZE) {
       alert("Video file size exceeds the 100MB limit.");
+      e.target.value = null;
       return;
     }
 
-    setIsUploadingVideo(true);
-    try {
-      const url = await uploadToStorage(file, "video");
-      handleInputChange("video", url);
-      toast({
-        title: "Success",
-        description: "Video uploaded successfully",
-      });
-    } catch (error) {
-      console.error("Error uploading video:", error);
-      toast({
-        title: "Error",
-        description: "Failed to upload video",
-        variant: "destructive",
-      });
-    } finally {
-      setIsUploadingVideo(false);
-    }
-  };
-
-  const handleServiceReportChange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    setIsUploadingServiceReport(true);
-    try {
-      const url = await uploadToStorage(file, "service_report");
-      handleInputChange("serviceReportFileUrl", url);
-      toast({
-        title: "Success",
-        description: "Service Report uploaded successfully",
-      });
-    } catch (error) {
-      console.error(error);
-      e.target.value = null;
-      handleInputChange("serviceReportFileUrl", "");
-      toast({
-        title: "Error",
-        description: "Failed to upload Service Report",
-        variant: "destructive",
-      });
-    } finally {
-      setIsUploadingServiceReport(false);
-    }
-  };
-
-  const handleQuotationChange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    setIsUploadingQuotation(true);
-    try {
-      const url = await uploadToStorage(file, "quotation_receive");
-      handleInputChange("quatationReceiveUrl", url);
-      toast({
-        title: "Success",
-        description: "Quotation Receive uploaded successfully",
-      });
-    } catch (error) {
-      console.error(error);
-      e.target.value = null;
-      handleInputChange("quatationReceiveUrl", "");
-      toast({
-        title: "Error",
-        description: "Failed to upload Quotation Receive",
-        variant: "destructive",
-      });
-    } finally {
-      setIsUploadingQuotation(false);
-    }
+    setVideoFile(file);
   };
 
   const handleSubmit = async (e) => {
@@ -266,21 +218,36 @@ export default function SiteVisitOTPVerification() {
       return;
     }
 
-    if (
-      formData?.otpVerification?.toString() !==
-      selectedTicket?.siteVisitOtp?.toString()
-    ) {
+    const enteredOtp = (formData.otpVerification || "").toString().trim();
+    const liveOtp = (selectedTicket?.siteVisitOtp || "").toString().trim();
+
+    if (!enteredOtp) {
+      alert("Please Enter the OTP");
+      return;
+    }
+
+    // Nothing to check the entered OTP against — no OTP has ever been sent
+    // for this ticket yet. Without this guard, an empty enteredOtp would
+    // never reach here (caught above), but a never-resent liveOtp being ""
+    // could otherwise match an accidentally-empty comparison; this makes
+    // "no OTP sent yet" its own explicit, unambiguous error instead.
+    if (!liveOtp) {
+      alert("No OTP has been sent for this ticket yet. Please click Resend OTP first.");
+      return;
+    }
+
+    if (enteredOtp !== liveOtp) {
       alert("Wrong OTP, Please Enter Right OTP");
       return;
     }
 
-    if (!formData.serviceReportFileUrl) {
-      alert("Please select and upload a Service Report file first");
+    if (!serviceReportFile) {
+      alert("Please select a Service Report file first");
       return;
     }
 
-    if (!formData.video) {
-      alert("Please select and upload a Video file first");
+    if (!videoFile) {
+      alert("Please select a Video file first");
       return;
     }
 
@@ -292,14 +259,23 @@ export default function SiteVisitOTPVerification() {
     setIsSubmitting(true);
 
     try {
+      // All three uploads happen here, in parallel, only now that every
+      // other validation has already passed — nothing was uploaded on file
+      // selection.
+      const [serviceReportUrl, quotationReceiveUrl, videoUrl] = await Promise.all([
+        uploadToStorage(serviceReportFile, "service_report"),
+        quotationReceiveFile ? uploadToStorage(quotationReceiveFile, "quotation_receive") : Promise.resolve(null),
+        uploadToStorage(videoFile, "video"),
+      ]);
+
       const { error } = await supabase.from("otp_verification").insert({
         ticket_id: selectedTicket.ticketId,
         ticket_uuid: selectedTicket.ticketUuid,
         site_visit_date: formData.siteVisitDate || null,
-        otp_entered: formData.otpVerification || null,
-        service_report_file: formData.serviceReportFileUrl || null,
-        quotation_receive_file: formData.quatationReceiveUrl || null,
-        video_link: formData.video || null,
+        otp_entered: enteredOtp,
+        service_report_file: serviceReportUrl,
+        quotation_receive_file: quotationReceiveUrl,
+        video_link: videoUrl,
         locally_purchased_spares: formData.locallyPurchasedSpares || null,
         remarks: formData.remarks || null,
       });
@@ -1109,6 +1085,7 @@ export default function SiteVisitOTPVerification() {
           <div>
             <Label>OTP Verification *</Label>
             <Input
+              required
               maxLength={6}
               placeholder="Enter 6-digit OTP"
               value={formData.otpVerification || ""}
@@ -1150,79 +1127,56 @@ export default function SiteVisitOTPVerification() {
           </div>
 
           <div>
-            <Label className="flex items-center gap-2">
-              Service Report (upload file) *
-              {isUploadingServiceReport && (
-                <LoaderIcon className="animate-spin w-4 h-4 text-blue-600" />
-              )}
-            </Label>
+            <Label>Service Report (upload file) *</Label>
             <Input
               type="file"
               onChange={handleServiceReportChange}
-              disabled={isUploadingServiceReport}
+              disabled={isSubmitting}
               data-testid="input-serviceReport-file"
             />
-            {isUploadingServiceReport && (
-              <p className="text-xs text-blue-600 mt-1">Uploading file, please wait...</p>
+            {serviceReportFile && (
+              <p className="text-xs text-emerald-700 mt-1 truncate">Selected: {serviceReportFile.name}</p>
             )}
           </div>
 
           <div className="space-y-1">
-            <Label className="flex items-center gap-2 text-gray-600 font-medium">
-              Quatation Receive
-              {isUploadingQuotation && (
-                <LoaderIcon className="animate-spin w-4 h-4 text-blue-600" />
-              )}
-            </Label>
+            <Label className="text-gray-600 font-medium">Quatation Receive</Label>
             <Input
               type="file"
               onChange={handleQuotationChange}
-              disabled={isUploadingQuotation}
+              disabled={isSubmitting}
               data-testid="input-quatation-receive"
             />
-            {isUploadingQuotation && (
-              <p className="text-xs text-blue-600 mt-1">Uploading file, please wait...</p>
+            {quotationReceiveFile && (
+              <p className="text-xs text-emerald-700 mt-1 truncate">Selected: {quotationReceiveFile.name}</p>
             )}
           </div>
 
           <div className="space-y-1">
-            <Label className="flex items-center gap-2 text-gray-600 font-medium font-sans">
+            <Label className="text-gray-600 font-medium font-sans">
               Video (max 100MB) *
-              {isUploadingVideo && (
-                <LoaderIcon className="animate-spin w-4 h-4 text-blue-600" />
-              )}
             </Label>
-            {formData.video && formData.video.startsWith("http") ? (
-              <div className="flex items-center justify-between border border-emerald-200 rounded-md p-2 bg-emerald-50 text-emerald-800 text-sm h-10">
-                <a href={formData.video} target="_blank" rel="noopener noreferrer" className="font-semibold underline truncate max-w-[200px]">
-                  View Video
-                </a>
+            {videoFile ? (
+              <div className="flex items-center justify-between border border-blue-200 rounded-md p-2 bg-blue-50 text-blue-800 text-sm h-10">
+                <span className="font-semibold truncate max-w-[200px]">{videoFile.name}</span>
                 <Button
                   type="button"
                   variant="ghost"
-                  onClick={() => handleInputChange("video", "")}
+                  onClick={() => setVideoFile(null)}
+                  disabled={isSubmitting}
                   className="text-red-500 hover:text-red-700 h-8 px-2 py-1 text-xs font-semibold hover:bg-red-50"
                 >
                   Remove
                 </Button>
               </div>
             ) : (
-              <div className="relative">
-                <Input
-                  type="file"
-                  accept="video/*"
-                  onChange={(e) => {
-                    if (e.target.files?.[0]) {
-                      uploadVideoToStorage(e.target.files[0]);
-                    }
-                  }}
-                  disabled={isUploadingVideo}
-                  className="border-gray-300 rounded-lg"
-                />
-                {isUploadingVideo && (
-                  <p className="text-xs text-blue-600 mt-1">Uploading file, please wait...</p>
-                )}
-              </div>
+              <Input
+                type="file"
+                accept="video/*"
+                onChange={handleVideoChange}
+                disabled={isSubmitting}
+                className="border-gray-300 rounded-lg"
+              />
             )}
           </div>
 
@@ -1258,12 +1212,18 @@ export default function SiteVisitOTPVerification() {
           <div className="md:col-span-2 flex space-x-4 pt-4">
             <Button
               type="submit"
-              disabled={isSubmitting || isUploadingServiceReport || isUploadingQuotation || isUploadingVideo}
+              disabled={isSubmitting}
               data-testid="button-submit-approval"
               className="px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-70 disabled:transform-none"
             >
-              {isSubmitting && <Loader2Icon className="animate-spin" />}
-              Submit
+              {isSubmitting ? (
+                <span className="flex items-center">
+                  <Loader2Icon className="animate-spin mr-2 w-4 h-4" />
+                  Uploading & Submitting...
+                </span>
+              ) : (
+                "Submit"
+              )}
             </Button>
             <Button
               type="button"

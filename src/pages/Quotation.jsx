@@ -103,17 +103,40 @@ export default function Quotation() {
         }
       });
 
-      // No closing signal exists for this stage yet (revising a quotation
-      // never removes a ticket from pending) — pending and history are two
+      // Latest Follow-Up entry per ticket — the one and only closing signal
+      // for this stage's "pending" list: once a ticket's latest follow_up
+      // row is stage = 'Order Received', it's considered fully handed off
+      // and drops out of Quotation's pending (still stays in history if it
+      // was ever quoted).
+      const { data: followUpRows, error: followUpError } = await supabase
+        .from("follow_up")
+        .select("ticket_id, stage, created_at")
+        .in("ticket_id", ticketIds)
+        .order("created_at", { ascending: false });
+
+      if (followUpError) throw followUpError;
+
+      const latestFollowUpByTicket = new Map();
+      (followUpRows || []).forEach((f) => {
+        if (!latestFollowUpByTicket.has(f.ticket_id)) {
+          latestFollowUpByTicket.set(f.ticket_id, f);
+        }
+      });
+
+      // Aside from the Order-Received closing signal above, there's no
+      // other closing signal for this stage (revising a quotation never
+      // removes a ticket from pending) — pending and history are two
       // independent views over the same gated set, not a partition: pending
-      // = every gated ticket, always; history = the subset that's been
-      // quoted at least once, for browsing past quotations.
+      // = every gated ticket whose latest follow_up isn't 'Order Received';
+      // history = the subset that's been quoted at least once, for browsing
+      // past quotations (unaffected by Order Received).
       const pending = [];
       const history = [];
 
       (ticketsData || []).forEach((t) => {
         const latestVideoCall = latestVideoCallByTicket.get(t.ticket_id);
         const q = quotationByTicket.get(t.ticket_id);
+        const latestFollowUp = latestFollowUpByTicket.get(t.ticket_id);
 
         const base = {
           ticketId: t.ticket_id,
@@ -147,7 +170,9 @@ export default function Quotation() {
           delayMinutes: q?.delay_minutes,
         };
 
-        pending.push(base);
+        if (latestFollowUp?.stage !== "Order Received") {
+          pending.push(base);
+        }
         if (q) history.push(base);
       });
 
