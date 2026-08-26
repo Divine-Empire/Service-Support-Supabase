@@ -43,10 +43,6 @@ export default function Quotation() {
   const [selectedItemList, setSelectedItemList] = useState([]);
   const { toast } = useToast();
 
-  // Still used for the "Cancel Ticket" flow only (writes to the separate
-  // "Cancel" sheet) — not part of the ticket pipeline tables, not migrated yet.
-  const sheet_url = import.meta.env.VITE_APPS_SCRIPT_API;
-
   const fetchData = async () => {
     setFetchLoading(true);
     try {
@@ -453,56 +449,35 @@ export default function Quotation() {
 
     setCancelSubmit(true);
 
-    const currentDateTime = formatDateTime(new Date());
-
     try {
-      const rowData = [
-        currentDateTime,
-        selectedTicket.ticketId || "",
-        selectedTicket.clientName || "",
-        selectedTicket.phoneNumber || "",
-        selectedTicket.emailAddress || "",
-        selectedTicket.category || "",
-        selectedTicket.title || "",
-        selectedTicket.description || "",
-        "Quotation",
-        formData.cancelRemarks || "",
-      ];
-
-      const response = await fetch(sheet_url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: new URLSearchParams({
-          sheetName: "Cancel",
-          action: "insert",
-          rowData: JSON.stringify(rowData),
-        }),
+      const { error } = await supabase.from("cancelled_tickets").insert({
+        ticket_id: selectedTicket.ticketId,
+        ticket_uuid: selectedTicket.ticketUuid,
+        cancelled_from_stage: "Quotation",
+        remarks: formData.cancelRemarks || null,
       });
 
-      const result = await response.json();
+      if (error) throw error;
 
-      if (result.success) {
-        setPendingData((prevPending) =>
-          prevPending.filter(
-            (ticket) => ticket.ticketId !== selectedTicket.ticketId
-          )
-        );
-        setShowQuotationModal(false);
-        setIsCancelled(false);
-        toast({
-          title: "Success",
-          description: "Ticket details Cancle successfully",
-        });
-      } else {
-        throw new Error(result.error || "Failed to save ticket");
-      }
+      // Removes it from THIS page's own pending list only — does not
+      // globally exclude the ticket from any other stage's pending query
+      // (see migration 0046's comment).
+      setPendingData((prevPending) =>
+        prevPending.filter(
+          (ticket) => ticket.ticketId !== selectedTicket.ticketId
+        )
+      );
+      setShowQuotationModal(false);
+      setIsCancelled(false);
+      toast({
+        title: "Success",
+        description: "Ticket cancelled successfully",
+      });
     } catch (error) {
-      console.error("Error submitting ticket:", error);
+      console.error("Error cancelling ticket:", error);
       toast({
         title: "Error",
-        description: "Failed to save ticket. Data stored locally.",
+        description: error.message || "Failed to cancel ticket",
         variant: "destructive",
       });
     } finally {

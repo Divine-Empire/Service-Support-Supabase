@@ -40,6 +40,7 @@ export default function OrderReceived() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingSeniorAttachments, setIsUploadingSeniorAttachments] = useState(false);
   const [searchItem, setSearchItem] = useState("");
+  const [enquiryTypeFilter, setEnquiryTypeFilter] = useState("all");
   const { toast } = useToast();
 
   const fetchData = async () => {
@@ -108,6 +109,8 @@ export default function OrderReceived() {
           CREName: t.cre_name || "",
           engineerAssign: t.engineer_assign || "",
           quotationNo: quotationByTicket.get(t.ticket_id) || "",
+          // Drives the "Enquiry Type" filter below (All/NABL/NON-NABL/SERVICE/SPARE).
+          enquiryType: t.enquiry_type || "",
         };
 
         const orderReceived = orderReceivedByTicket.get(t.ticket_id);
@@ -175,26 +178,34 @@ export default function OrderReceived() {
   const filteredPendingDataa = pendingData
     .filter((item) => {
       const q = searchItem.toLowerCase();
-      return (
+      const matchesSearch =
         String(item.ticketId || "").toLowerCase().includes(q) ||
         String(item.clientName || "").toLowerCase().includes(q) ||
         String(item.companyName || "").toLowerCase().includes(q) ||
         String(item.phoneNumber || "").toLowerCase().includes(q) ||
-        String(item.quotationNo || "").toLowerCase().includes(q)
-      );
+        String(item.quotationNo || "").toLowerCase().includes(q);
+
+      const matchesEnquiryType =
+        enquiryTypeFilter === "all" || item.enquiryType === enquiryTypeFilter;
+
+      return matchesSearch && matchesEnquiryType;
     })
     .reverse();
 
   const filteredHistoryDataa = historyData
     .filter((item) => {
       const q = searchItem.toLowerCase();
-      return (
+      const matchesSearch =
         String(item.ticketId || "").toLowerCase().includes(q) ||
         String(item.clientName || "").toLowerCase().includes(q) ||
         String(item.companyName || "").toLowerCase().includes(q) ||
         String(item.phoneNumber || "").toLowerCase().includes(q) ||
-        String(item.quotationNo || "").toLowerCase().includes(q)
-      );
+        String(item.quotationNo || "").toLowerCase().includes(q);
+
+      const matchesEnquiryType =
+        enquiryTypeFilter === "all" || item.enquiryType === enquiryTypeFilter;
+
+      return matchesSearch && matchesEnquiryType;
     })
     .reverse();
 
@@ -387,6 +398,22 @@ export default function OrderReceived() {
                   onChange={(e) => setSearchItem(e.target.value)}
                 />
               </div>
+
+              <Select value={enquiryTypeFilter} onValueChange={setEnquiryTypeFilter}>
+                <SelectTrigger
+                  className="bg-white border-blue-200 shadow-sm w-full sm:w-[160px] h-9 text-sm text-blue-800"
+                  data-testid="select-enquiry-type-filter"
+                >
+                  <SelectValue placeholder="Enquiry Type" />
+                </SelectTrigger>
+                <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="NABL">NABL</SelectItem>
+                  <SelectItem value="NON-NABL">NON-NABL</SelectItem>
+                  <SelectItem value="SERVICE">SERVICE</SelectItem>
+                  <SelectItem value="SPARE">SPARE</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </CardHeader>
           <CardContent>

@@ -1,8 +1,8 @@
-﻿import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
-import { Loader2 } from "lucide-react";
+import { Loader2, PhoneCall, FileText } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -11,56 +11,103 @@ import {
   TableHeader,
   TableRow,
 } from "../components/ui/table";
-import { Badge } from "../components/ui/badge";
-import {
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
-import {
-  CheckCircle2,
-  PhoneCall,
-  FileText,
-  MapPin,
-  Receipt,
-  CreditCard,
-  Loader2Icon,
-} from "lucide-react";
-import { set } from "date-fns";
 import toast from "react-hot-toast";
+import { supabase } from "../lib/supabase/client";
 
-// Define all Service-Support stages
+// The 5 stages this dashboard has always covered (1:1 with the legacy
+// sheet-based version — NOT every migrated stage; see project memory for
+// the "expand coverage later" note). Each stage's own page implements the
+// authoritative pending/history logic; this dashboard mirrors it rather
+// than reinventing it, so keep these two in sync if a stage's rule changes.
 const serviceStages = [
-  { id: 2, name: "Video Call Solution", color: "bg-purple-500", start: 31, actual: 32, delay: 33, responsible: "PIYUSH TIWARI / Assigned Engineer", route: "/videocall" },
-  { id: 4, name: "Quotation", color: "bg-cyan-500", start: 37, actual: 38, delay: 39, responsible: "PIYUSH TIWARI", route: "/quotation" },
-  { id: 5, name: "Follow-Up", color: "bg-teal-500", start: 47, actual: 48, delay: -1, responsible: "PIYUSH TIWARI", route: "/followup" },
-  { id: 6, name: "Site Visit Plan", color: "bg-emerald-500", start: 61, actual: 62, delay: 63, responsible: "PIYUSH TIWARI", route: "/siteplan" },
-  { id: 7, name: "Invoice", color: "bg-amber-500", start: 111, actual: 112, delay: 113, responsible: "Accountant", route: "/invoice" }
+  { id: 2, name: "Video Call Solution", color: "bg-purple-500", route: "/videocall" },
+  { id: 4, name: "Quotation", color: "bg-cyan-500", route: "/quotation" },
+  { id: 5, name: "Follow-Up", color: "bg-teal-500", route: "/followup" },
+  { id: 6, name: "Site Visit Plan", color: "bg-emerald-500", route: "/siteplan" },
+  { id: 7, name: "Invoice", color: "bg-amber-500", route: "/invoice" },
 ];
 
+// Fallback "who owns this stage" map for the PDF report, used only when
+// tat_config.responsible_person (migration 0047, admin-editable via Master
+// > TAT Config) hasn't been filled in yet for that stage. The legacy
+// version fuzzy-matched literal Google Sheet header-row text, which has no
+// Supabase equivalent at all.
+const STAGE_RESPONSIBLE = {
+  "Video Call Solution": "PIYUSH TIWARI / Assigned Engineer",
+  "Quotation": "PIYUSH TIWARI",
+  "Follow-Up": "PIYUSH TIWARI",
+  "Site Visit Plan": "PIYUSH TIWARI",
+  "Invoice": "Accountant",
+};
+
+// Dashboard's own stage display names don't always match tat_config's
+// stage_name values 1:1 (e.g. "Video Call Solution" here vs "Video-Call" in
+// tat_config) — this crosswalks the two. Site Visit Plan has no TAT-driven
+// planned column at all (see stagePlanning.js), so it has no tat_config
+// entry and always falls back to STAGE_RESPONSIBLE.
+const TAT_CONFIG_STAGE_NAME = {
+  "Video Call Solution": "Video-Call",
+  "Quotation": "Quotation",
+  "Follow-Up": "Follow-Up",
+  "Site Visit Plan": null,
+  "Invoice": "Invoice",
+};
+
+// tickets.category holds compound, admin-editable strings (e.g. "NABL &
+// SPARE", "NABL,NON-NABL,SERVICE,SPARE") — this buckets them into the 5
+// categories the Weekly Report is organized by. Keyword-based rather than
+// an exhaustive lookup table (the legacy version hardcoded ~15 known
+// compound strings) so it keeps working as new category values get added
+// via Master > Dropdown. Priority mirrors the legacy table's actual
+// behavior: an exact "SPARE"/"SERVICE" match wins outright, but anything
+// with "NABL" in it (even mixed with spare/service) falls into NABL/NON
+// NABL rather than SPARE/SERVICE.
+function normalizeCategory(catRaw) {
+  if (!catRaw) return "OTHER";
+  const c = String(catRaw).trim().toUpperCase().replace(/\s+/g, " ");
+  if (c === "SPARE") return "SPARE";
+  if (c === "SERVICE") return "SERVICE";
+  if (c.includes("NON-NABL") || c.includes("NON NABL") || c.includes("NONNABL")) return "NON NABL";
+  if (c.includes("NABL")) return "NABL";
+  return "OTHER";
+}
+
+function getRoleAndUser() {
+  const userName = localStorage.getItem("currentUsername");
+  const roleStorage = localStorage.getItem("o2d-auth-storage");
+  const parsedData = roleStorage ? JSON.parse(roleStorage) : null;
+  const role = parsedData?.state?.user?.role;
+  return { userName, role };
+}
+
+function filterByRole(rows, role, userName) {
+  if (role === "user") return rows.filter((r) => r.cre_name === userName);
+  if (role === "engineer") return rows.filter((r) => r.engineer_assign === userName);
+  return rows;
+}
+
+const CATS = ["SPARE", "SERVICE", "NABL", "NON NABL", "OTHER"];
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const [allTickets, setAllTickets] = React.useState([]);
-  const [fetchLoading, setFetchLoading] = React.useState(false);
-  const [priorityData, setPriorityData] = React.useState([]);
-  const [quataionData, setQuataionData] = React.useState([]);
-  const [invoiceData, setInvoiceData] = React.useState([]);
-  const [siteVisitData, setSiteVisitData] = React.useState([]);
-  const [engineerData, setEngineerData] = React.useState([]);
-  const [paymentData, setPaymentData] = useState([]);
-  const [warrantyCheckData, setWarrantyCheckData] = useState([]);
+
+  const [fetchLoading, setFetchLoading] = useState(false);
+  const [allTicketsCount, setAllTicketsCount] = useState(0);
+  const [quotationPendingCount, setQuotationPendingCount] = useState(0);
+  const [siteVisitPendingCount, setSiteVisitPendingCount] = useState(0);
+  const [invoicePendingCount, setInvoicePendingCount] = useState(0);
+  const [otpPendingCount, setOtpPendingCount] = useState(0);
   const [stageCounts, setStageCounts] = useState({});
   const [stageOverdueCounts, setStageOverdueCounts] = useState({});
   const [followUpCategoryBreakdown, setFollowUpCategoryBreakdown] = useState({});
+  // Detail rows for the PDF report's per-stage pages — only Follow-Up and
+  // Site Visit Plan ever get a "Detailed Report" page (see report-pdf.jsx).
+  // Collected here (once, in fetchData) so Generate Report doesn't need its
+  // own independent re-fetch — the legacy version fetched+re-parsed the
+  // whole sheet a third time just for this button.
+  const [followUpDetailRows, setFollowUpDetailRows] = useState([]);
+  const [siteVisitDetailRows, setSiteVisitDetailRows] = useState([]);
+  const [responsiblePersonByStage, setResponsiblePersonByStage] = useState({});
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
   // Weekly Report state
@@ -69,387 +116,194 @@ export default function Dashboard() {
   const [weeklyStartDate, setWeeklyStartDate] = useState("");
   const [weeklyEndDate, setWeeklyEndDate] = useState("");
 
-  const COLORS = ["#10B981", "#F59E0B", "#EF4444", "#3B82F6"];
-
-  const sheet_url =
-    import.meta.env.VITE_APPS_SCRIPT_API;
-  const Sheet_Id = import.meta.env.VITE_GOOGLE_SHEET_ID;
+  const formatDate = (raw) => {
+    if (!raw) return "-";
+    const d = new Date(raw);
+    if (isNaN(d.getTime())) return String(raw);
+    return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+  };
 
   const fetchData = async () => {
-    setFetchLoading(true); // start loading
+    setFetchLoading(true);
     try {
-      const response = await fetch(`${sheet_url}?sheet=Ticket_Enquiry`);
-      const json = await response.json();
+      const { userName, role } = getRoleAndUser();
 
-      if (json.success && Array.isArray(json.data)) {
-        // Process the data to match your requirements
-        const allData = json.data.slice(6).map((row, index) => ({
-          id: index + 1,
-          timeStemp: row[0],
-          ticketId: row[1], // Column A (assuming this is Ticket id)
-          clientName: row[2], // Column C
-          phoneNumber: row[3], // Column D
-          emailAddress: row[4], // Column E
-          category: row[5], // Column F
-          priority: row[6], // Column G
-          title: row[7], // Column H
-          description: row[8], // Column I
-          planned1: row[9], // Column J
-          actual1: row[10], // Column K
+      const { data: ticketsRaw, error: ticketsError } = await supabase
+        .from("tickets")
+        .select("ticket_id, cre_name, engineer_assign, category, company_name, site_address, warranty_check_planned, created_at");
+      if (ticketsError) throw ticketsError;
 
-          delay1: row[11], // Delay1
-          callType: row[12], // Call type
-          requirementServiceCategory: row[13], // Enquiry Type (first one)
-          videoCall: row[14], // Enquiry Type (first one)
+      const tickets = filterByRole(ticketsRaw || [], role, userName);
+      setAllTicketsCount(tickets.length);
 
-          sourceOfEnquiry: row[15], // Source of enquiry
-          enquiryReceiverName: row[16], // Enquiry Receiver Name
-          warrantyCheck: row[17], // Warranty Check
-          billNumberInput: row[18], // Bill Number Input
+      const [
+        { data: warrantyRows, error: e1 },
+        { data: videoCallRows, error: e2 },
+        { data: quotationRows, error: e3 },
+        { data: followUpRows, error: e4 },
+        { data: siteVisitRows, error: e5 },
+        { data: orderReceivedRows, error: e6 },
+        { data: invoiceRows, error: e7 },
+        { data: tadaRows, error: e8 },
+        { data: otpRows, error: e9 },
+        { data: tatConfigRows, error: e10 },
+      ] = await Promise.all([
+        supabase.from("warranty_check").select("ticket_id, video_call_planned, quotation_planned"),
+        supabase.from("video_call").select("ticket_id, enquiry_solved, created_at").order("created_at", { ascending: true }),
+        supabase.from("quotation").select("ticket_id, follow_up_planned, basic_amount"),
+        supabase.from("follow_up").select("ticket_id, stage, site_visit_planned, what_did_customer_say, next_date_of_call, created_at").order("created_at", { ascending: true }),
+        supabase.from("site_visit").select("ticket_id"),
+        supabase.from("order_received").select("ticket_id, invoice_planned"),
+        supabase.from("invoice").select("ticket_id"),
+        supabase.from("tada").select("ticket_id, otp_verification_planned"),
+        supabase.from("otp_verification").select("ticket_id"),
+        supabase.from("tat_config").select("stage_name, responsible_person"),
+      ]);
+      for (const err of [e1, e2, e3, e4, e5, e6, e7, e8, e9, e10]) if (err) throw err;
 
-          billAttachmentFile: row[19], // Bill Number Input
+      // Admin-editable per-stage owner (Master > TAT Config) — falls back to
+      // STAGE_RESPONSIBLE when a stage has no tat_config row, or the row
+      // exists but responsible_person was never filled in.
+      const responsiblePersonByTatStageName = new Map(
+        (tatConfigRows || []).map((r) => [r.stage_name, r.responsible_person])
+      );
+      const responsibleMap = {};
+      serviceStages.forEach((s) => {
+        const tatStageName = TAT_CONFIG_STAGE_NAME[s.name];
+        responsibleMap[s.name] =
+          (tatStageName && responsiblePersonByTatStageName.get(tatStageName)) || STAGE_RESPONSIBLE[s.name] || "-";
+      });
+      setResponsiblePersonByStage(responsibleMap);
 
-          machineName: row[20], // Machine Name
-          enquiryType: row[21], // Enquiry Type (second one)
-          siteName: row[22], // Site Name
-          companyName: row[23], // Company Name
-          siteAddress: row[24], // Site Address
-          gstAddress: row[25], // Billing Address
-          state: row[26], // State
-          pinCode: row[27], // PIN Code
-          engineerAssign: row[28], // Engineer Name
-          serviceLocation: row[29], // Service Location
-          uploadChallan: row[30],
+      const warrantyByTicket = new Map((warrantyRows || []).map((w) => [w.ticket_id, w]));
 
-          planned2: row[31],
-          actual2: row[32],
-          delay2: row[33],
-          videoCallServicesSolve: row[34],
-          afterVideoCallGenerateOTP: row[35],
-          otpVarificationStatus: row[36],
+      // video_call allows multiple attempts per ticket — rows fetched
+      // oldest-first, so the last write into the map for a given ticket_id
+      // is the latest attempt (same "latest row per ticket" pattern used on
+      // VideoCallSolution.jsx itself).
+      const latestVideoCallByTicket = new Map();
+      (videoCallRows || []).forEach((v) => latestVideoCallByTicket.set(v.ticket_id, v));
 
-          planned3: row[37],
-          actual3: row[38],
-          delay3: row[39],
-          quotationNo: row[40],
-          basicAmount: row[41],
-          totalAmoutWithTex: row[42],
-          quotationPdfLink: row[43],
-          quotationShareByPersonName: row[44],
-          ShareThrough: row[45],
-          quotationremarks: row[46],
+      const quotationByTicket = new Map((quotationRows || []).map((q) => [q.ticket_id, q]));
+      const siteVisitTicketIds = new Set((siteVisitRows || []).map((s) => s.ticket_id));
+      const invoiceTicketIds = new Set((invoiceRows || []).map((i) => i.ticket_id));
+      const orderReceivedByTicket = new Map((orderReceivedRows || []).map((o) => [o.ticket_id, o]));
+      const tadaByTicket = new Map((tadaRows || []).map((t) => [t.ticket_id, t]));
+      const otpTicketIds = new Set((otpRows || []).map((o) => o.ticket_id));
 
-          planned4: row[47],
-          actual4: row[48],
-          stage: row[50],
-          paymentTerm: row[51],
-          acceptanceVia: row[52],
-          acceptanceAttachemntFile: row[53],
-          paymentMode: row[54],
-          seniorApproval: row[55],
-          approvalAttachmentFile: row[56],
-          whatDidTheCustomerSay: row[57],
-          nextAction: row[58],
-          nextDateOfCall: row[59],
-          followUpRemarks: row[60],
+      // follow_up is append-only (multiple log rows per ticket) — need both
+      // the LATEST row (for site_visit_planned) and whether ANY row ever
+      // said 'Order Received' (the exclusion rule Quotation.jsx/FollowUp.jsx
+      // already use to decide when a ticket stops being "pending").
+      const latestFollowUpByTicket = new Map();
+      const hasOrderReceivedByTicket = new Set();
+      (followUpRows || []).forEach((f) => {
+        latestFollowUpByTicket.set(f.ticket_id, f);
+        if (f.stage === "Order Received") hasOrderReceivedByTicket.add(f.ticket_id);
+      });
 
-          planned5: row[61],
-          actual5: row[62],
-          delay5: row[63],
-          dateOfVisit: row[64],
-          transportation: row[65],
+      const now = new Date();
 
-          planned6: row[66],
-          actual6: row[67],
-          spareDetails: row[69],
-          dnCopyFileUpload: row[70],
-          dnNumber: row[71],
-          serviceAssets: row[72],
-          equipmentName: row[73],
-          attachment: row[74],
-          machineReceiverName: row[75],
-          machineReceiverNumber: row[76],
-          challanAttachment: row[77],
-          invoiceStatus: row[78],
+      const counts = { "Video Call Solution": 0, "Quotation": 0, "Follow-Up": 0, "Site Visit Plan": 0, "Invoice": 0 };
+      const overdueCounts = { "Video Call Solution": 0, "Quotation": 0, "Follow-Up": 0, "Site Visit Plan": 0, "Invoice": 0 };
+      const followUpCategories = {};
+      const fuDetailRows = [];
+      const svDetailRows = [];
+      let otpPending = 0;
 
-          planned7: row[79],
-          actual7: row[80],
-          delay7: row[81],
-          travelDate: row[82],
-          returnDate: row[83],
-          destinationInput: row[84],
-          purposeOfTravel: row[85],
-          amount: row[86],
+      tickets.forEach((t) => {
+        const wc = warrantyByTicket.get(t.ticket_id);
 
-          planned8: row[87],
-          actual8: row[88],
-          delay8: row[89],
-          nameSiniorBy: row[90],
-
-          planned9: row[91],
-          actual9: row[92],
-          delay9: row[93],
-          sitevisitName: row[94],
-          lastBalance: row[95],
-          payRightNow: row[96],
-          billFile: row[97],
-          siteVisitByAccountRemarks: row[98],
-
-          planned10: row[99],
-          actual10: row[100],
-          delay10: row[101],
-          sitevisitDate: row[102],
-          otpVerification: row[103],
-          verificationStatus: row[104],
-
-          planned11: row[105],
-          actual11: row[106],
-          delay11: row[107],
-          serviceReportFile: row[108],
-          engineerRemarks: row[109],
-          quatationReceive: row[110],
-
-          planned12: row[111],
-          actual12: row[112],
-          delay12: row[113],
-
-          CREName: row[127],
-        }));
-
-        const userName = localStorage.getItem("currentUsername");
-
-        const roleStorage = localStorage.getItem("o2d-auth-storage");
-        const parsedData = JSON.parse(roleStorage);
-        const role = parsedData.state.user.role;
-
-        const allDataTotal =
-          role === "user"
-            ? allData.filter((item) => item["CREName"] === userName)
-            : role === "engineer"
-              ? allData.filter((item) => item["engineerAssign"] === userName)
-              : allData;
-
-        setAllTickets(allDataTotal);
-
-        // Calculate Pending Items by Stage
-        const counts = {};
-        const overdueCounts = {};
-        const followUpCategories = {}; // { categoryName: { pending: 0, overdue: 0 } }
-        serviceStages.forEach((stage) => {
-          counts[stage.name] = 0;
-          overdueCounts[stage.name] = 0;
-        });
-
-        const cellHasValue = (val) => {
-          if (val === null || val === undefined) return false;
-          if (typeof val === 'string') return val.trim() !== "" && val.trim() !== "-";
-          return val !== "";
-        };
-
-        const parseDate = (dateStr) => {
-          if (!dateStr) return null;
-          if (dateStr instanceof Date) return dateStr;
-          const s = String(dateStr).trim();
-          const parts = s.split('/');
-          if (parts.length === 3) {
-            const day = parseInt(parts[0], 10);
-            const month = parseInt(parts[1], 10) - 1;
-            const year = parseInt(parts[2], 10);
-            return new Date(year, month, day);
+        // Video Call Solution — gated by warranty_check.video_call_planned.
+        // Pending = no attempt yet, or the latest attempt was rescheduled
+        // (same definition VideoCallSolution.jsx's own fetchData uses).
+        if (wc?.video_call_planned) {
+          const latestVc = latestVideoCallByTicket.get(t.ticket_id);
+          if (!latestVc || latestVc.enquiry_solved === "rescheduled") {
+            counts["Video Call Solution"]++;
+            if (new Date(wc.video_call_planned) < now) overdueCounts["Video Call Solution"]++;
           }
-          const parts2 = s.split('-');
-          if (parts2.length === 3) {
-            if (parts2[0].length === 4) {
-              return new Date(parseInt(parts2[0], 10), parseInt(parts2[1], 10) - 1, parseInt(parts2[2], 10));
-            } else {
-              return new Date(parseInt(parts2[2], 10), parseInt(parts2[1], 10) - 1, parseInt(parts2[0], 10));
-            }
-          }
-          const parsed = Date.parse(s);
-          return isNaN(parsed) ? null : new Date(parsed);
-        };
-
-        let filteredRows = json.data.slice(6);
-        if (role === "user") {
-          filteredRows = filteredRows.filter((row) => row[127] === userName);
-        } else if (role === "engineer") {
-          filteredRows = filteredRows.filter((row) => row[28] === userName);
         }
 
-        filteredRows.forEach((row) => {
-          if (!row || !row[1]) return; // Row must have a ticket ID
+        // Quotation — gated by warranty_check.quotation_planned. Stays
+        // pending (even after a quotation is drafted) until the ticket's
+        // follow-up log shows 'Order Received' — matches Quotation.jsx's
+        // own pending-exclusion rule exactly.
+        const stillOpen = !hasOrderReceivedByTicket.has(t.ticket_id);
+        if (wc?.quotation_planned && stillOpen) {
+          counts["Quotation"]++;
+          if (new Date(wc.quotation_planned) < now) overdueCounts["Quotation"]++;
+        }
 
-          serviceStages.forEach((stage) => {
-            const plannedVal = row[stage.start];
-            const actualVal = row[stage.actual];
+        // Follow-Up — gated by quotation.follow_up_planned, same exit
+        // condition as Quotation above (a ticket can be pending at both
+        // simultaneously — that's by design, not a bug).
+        const q = quotationByTicket.get(t.ticket_id);
+        if (q?.follow_up_planned && stillOpen) {
+          counts["Follow-Up"]++;
+          const isOverdue = new Date(q.follow_up_planned) < now;
+          if (isOverdue) overdueCounts["Follow-Up"]++;
 
-            if (cellHasValue(plannedVal) && !cellHasValue(actualVal)) {
-              counts[stage.name]++;
-              
-              let isOverdue = false;
-              if (stage.delay !== -1) {
-                const delayVal = row[stage.delay];
-                if (cellHasValue(delayVal)) {
-                  isOverdue = true;
-                  overdueCounts[stage.name]++;
-                }
-              } else {
-                // Fallback for Follow-Up which doesn't have a delay column
-                const pDate = parseDate(plannedVal);
-                if (pDate) {
-                  const today = new Date();
-                  today.setHours(0, 0, 0, 0);
-                  pDate.setHours(0, 0, 0, 0);
-                  if (pDate < today) {
-                    isOverdue = true;
-                    overdueCounts[stage.name]++;
-                  }
-                }
-              }
+          const cat = t.category || "Uncategorized";
+          if (!followUpCategories[cat]) followUpCategories[cat] = { pending: 0, overdue: 0 };
+          followUpCategories[cat].pending++;
+          if (isOverdue) followUpCategories[cat].overdue++;
 
-              if (stage.name === "Follow-Up") {
-                const category = row[23] || "Uncategorized";
-                if (!followUpCategories[category]) {
-                  followUpCategories[category] = { pending: 0, overdue: 0 };
-                }
-                followUpCategories[category].pending++;
-                if (isOverdue) {
-                  followUpCategories[category].overdue++;
-                }
-              }
-            }
+          const latestFu = latestFollowUpByTicket.get(t.ticket_id);
+          fuDetailRows.push({
+            stage: "Follow-Up",
+            date: formatDate(q.follow_up_planned || t.created_at),
+            companyName: t.company_name || "-",
+            category: t.category || "-",
+            siteAddress: t.site_address || "-",
+            followUpStage: latestFu?.stage || "-",
+            basicAmount: q.basic_amount ?? "-",
+            whatDidCustomerSay: latestFu?.what_did_customer_say || "-",
+            dateOfLastFollowUp: formatDate(latestFu?.next_date_of_call),
           });
-        });
+        }
 
-        setStageCounts(counts);
-        setStageOverdueCounts(overdueCounts);
-        setFollowUpCategoryBreakdown(followUpCategories);
+        // Site Visit Plan — gated by follow_up.site_visit_planned (latest
+        // row). Pending = no site_visit row yet.
+        const latestFu = latestFollowUpByTicket.get(t.ticket_id);
+        if (latestFu?.site_visit_planned && !siteVisitTicketIds.has(t.ticket_id)) {
+          counts["Site Visit Plan"]++;
+          if (new Date(latestFu.site_visit_planned) < now) overdueCounts["Site Visit Plan"]++;
+          svDetailRows.push({
+            stage: "Site Visit Plan",
+            date: formatDate(latestFu.site_visit_planned || t.created_at),
+            companyName: t.company_name || "-",
+            siteAddress: t.site_address || "-",
+            category: t.category || "-",
+          });
+        }
 
-        // console.log("allData", allData);
+        // Invoice — gated by order_received.invoice_planned. Pending = no
+        // invoice row yet.
+        const or = orderReceivedByTicket.get(t.ticket_id);
+        if (or?.invoice_planned && !invoiceTicketIds.has(t.ticket_id)) {
+          counts["Invoice"]++;
+          if (new Date(or.invoice_planned) < now) overdueCounts["Invoice"]++;
+        }
 
-        const priority = allData.map((item) => item.priority);
+        // "Engineer" KPI — actually the OTP Verification stage (gated by
+        // tada.otp_verification_planned), mislabeled in the legacy UI. Kept
+        // the same label for 1:1 continuity.
+        const td = tadaByTicket.get(t.ticket_id);
+        if (td?.otp_verification_planned && !otpTicketIds.has(t.ticket_id)) {
+          otpPending++;
+        }
+      });
 
-        const priorityCounts = priority.reduce((acc, priority) => {
-          // Capitalize first letter for display
-          const formattedName =
-            priority.charAt(0).toUpperCase() + priority.slice(1);
-
-          if (!acc[formattedName]) {
-            acc[formattedName] = 0;
-          }
-          acc[formattedName]++;
-          return acc;
-        }, {});
-
-        // Convert to array of objects
-        const prioritySources = Object.entries(priorityCounts).map(
-          ([name, value]) => ({
-            name,
-            value,
-          })
-        );
-
-        setPriorityData(prioritySources);
-
-        const quatationPending = allData.filter(
-          (item) => item.planned3 !== "" && item.actual3 === ""
-        );
-
-        setQuataionData(quatationPending);
-
-        const invoicePending = allData.filter(
-          (item) => item.planned12 !== "" && item.actual12 === ""
-        );
-        setInvoiceData(invoicePending);
-
-        const siteVisitPending = allData.filter(
-          (item) => item.planned5 !== "" && item.actual5 === ""
-        );
-        setSiteVisitData(siteVisitPending);
-
-        const engineer = allData.filter(
-          (item) => item.planned11 !== "" && item.actual11 === ""
-        );
-        setEngineerData(engineer);
-
-        const paymentData = allData.reduce((acc, item) => {
-          if (item.timeStemp && item.payRightNow) {
-            // Extract month from timeStemp (assuming format "DD/MM/YYYY HH:MM:SS")
-            const dateParts = item.timeStemp.split(" ")[0].split("/");
-            if (dateParts.length === 3) {
-              const monthNum = parseInt(dateParts[1], 10);
-              const year = dateParts[2];
-
-              // Convert month number to short month name
-              const monthNames = [
-                "Jan",
-                "Feb",
-                "Mar",
-                "Apr",
-                "May",
-                "Jun",
-                "Jul",
-                "Aug",
-                "Sep",
-                "Oct",
-                "Nov",
-                "Dec",
-              ];
-              const month = monthNames[monthNum - 1];
-
-              const monthYearKey = `${month} ${year}`;
-
-              // Initialize if this month doesn't exist yet
-              if (!acc[monthYearKey]) {
-                acc[monthYearKey] = 0;
-              }
-
-              // Add the payment amount (convert to number if it's a string)
-              const paymentAmount =
-                typeof item.payRightNow === "string"
-                  ? parseFloat(item.payRightNow) || 0
-                  : Number(item.payRightNow) || 0;
-
-              acc[monthYearKey] += paymentAmount;
-            }
-          }
-          return acc;
-        }, {});
-
-        // Convert to array format
-        const paymentSources = Object.entries(paymentData).map(
-          ([month, revenue]) => ({
-            month,
-            revenue,
-          })
-        );
-
-        // console.log("paymentSources", paymentSources);
-        setPaymentData(paymentSources); // You'll need to create this state variable
-
-        // Process warranty check data
-        const warrantyCheckCounts = allData.reduce((acc, item) => {
-          if (item.warrantyCheck) {
-            // Convert to proper case for consistent comparison
-            const status = String(item.warrantyCheck || "").trim().toLowerCase();
-            if (status === "yes") {
-              acc.yes = (acc.yes || 0) + 1;
-            } else if (status === "no") {
-              acc.no = (acc.no || 0) + 1;
-            }
-          }
-          return acc;
-        }, {});
-
-        // Create the warranty check data array
-        const warrantyCheckData = [
-          { name: "Yes", value: warrantyCheckCounts.yes || 0 },
-          { name: "No", value: warrantyCheckCounts.no || 0 },
-        ];
-
-        // console.log("Warranty Check Data:", warrantyCheckData);
-        setWarrantyCheckData(warrantyCheckData); // You'll need to create this state variable
-      }
+      setQuotationPendingCount(counts["Quotation"]);
+      setSiteVisitPendingCount(counts["Site Visit Plan"]);
+      setInvoicePendingCount(counts["Invoice"]);
+      setOtpPendingCount(otpPending);
+      setStageCounts(counts);
+      setStageOverdueCounts(overdueCounts);
+      setFollowUpCategoryBreakdown(followUpCategories);
+      setFollowUpDetailRows(fuDetailRows);
+      setSiteVisitDetailRows(svDetailRows);
     } catch (error) {
       console.error("Error fetching data:", error);
       toast.error("Failed to load data");
@@ -470,178 +324,118 @@ export default function Dashboard() {
       now.setHours(23, 59, 59, 999);
 
       const rawStart = startOverride !== undefined ? startOverride : weeklyStartDate;
-      const rawEnd   = endOverride  !== undefined ? endOverride  : weeklyEndDate;
+      const rawEnd = endOverride !== undefined ? endOverride : weeklyEndDate;
 
-      let effectiveEnd = rawEnd
-        ? (() => { const d = new Date(rawEnd); d.setHours(23,59,59,999); return d; })()
+      const effectiveEnd = rawEnd
+        ? (() => { const d = new Date(rawEnd); d.setHours(23, 59, 59, 999); return d; })()
         : new Date(now);
-      let effectiveStart = rawStart
-        ? (() => { const d = new Date(rawStart); d.setHours(0,0,0,0); return d; })()
-        : (() => { const d = new Date(now); d.setDate(d.getDate() - 6); d.setHours(0,0,0,0); return d; })();
+      const effectiveStart = rawStart
+        ? (() => { const d = new Date(rawStart); d.setHours(0, 0, 0, 0); return d; })()
+        : (() => { const d = new Date(now); d.setDate(d.getDate() - 6); d.setHours(0, 0, 0, 0); return d; })();
 
       const sixtyDaysAgo = new Date(now);
       sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
       sixtyDaysAgo.setHours(0, 0, 0, 0);
 
-      const _parseDate = (dateStr) => {
-        if (!dateStr) return null;
-        if (dateStr instanceof Date) return dateStr;
-        const s = String(dateStr).trim();
-        // If the string has a time component (ISO datetime), parse it directly so
-        // UTC offsets are preserved correctly. e.g. "2026-06-21T18:30:00.000Z" is
-        // June 22 00:00 IST — the split('-') path would lose this offset entirely.
-        if (s.includes('T') || s.endsWith('Z')) {
-          const parsed = Date.parse(s);
-          return isNaN(parsed) ? null : new Date(parsed);
-        }
-        const p = s.split('/');
-        if (p.length === 3) return new Date(parseInt(p[2],10), parseInt(p[1],10)-1, parseInt(p[0],10));
-        const p2 = s.split('-');
-        if (p2.length === 3) {
-          if (p2[0].length === 4) return new Date(parseInt(p2[0],10), parseInt(p2[1],10)-1, parseInt(p2[2],10));
-          return new Date(parseInt(p2[2],10), parseInt(p2[1],10)-1, parseInt(p2[0],10));
-        }
-        const parsed = Date.parse(s);
-        return isNaN(parsed) ? null : new Date(parsed);
-      };
+      const { userName, role } = getRoleAndUser();
 
-      const _hasVal = (v) => {
-        if (v === null || v === undefined) return false;
-        if (typeof v === 'string') return v.trim() !== '' && v.trim() !== '-';
-        return v !== '';
-      };
+      const [
+        { data: ticketsRaw, error: e1 },
+        { data: warrantyRows, error: e2 },
+        { data: videoCallRows, error: e3 },
+        { data: quotationRows, error: e4 },
+        { data: invoiceRows, error: e5 },
+      ] = await Promise.all([
+        supabase.from("tickets").select("ticket_id, cre_name, engineer_assign, call_type, category, created_at, warranty_check_planned"),
+        supabase.from("warranty_check").select("ticket_id, video_call_planned, quotation_planned"),
+        supabase.from("video_call").select("ticket_id"),
+        supabase.from("quotation").select("ticket_id, basic_amount"),
+        supabase.from("invoice").select("ticket_id, created_at, spare_amount_basic, service_amount_basic, invoice_amount_nabl_basic"),
+      ]);
+      for (const err of [e1, e2, e3, e4, e5]) if (err) throw err;
 
-      const _parseNum = (v) => {
-        if (v === null || v === undefined || v === '') return 0;
-        const n = parseFloat(String(v).replace(/,/g,''));
-        return isNaN(n) ? 0 : n;
-      };
+      const tickets = filterByRole(ticketsRaw || [], role, userName);
+      const allowedTicketIds = new Set(tickets.map((t) => t.ticket_id));
+      const ticketByTicketId = new Map(tickets.map((t) => [t.ticket_id, t]));
 
-      const CATS = ['SPARE', 'SERVICE', 'NABL', 'NON NABL', 'OTHER'];
-      const _normCat = (cat) => {
-        if (!cat) return 'OTHER';
-        const normalize = (str) => {
-          return String(str)
-            .trim()
-            .toUpperCase()
-            .replace(/\s+/g, ' ')
-            .replace(/\s*,\s*/g, ',');
-        };
-        const c = normalize(cat);
-        if (c === 'SPARE')   return 'SPARE';
-        if (c === 'SERVICE') return 'SERVICE';
-
-        const nablList = [
-          'NABL CALIBRATION',
-          'NABL & NON-NABL',
-          'NABL,NON-NABL,SPARE',
-          'NABL & SPARE',
-          'NABL CERTIFICATE',
-          'NABL,NON-NABL,SERVICE ,SPARE',
-          'NABL,NON-NABL,SERVICE',
-          'NABL & SERVICE',
-          'NABL,SERVICE ,SPARE'
-        ].map(normalize);
-
-        const nonNablList = [
-          'NON-NABL CALIBRATION',
-          'NON-NABL CERTIFICATE',
-          'NON-NABL & SERVICE',
-          'NON-NABL & SPARE',
-          'NON NABL & SAPRE'
-        ].map(normalize);
-
-        if (c === 'NABL' || nablList.includes(c)) return 'NABL';
-        if (c === 'NON NABL' || c === 'NON-NABL' || c === 'NONNABL' || nonNablList.includes(c)) return 'NON NABL';
-        return 'OTHER';
-      };
+      const warrantyByTicket = new Map((warrantyRows || []).map((w) => [w.ticket_id, w]));
+      const warrantyCheckTicketIds = new Set((warrantyRows || []).map((w) => w.ticket_id));
+      const videoCallTicketIds = new Set((videoCallRows || []).map((v) => v.ticket_id));
+      const quotationByTicket = new Map((quotationRows || []).map((q) => [q.ticket_id, q]));
+      const quotationTicketIds = new Set((quotationRows || []).map((q) => q.ticket_id));
 
       const result = {};
-      CATS.forEach(cat => {
-        result[cat] = { 
-          outgoingEnq: 0, 
-          outgoingValue: 0, 
-          incomingEnq: 0, 
-          incomingValue: 0, 
-          tillDatePending: 0, 
-          tillDatePendingValue: 0, 
-          totalBilling: 0, 
-          invoiceValue: 0 
+      CATS.forEach((cat) => {
+        result[cat] = {
+          outgoingEnq: 0,
+          outgoingValue: 0,
+          incomingEnq: 0,
+          incomingValue: 0,
+          tillDatePending: 0,
+          tillDatePendingValue: 0,
+          totalBilling: 0,
+          invoiceValue: 0,
         };
       });
 
-      const [ticketRes, invoiceRes] = await Promise.all([
-        fetch(`${sheet_url}?sheet=Ticket_Enquiry`),
-        fetch(`${sheet_url}?sheet=Invoice`),
-      ]);
-      const [ticketJson, invoiceJson] = await Promise.all([
-        ticketRes.json(),
-        invoiceRes.json(),
-      ]);
+      tickets.forEach((t) => {
+        const ts = t.created_at ? new Date(t.created_at) : null;
+        const category = normalizeCategory(t.category);
+        const q = quotationByTicket.get(t.ticket_id);
+        const basicValue = Number(q?.basic_amount) || 0;
 
-      if (ticketJson.success && Array.isArray(ticketJson.data)) {
-        const rows = ticketJson.data.slice(6);
-
-        // Build ticket-to-category lookup for Invoice joining
-        const ticketCatMap = {};
-        rows.forEach(row => {
-          if (row && row[1]) ticketCatMap[String(row[1]).trim()] = _normCat(row[23]);
-        });
-
-        rows.forEach(row => {
-          if (!row || !row[1]) return;
-          const ts = _parseDate(row[0]);
-          const callType = String(row[13] || '').trim();
-          const category = _normCat(row[23]);
-          const basicValue = _parseNum(row[41]);
-
-          // Outgoing & Incoming Enquiries (date-filtered)
-          if (ts && ts >= effectiveStart && ts <= effectiveEnd) {
-            if (callType === 'Outgoing') {
-              result[category].outgoingEnq++;
-              result[category].outgoingValue += basicValue;
-            }
-            if (callType === 'Incoming') {
-              result[category].incomingEnq++;
-              result[category].incomingValue += basicValue;
-            }
+        // Outgoing & Incoming Enquiries (date-range filtered).
+        if (ts && ts >= effectiveStart && ts <= effectiveEnd) {
+          if (t.call_type === "Outgoing") {
+            result[category].outgoingEnq++;
+            result[category].outgoingValue += basicValue;
           }
-
-          // Till Date Pending Enq (last 60 days — no date filter)
-          if (ts && ts >= sixtyDaysAgo) {
-            const pendingVC  = _hasVal(row[31])  && !_hasVal(row[32]);
-            const pendingWC  = _hasVal(row[132]) && !_hasVal(row[133]);
-            const pendingQuo = _hasVal(row[37])  && !_hasVal(row[38]);
-            if (pendingVC || pendingWC || pendingQuo) {
-              result[category].tillDatePending++;
-              result[category].tillDatePendingValue += basicValue;
-            }
+          if (t.call_type === "Incoming") {
+            result[category].incomingEnq++;
+            result[category].incomingValue += basicValue;
           }
-        });
-
-        // Invoice data (date-filtered)
-        if (invoiceJson.success && Array.isArray(invoiceJson.data)) {
-          invoiceJson.data.slice(6).forEach(row => {
-            if (!row || !row[1]) return;
-            const ts = _parseDate(row[15]);
-            if (!ts || ts < effectiveStart || ts > effectiveEnd) return;
-            const ticketId = String(row[1]).trim();
-            const invoiceCatRaw = row[71];
-            const cat = invoiceCatRaw ? _normCat(invoiceCatRaw) : (ticketCatMap[ticketId] || 'OTHER');
-            result[cat].totalBilling++;
-            if      (cat === 'SPARE')    result[cat].invoiceValue += _parseNum(row[22]);
-            else if (cat === 'SERVICE')  result[cat].invoiceValue += _parseNum(row[21]);
-            else if (cat === 'NABL')     result[cat].invoiceValue += _parseNum(row[17]);
-            else if (cat === 'NON NABL') result[cat].invoiceValue += _parseNum(row[19]);
-            // OTHER: no dedicated column
-          });
         }
 
-        setWeeklyReportData({ result, effectiveStart, effectiveEnd });
-      }
+        // Till Date Pending Enq — fixed last-60-days window, independent of
+        // the date-range picker. A ticket counts as "pending" here if it's
+        // stuck at Warranty-Check, Video-Call, or Quotation (rough,
+        // existence-based check — not the more precise per-stage pending
+        // rules used elsewhere on this page, matching the legacy report's
+        // own looser definition).
+        if (ts && ts >= sixtyDaysAgo) {
+          const wc = warrantyByTicket.get(t.ticket_id);
+          const pendingWC = !!t.warranty_check_planned && !warrantyCheckTicketIds.has(t.ticket_id);
+          const pendingVC = !!wc?.video_call_planned && !videoCallTicketIds.has(t.ticket_id);
+          const pendingQuo = !!wc?.quotation_planned && !quotationTicketIds.has(t.ticket_id);
+          if (pendingWC || pendingVC || pendingQuo) {
+            result[category].tillDatePending++;
+            result[category].tillDatePendingValue += basicValue;
+          }
+        }
+      });
+
+      // Invoice data (date-range filtered) — category now comes from a join
+      // to `tickets` since invoice.category was dropped as a denormalized
+      // copy during migration (see schemaMapping.js's invoice.notFields).
+      (invoiceRows || []).forEach((inv) => {
+        if (!allowedTicketIds.has(inv.ticket_id)) return;
+        const ts = inv.created_at ? new Date(inv.created_at) : null;
+        if (!ts || ts < effectiveStart || ts > effectiveEnd) return;
+
+        const t = ticketByTicketId.get(inv.ticket_id);
+        const category = normalizeCategory(t?.category);
+        result[category].totalBilling++;
+        if (category === "SPARE") result[category].invoiceValue += Number(inv.spare_amount_basic) || 0;
+        else if (category === "SERVICE") result[category].invoiceValue += Number(inv.service_amount_basic) || 0;
+        else if (category === "NABL") result[category].invoiceValue += Number(inv.invoice_amount_nabl_basic) || 0;
+        // NON NABL / OTHER: no dedicated amount column on the migrated
+        // invoice table (dropped — see migration notes) — rendered as "-".
+      });
+
+      setWeeklyReportData({ result, effectiveStart, effectiveEnd });
     } catch (err) {
-      console.error('Error fetching weekly report:', err);
-      toast.error('Failed to load weekly report');
+      console.error("Error fetching weekly report:", err);
+      toast.error("Failed to load weekly report");
     } finally {
       setWeeklyReportLoading(false);
     }
@@ -649,213 +443,47 @@ export default function Dashboard() {
 
   useEffect(() => { fetchWeeklyReport(); }, []);
 
-  const formatDate = (raw) => {
-    if (!raw) return "-";
-    const d = new Date(raw);
-    if (isNaN(d.getTime())) return String(raw);
-    return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
-  };
-
   const handleGenerateReport = async () => {
     setIsGeneratingReport(true);
     try {
       const { pdf } = await import("@react-pdf/renderer");
       const { ReportDocument } = await import("./report-pdf");
 
-      const response = await fetch(`${sheet_url}?sheet=Ticket_Enquiry`);
-      const json = await response.json();
-
-      if (!json.success || !Array.isArray(json.data)) {
-        throw new Error("Failed fetching comprehensive data for report");
-      }
-
-      const rows = json.data;
-
-      const row2 = rows[1] || [];
-      const row3 = rows[2] || [];
-
-      const getResponsiblePerson = (stage) => {
-        // Find column index dynamically
-        if (stage.start !== undefined && row2[stage.start]) {
-          const r2Val = String(row2[stage.start]).toLowerCase().replace(/[^a-z0-9]/g, "");
-          const stageNameNorm = String(stage.name).toLowerCase().replace(/[^a-z0-9]/g, "");
-          if (r2Val.includes(stageNameNorm) || stageNameNorm.includes(r2Val)) {
-            return String(row3[stage.start] || "").trim();
-          }
-        }
-        
-        // Search row2 for matching stage name
-        const stageNameNorm = String(stage.name).toLowerCase().replace(/[^a-z0-9]/g, "");
-        for (let colIdx = 0; colIdx < row2.length; colIdx++) {
-          const val = String(row2[colIdx] || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-          if (val && (val === stageNameNorm || val.includes(stageNameNorm) || stageNameNorm.includes(val))) {
-            return String(row3[colIdx] || "").trim();
-          }
-        }
-        
-        return stage.responsible || "-";
-      };
-
-      const userName = localStorage.getItem("currentUsername");
-      const roleStorage = localStorage.getItem("o2d-auth-storage");
-      const parsedData = JSON.parse(roleStorage);
-      const role = parsedData.state.user.role;
-
-      let filteredRows = rows.slice(6);
-      if (role === "user") {
-        filteredRows = filteredRows.filter((row) => row[127] === userName);
-      } else if (role === "engineer") {
-        filteredRows = filteredRows.filter((row) => row[28] === userName);
-      }
-
-      const cellHasValue = (val) => {
-        if (val === null || val === undefined) return false;
-        if (typeof val === 'string') return val.trim() !== "" && val.trim() !== "-";
-        return val !== "";
-      };
-
-      const parseDate = (dateStr) => {
-        if (!dateStr) return null;
-        if (dateStr instanceof Date) return dateStr;
-        const s = String(dateStr).trim();
-        const parts = s.split('/');
-        if (parts.length === 3) {
-          const day = parseInt(parts[0], 10);
-          const month = parseInt(parts[1], 10) - 1;
-          const year = parseInt(parts[2], 10);
-          return new Date(year, month, day);
-        }
-        const parts2 = s.split('-');
-        if (parts2.length === 3) {
-          if (parts2[0].length === 4) {
-            return new Date(parseInt(parts2[0], 10), parseInt(parts2[1], 10) - 1, parseInt(parts2[2], 10));
-          } else {
-            return new Date(parseInt(parts2[2], 10), parseInt(parts2[1], 10) - 1, parseInt(parts2[0], 10));
-          }
-        }
-        const parsed = Date.parse(s);
-        return isNaN(parsed) ? null : new Date(parsed);
-      };
-
-      const overdueCounts = {};
-      serviceStages.forEach((s) => {
-        overdueCounts[s.name] = 0;
-      });
-
-      const detailed = [];
-      const followUpCategoryOverdue = {};
-
-      filteredRows.forEach((row) => {
-        if (!row || !row[1]) return;
-
-        serviceStages.forEach((stage) => {
-          const plannedVal = row[stage.start];
-          const actualVal = row[stage.actual];
-          let isPending = false;
-          let delayVal = 0;
-
-          if (cellHasValue(plannedVal) && !cellHasValue(actualVal)) {
-            isPending = true;
-            if (stage.delay !== -1) {
-              const rawDelay = row[stage.delay];
-              if (cellHasValue(rawDelay)) {
-                delayVal = parseInt(rawDelay, 10) || 0;
-              }
-            } else {
-              const pDate = parseDate(plannedVal);
-              if (pDate) {
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                pDate.setHours(0, 0, 0, 0);
-                if (pDate < today) {
-                  const diffTime = Math.abs(today.getTime() - pDate.getTime());
-                  delayVal = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                }
-              }
-            }
-          }
-
-          if (isPending) {
-            overdueCounts[stage.name]++;
-
-            if (stage.name === "Follow-Up") {
-              const categoryName = row[23] || "Uncategorized";
-              if (!followUpCategoryOverdue[categoryName]) {
-                followUpCategoryOverdue[categoryName] = 0;
-              }
-              followUpCategoryOverdue[categoryName]++;
-
-              detailed.push({
-                stage: "Follow-Up",
-                date: formatDate(row[47] || row[0]),
-                companyName: row[16] || "-",
-                category: row[23] || "-",
-                siteAddress: row[20] || "-",
-                followUpStage: row[50] || "-",
-                basicAmount: row[41] || "-",
-                whatDidCustomerSay: row[57] || "-",
-                dateOfLastFollowUp: formatDate(row[59]),
-                delay: delayVal
-              });
-            } else if (stage.name === "Site Visit Plan") {
-              detailed.push({
-                stage: "Site Visit Plan",
-                date: formatDate(row[61] || row[0]),
-                companyName: row[16] || "-",
-                siteAddress: row[20] || "-",
-                category: row[23] || "-",
-                delay: delayVal
-              });
-            }
-          }
-        });
-      });
-
       const summaryData = [];
       serviceStages.forEach((s) => {
-        const oCount = overdueCounts[s.name] || 0;
-        if (oCount > 0) {
-          summaryData.push({
-            stage: s.name,
-            pending: oCount,
-            responsible: getResponsiblePerson(s)
-          });
+        const pending = stageCounts[s.name] || 0;
+        if (pending > 0) {
+          summaryData.push({ stage: s.name, pending, responsible: responsiblePersonByStage[s.name] || STAGE_RESPONSIBLE[s.name] || "-" });
           if (s.name === "Follow-Up") {
-            Object.entries(followUpCategoryOverdue).forEach(([category, oCount]) => {
-              if (oCount > 0) {
-                summaryData.push({
-                  stage: `  - ${category}`,
-                  pending: oCount,
-                  responsible: ""
-                });
+            Object.entries(followUpCategoryBreakdown).forEach(([category, data]) => {
+              if (data.pending > 0) {
+                summaryData.push({ stage: `  - ${category}`, pending: data.pending, responsible: "" });
               }
             });
           }
         }
       });
-      const allowedStages = serviceStages.map(s => s.name);
-      detailed.sort((a, b) => {
-        const indexA = allowedStages.indexOf(a.stage);
-        const indexB = allowedStages.indexOf(b.stage);
-        return indexA - indexB;
-      });
 
-      console.log("Generating report with:", {
-        summaryDataCount: summaryData.length,
-        detailedCount: detailed.length,
-        followUpCategoryBreakdown: followUpCategoryOverdue
-      });
+      const detailedData = [...followUpDetailRows, ...siteVisitDetailRows];
+      const followUpCategoryCounts = Object.fromEntries(
+        Object.entries(followUpCategoryBreakdown).map(([cat, data]) => [cat, data.pending])
+      );
 
-      const blob = await pdf(<ReportDocument summaryData={summaryData} detailedData={detailed} followUpCategoryBreakdown={followUpCategoryOverdue} />).toBlob();
+      const blob = await pdf(
+        <ReportDocument
+          summaryData={summaryData}
+          detailedData={detailedData}
+          followUpCategoryBreakdown={followUpCategoryCounts}
+        />
+      ).toBlob();
       const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
+      const link = document.createElement("a");
       link.href = url;
-      link.download = `Service_Report_${new Date().toISOString().split('T')[0]}.pdf`;
+      link.download = `Service_Report_${new Date().toISOString().split("T")[0]}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-
     } catch (e) {
       console.error(e);
       toast.error(e.message || "Failed to generate report");
@@ -875,14 +503,7 @@ export default function Dashboard() {
     </Card>
   );
 
-  const SkeletonChart = () => (
-    <Card className="p-6 shadow rounded-2xl">
-      <div className="h-6 bg-gray-300 rounded w-1/3 mb-4 animate-pulse"></div>
-      <div className="h-64 bg-gray-200 rounded animate-pulse"></div>
-    </Card>
-  );
-
-  const SkeletonBarChart = () => (
+  const SkeletonTable = () => (
     <Card className="p-6 shadow rounded-2xl">
       <div className="h-6 bg-gray-300 rounded w-1/3 mb-4 animate-pulse"></div>
       <div className="h-64 bg-gray-200 rounded animate-pulse"></div>
@@ -892,21 +513,13 @@ export default function Dashboard() {
   if (fetchLoading) {
     return (
       <div className="p-6 space-y-6 bg-gray-50 min-h-screen">
-        {/* KPIs Skeleton */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           {[...Array(5)].map((_, i) => (
             <SkeletonCard key={i} />
           ))}
         </div>
-
-        {/* Charts Skeleton */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <SkeletonChart />
-          <SkeletonChart />
-        </div>
-
-        {/* Bar Chart Skeleton */}
-        <SkeletonBarChart />
+        <SkeletonTable />
+        <SkeletonTable />
       </div>
     );
   }
@@ -919,7 +532,7 @@ export default function Dashboard() {
           <PhoneCall className="w-8 h-8 text-blue-500" />
           <div>
             <p className="text-sm text-gray-500">Enquiries</p>
-            <p className="text-xl font-bold">{allTickets?.length}</p>
+            <p className="text-xl font-bold">{allTicketsCount}</p>
           </div>
         </Card>
 
@@ -927,7 +540,7 @@ export default function Dashboard() {
           <FileText className="w-8 h-8 text-blue-500" />
           <div>
             <p className="text-sm text-gray-500">Quotations</p>
-            <p className="text-xl font-bold">{quataionData?.length}</p>
+            <p className="text-xl font-bold">{quotationPendingCount}</p>
           </div>
         </Card>
 
@@ -935,7 +548,7 @@ export default function Dashboard() {
           <FileText className="w-8 h-8 text-blue-500" />
           <div>
             <p className="text-sm text-gray-500">Site Visits</p>
-            <p className="text-xl font-bold">{siteVisitData?.length}</p>
+            <p className="text-xl font-bold">{siteVisitPendingCount}</p>
           </div>
         </Card>
 
@@ -943,7 +556,7 @@ export default function Dashboard() {
           <FileText className="w-8 h-8 text-blue-500" />
           <div>
             <p className="text-sm text-gray-500">Invoices</p>
-            <p className="text-xl font-bold">{invoiceData?.length}</p>
+            <p className="text-xl font-bold">{invoicePendingCount}</p>
           </div>
         </Card>
 
@@ -951,7 +564,7 @@ export default function Dashboard() {
           <FileText className="w-8 h-8 text-blue-500" />
           <div>
             <p className="text-sm text-gray-500">Engineer</p>
-            <p className="text-xl font-bold">{engineerData?.length}</p>
+            <p className="text-xl font-bold">{otpPendingCount}</p>
           </div>
         </Card>
       </div>
@@ -987,8 +600,8 @@ export default function Dashboard() {
             </TableHeader>
             <TableBody>
               {serviceStages.map((stage) => {
-                let dynamicCount = stageCounts[stage.name] || 0;
-                let overdueCount = stageOverdueCounts[stage.name] || 0;
+                const dynamicCount = stageCounts[stage.name] || 0;
+                const overdueCount = stageOverdueCounts[stage.name] || 0;
 
                 const rowsToRender = [];
 
@@ -1119,7 +732,7 @@ export default function Dashboard() {
                 </TableHeader>
                 <TableBody>
                   {[
-                    { label: 'OUTGOING ENQUIRIES',    getVal: (cat) => weeklyReportData.result[cat].outgoingEnq },
+                    { label: 'OUTGOING ENQUIRIES', getVal: (cat) => weeklyReportData.result[cat].outgoingEnq },
                     {
                       label: '↳ Total Value',
                       isSubRow: true,
@@ -1128,7 +741,7 @@ export default function Dashboard() {
                         return `₹${v.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
                       },
                     },
-                    { label: 'INCOMING ENQUIRIES',    getVal: (cat) => weeklyReportData.result[cat].incomingEnq },
+                    { label: 'INCOMING ENQUIRIES', getVal: (cat) => weeklyReportData.result[cat].incomingEnq },
                     {
                       label: '↳ Total Value',
                       isSubRow: true,
@@ -1150,7 +763,7 @@ export default function Dashboard() {
                         return `₹${v.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
                       },
                     },
-                    { label: 'TOTAL NO. BILLING',    getVal: (cat) => weeklyReportData.result[cat].totalBilling },
+                    { label: 'TOTAL NO. BILLING', getVal: (cat) => weeklyReportData.result[cat].totalBilling },
                     {
                       label: 'CONVERSION %',
                       getVal: (cat) => {
@@ -1163,7 +776,7 @@ export default function Dashboard() {
                     {
                       label: 'INVOICE VALUE',
                       getVal: (cat) => {
-                        if (cat === 'OTHER') return '-';
+                        if (cat === 'OTHER' || cat === 'NON NABL') return '-';
                         const v = weeklyReportData.result[cat].invoiceValue;
                         return `₹${v.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
                       },
@@ -1171,7 +784,7 @@ export default function Dashboard() {
                     {
                       label: 'AVG TCK SIZE',
                       getVal: (cat) => {
-                        if (cat === 'OTHER') return '-';
+                        if (cat === 'OTHER' || cat === 'NON NABL') return '-';
                         const billing = weeklyReportData.result[cat].totalBilling;
                         if (billing === 0) return '-';
                         const v = weeklyReportData.result[cat].invoiceValue / billing;
@@ -1179,13 +792,13 @@ export default function Dashboard() {
                       },
                     },
                   ].map((row, rIdx) => (
-                    <TableRow 
-                      key={rIdx} 
+                    <TableRow
+                      key={rIdx}
                       className={
-                        row.isSubRow 
-                          ? 'bg-gray-50/20 hover:bg-gray-50/40 border-l-2 border-l-blue-400/50' 
-                          : rIdx % 2 === 0 
-                            ? 'bg-white' 
+                        row.isSubRow
+                          ? 'bg-gray-50/20 hover:bg-gray-50/40 border-l-2 border-l-blue-400/50'
+                          : rIdx % 2 === 0
+                            ? 'bg-white'
                             : 'bg-gray-50/60'
                       }
                     >
@@ -1194,8 +807,8 @@ export default function Dashboard() {
                         {row.note && <span className="text-gray-400 text-[10px] ml-1 font-normal">{row.note}</span>}
                       </TableCell>
                       {['SPARE', 'SERVICE', 'NABL', 'NON NABL'].map(cat => (
-                        <TableCell 
-                          key={cat} 
+                        <TableCell
+                          key={cat}
                           className={`text-xs text-center py-2.5 ${row.isSubRow ? 'text-gray-500 font-normal' : 'text-gray-600 font-medium'}`}
                         >
                           {row.getVal(cat)}

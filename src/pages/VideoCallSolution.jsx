@@ -132,12 +132,6 @@ export default function VideoCallSolution() {
     return `${day}/${month}/${year}`;
   };
 
-  // Still used for the "Cancel Ticket" flow only (writes to the separate
-  // "Cancel" sheet) — that destination isn't part of the ticket pipeline
-  // tables and hasn't been migrated yet, see schemaMapping.js's videoCall
-  // entry notFields.
-  const sheet_url = import.meta.env.VITE_APPS_SCRIPT_API;
-
   const fetchData = async () => {
     setFetchLoading(true);
     try {
@@ -451,75 +445,37 @@ export default function VideoCallSolution() {
 
     setCancelSubmit(true);
 
-    const currentDateTime = formatDateTime(new Date());
-
     try {
-      const rowData = [
-        currentDateTime,
-        selectedTicket.ticketId || "", // Call Type
-        selectedTicket.clientName || "", // Enquiry Receiver Name
-        selectedTicket.phoneNumber || "", // Warranty Check
-        selectedTicket.emailAddress || "", // Bill Number Input
-        selectedTicket.category || "", // Bill Number Input
-
-        selectedTicket.title || "", // Machine Name
-        selectedTicket.description || "", // Machine Name
-        "Video Call Solution", // Enquiry Type (second one)
-        formData.cancelRemarks || "",
-      ];
-
-      // console.log("rowDAta", formData);
-
-      const response = await fetch(sheet_url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: new URLSearchParams({
-          sheetName: "Cancel",
-          action: "insert",
-          rowData: JSON.stringify(rowData),
-        }),
+      const { error } = await supabase.from("cancelled_tickets").insert({
+        ticket_id: selectedTicket.ticketId,
+        ticket_uuid: selectedTicket.ticketUuid,
+        cancelled_from_stage: "Video Call Solution",
+        remarks: formData.cancelRemarks || null,
       });
 
-      const result = await response.json();
+      if (error) throw error;
 
-      if (result.success) {
-        // setTickets([...tickets, newTicket]);
-        // setFormData({
-        //   clientName: "",
-        //   phoneNumber: "",
-        //   emailAddress: "",
-        //   category: "",
-        //   priority: "",
-        //   title: "",
-        //   description: "",
-        //   date: new Date().toISOString().split("T")[0],
-        // });
-
-        setPendingData((prevPending) =>
-          prevPending.filter(
-            (ticket) => ticket.ticketId !== selectedTicket.ticketId
-          )
-        );
-        setShowSolutionModal(false);
-        setIsCancelled(false);
-        toast({
-          title: "Success",
-          description: "Ticket details Cancle successfully",
-        });
-      } else {
-        throw new Error(result.error || "Failed to save ticket");
-      }
+      // Removes it from THIS page's own pending list only — does not
+      // globally exclude the ticket from any other stage's pending query
+      // (see migration 0046's comment).
+      setPendingData((prevPending) =>
+        prevPending.filter(
+          (ticket) => ticket.ticketId !== selectedTicket.ticketId
+        )
+      );
+      setShowSolutionModal(false);
+      setIsCancelled(false);
+      toast({
+        title: "Success",
+        description: "Ticket cancelled successfully",
+      });
     } catch (error) {
-      console.error("Error submitting ticket:", error);
+      console.error("Error cancelling ticket:", error);
       toast({
         title: "Error",
-        description: "Failed to save ticket. Data stored locally.",
+        description: error.message || "Failed to cancel ticket",
         variant: "destructive",
       });
-
-      // setTickets([...tickets, newTicket]);
     } finally {
       setCancelSubmit(false);
       // setShowForm(false);

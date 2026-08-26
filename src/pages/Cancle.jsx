@@ -3,97 +3,108 @@ import {
   Card,
   CardContent,
   CardHeader,
-  CardTitle,
 } from "../components/ui/card";
-
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from "../components/ui/tabs";
-import { Modal } from "../components/ui/modal";
-import { storage } from "../lib/storage";
 import { useToast } from "../hooks/use-toast";
-import { Loader2Icon, LoaderIcon } from "lucide-react";
-import { Textarea } from "../components/ui/textarea";
+import { LoaderIcon } from "lucide-react";
+import { supabase } from "../lib/supabase/client";
 
 export default function Cancle() {
   const [activeTab, setActiveTab] = useState("pending");
-
-  const [cancelSheetDataa, setCancelSheetData] = useState([]);
+  const [cancelledData, setCancelledData] = useState([]);
+  const [fetchLoading, setFetchLoading] = useState(false);
   const { toast } = useToast();
 
-  const [fetchLoading, setFetchLoading] = useState(false);
-
-  const sheet_url =
-    import.meta.env.VITE_APPS_SCRIPT_API;
-  const Sheet_Id = import.meta.env.VITE_GOOGLE_SHEET_ID;
-
-  const fetchCancleSheet = async () => {
+  const fetchCancelledTickets = async () => {
+    setFetchLoading(true);
     try {
-      setFetchLoading(true);
-      const response = await fetch(`${sheet_url}?sheet=Cancel`);
-      const result = await response.json();
+      const { data: cancelRows, error: cancelError } = await supabase
+        .from("cancelled_tickets")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-      if (result.success && result.data && result.data.length > 0) {
-        const headers = result.data[0];
-        const formattedData = result.data.slice(1).map((row) => {
-          const obj = {};
-          headers.forEach((header, index) => {
-            const key = header.toLowerCase().replace(/\s+/g, "_");
-            obj[key] = row[index] || null;
-          });
-          return obj;
-        });
+      if (cancelError) throw cancelError;
 
-        setCancelSheetData(formattedData);
-      } else {
-        console.log("No data available");
-        return [];
+      if (!cancelRows || cancelRows.length === 0) {
+        setCancelledData([]);
+        return;
       }
+
+      const ticketIds = [...new Set(cancelRows.map((c) => c.ticket_id))];
+
+      const { data: ticketsData, error: ticketsError } = await supabase
+        .from("tickets")
+        .select("*")
+        .in("ticket_id", ticketIds);
+
+      if (ticketsError) throw ticketsError;
+
+      const ticketByTicketId = new Map((ticketsData || []).map((t) => [t.ticket_id, t]));
+
+      const formatted = cancelRows.map((c) => {
+        const t = ticketByTicketId.get(c.ticket_id);
+        return {
+          id: c.id,
+          timeStemp: c.created_at || "",
+          ticketId: c.ticket_id,
+          cancelledFromStage: c.cancelled_from_stage || "",
+          remarks: c.remarks || "",
+          clientName: t?.client_name || "",
+          phoneNumber: t?.phone_number || "",
+          companyName: t?.company_name || "",
+          category: t?.category || "",
+          mentionIssue: t?.mention_issue || "",
+          CREName: t?.cre_name || "",
+        };
+      });
+
+      setCancelledData(formatted);
     } catch (error) {
-      console.error("Error fetching master data:", error);
-      toast.error("Failed to load master data");
-      throw error;
+      console.error("Error fetching cancelled tickets:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load cancelled tickets",
+        variant: "destructive",
+      });
     } finally {
       setFetchLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchCancleSheet();
+    fetchCancelledTickets();
   }, []);
 
   const formatDate = (dateString) => {
     if (!dateString) return "";
-
     const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString;
     const day = String(date.getDate()).padStart(2, "0");
     const month = String(date.getMonth() + 1).padStart(2, "0");
     const year = date.getFullYear();
-
     return `${day}/${month}/${year}`;
   };
 
   const userName = localStorage.getItem("currentUsername");
 
   const roleStorage = localStorage.getItem("o2d-auth-storage");
-  const parsedData = JSON.parse(roleStorage);
-  const role = parsedData.state.user.role;
+  const parsedData = roleStorage ? JSON.parse(roleStorage) : null;
+  const role = parsedData?.state?.user?.role;
 
-
-  const cancelSheetData = role === "user" ? cancelSheetDataa.filter(
-    (item) => item["cre_name"] === userName
-  ) : cancelSheetDataa;
-
+  const filteredData = role === "user"
+    ? cancelledData.filter((item) => item.CREName === userName)
+    : cancelledData;
 
   return (
     <div className="space-y-2">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <Card className="border-0 shadow-lg bg-gradient-to-br from-blue-50 to-indigo-50">
           <CardHeader className="bg-gradient-to-r from-blue-50/50 to-indigo-50/50 rounded-t-lg border-b border-blue-100 px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
-            {/* Left Side: Tabs buttons */}
             <div className="flex flex-wrap items-center gap-4">
               <TabsList className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200">
                 <TabsTrigger
@@ -101,7 +112,7 @@ export default function Cancle() {
                   data-testid="tab-pending"
                   className="data-[state=active]:bg-red-600 data-[state=active]:text-white"
                 >
-                  Cancel ({cancelSheetData.length})
+                  Cancelled ({filteredData.length})
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -114,6 +125,9 @@ export default function Cancle() {
                     <table className="hidden sm:block w-full">
                       <thead className="sticky top-0 z-10">
                         <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
+                            Cancelled On
+                          </th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
                             Ticket ID
                           </th>
@@ -123,34 +137,28 @@ export default function Cancle() {
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                             Phone Number
                           </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                            Email Address
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[180px] sticky top-0">
+                            Company Name
                           </th>
-
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                             Category
                           </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                            Title
-                          </th>
-
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                            Description
-                          </th>
-
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                            Stage name
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[250px] sticky top-0">
+                            Mention Issue
                           </th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
+                            Cancelled From Stage
+                          </th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
                             Remarks
                           </th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-blue-100">
-                        {cancelSheetData.length === 0 ? (
+                        {filteredData.length === 0 ? (
                           <tr>
                             <td
-                              colSpan={15}
+                              colSpan={9}
                               className="text-center py-8 bg-white"
                               data-testid="text-no-pending"
                             >
@@ -160,47 +168,42 @@ export default function Cancle() {
                                 </div>
                               ) : (
                                 <h1 className="text-blue-700">
-                                  No pending calibrations found.
+                                  No cancelled tickets found.
                                 </h1>
                               )}
                             </td>
                           </tr>
                         ) : (
-                          cancelSheetData.map((ticket, ind) => (
+                          filteredData.map((ticket) => (
                             <tr
-                              key={ind}
-                              className={
-                                ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"
-                              }
+                              key={ticket.id}
+                              className="bg-white even:bg-blue-50/50"
                             >
+                              <td className="px-4 py-3 text-blue-900">
+                                {formatDate(ticket.timeStemp)}
+                              </td>
                               <td className="px-4 py-3 font-medium text-blue-800">
-                                {ticket.ticket_id}
-                              </td>
-
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.client_name}
+                                {ticket.ticketId}
                               </td>
                               <td className="px-4 py-3 text-blue-900">
-                                {ticket.phone_number}
+                                {ticket.clientName}
                               </td>
-
                               <td className="px-4 py-3 text-blue-900">
-                                {ticket.email_address}
+                                {ticket.phoneNumber}
                               </td>
-
+                              <td className="px-4 py-3 text-blue-900">
+                                {ticket.companyName}
+                              </td>
                               <td className="px-4 py-3 text-blue-900">
                                 {ticket.category}
                               </td>
-
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.title}
+                              <td className="px-4 py-3 text-blue-900 truncate max-w-xs hover:whitespace-normal">
+                                {ticket.mentionIssue}
                               </td>
-
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.description}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.stage_name}
+                              <td className="px-4 py-3">
+                                <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                                  {ticket.cancelledFromStage}
+                                </span>
                               </td>
                               <td className="px-4 py-3 text-blue-900">
                                 {ticket.remarks}
@@ -213,7 +216,7 @@ export default function Cancle() {
 
                     {/* Mobile Card View */}
                     <div className="sm:hidden space-y-4">
-                      {cancelSheetData.length === 0 ? (
+                      {filteredData.length === 0 ? (
                         <div
                           className="text-center py-8 bg-white"
                           data-testid="text-no-pending"
@@ -224,50 +227,35 @@ export default function Cancle() {
                             </div>
                           ) : (
                             <h1 className="text-blue-700">
-                              No pending calibrations found.
+                              No cancelled tickets found.
                             </h1>
                           )}
                         </div>
                       ) : (
-                        cancelSheetData.map((ticket, ind) => (
+                        filteredData.map((ticket) => (
                           <Card
-                            key={ind}
-                            className={`${ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"
-                              } border-l-4 border-l-indigo-500`}
+                            key={ticket.id}
+                            className="border-l-4 border-l-red-500 bg-white"
                           >
                             <CardContent className="p-4 space-y-3">
-                              {/* Header with Ticket ID */}
                               <div>
                                 <h3 className="font-bold text-blue-800 text-lg">
-                                  {ticket.ticket_id}
+                                  {ticket.ticketId}
                                 </h3>
                                 <p className="text-sm text-gray-600">
-                                  {ticket.client_name}
+                                  {ticket.clientName}
                                 </p>
                               </div>
 
-                              {/* Contact Information */}
                               <div className="grid grid-cols-2 gap-3 text-sm">
                                 <div>
                                   <p className="text-gray-500 font-medium">
                                     Phone
                                   </p>
                                   <p className="text-blue-900">
-                                    {ticket.phone_number}
+                                    {ticket.phoneNumber}
                                   </p>
                                 </div>
-                                <div>
-                                  <p className="text-gray-500 font-medium">
-                                    Email
-                                  </p>
-                                  <p className="text-blue-900 truncate">
-                                    {ticket.email_address || "N/A"}
-                                  </p>
-                                </div>
-                              </div>
-
-                              {/* Category & Title */}
-                              <div className="grid grid-cols-2 gap-3 text-sm">
                                 <div>
                                   <p className="text-gray-500 font-medium">
                                     Category
@@ -276,37 +264,35 @@ export default function Cancle() {
                                     {ticket.category || "N/A"}
                                   </p>
                                 </div>
-                                <div>
-                                  <p className="text-gray-500 font-medium">
-                                    Title
-                                  </p>
-                                  <p className="text-blue-900">
-                                    {ticket.title || "N/A"}
-                                  </p>
-                                </div>
                               </div>
 
-                              {/* Stage Name */}
                               <div>
                                 <p className="text-gray-500 font-medium text-sm">
-                                  Stage Name
+                                  Company
                                 </p>
                                 <p className="text-blue-900">
-                                  {ticket.stage_name || "N/A"}
+                                  {ticket.companyName || "N/A"}
                                 </p>
                               </div>
 
-                              {/* Description */}
                               <div>
                                 <p className="text-gray-500 font-medium text-sm">
-                                  Description
+                                  Cancelled From Stage
                                 </p>
-                                <p className="text-blue-900 line-clamp-3">
-                                  {ticket.description || "N/A"}
+                                <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                                  {ticket.cancelledFromStage}
+                                </span>
+                              </div>
+
+                              <div>
+                                <p className="text-gray-500 font-medium text-sm">
+                                  Mention Issue
+                                </p>
+                                <p className="text-blue-900 line-clamp-2">
+                                  {ticket.mentionIssue || "N/A"}
                                 </p>
                               </div>
 
-                              {/* Remarks */}
                               <div>
                                 <p className="text-gray-500 font-medium text-sm">
                                   Remarks

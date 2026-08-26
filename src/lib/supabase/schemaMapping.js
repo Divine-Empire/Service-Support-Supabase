@@ -162,6 +162,65 @@ export const SCHEMA_MAPPING = {
     ],
   },
 
+  tatConfig: {
+    supabaseTable: "tat_config",
+    sourceSheet: null,
+    primaryKey: "uuid",
+    description:
+      "TAT (turnaround time) config, one row per stage, managed via src/pages/Master/tat-config.jsx (admin " +
+      "only). src/lib/supabase/stagePlanning.js's getStageTatMinutes() reads duration_minutes by stage_name " +
+      "(falls back to 60 if that stage isn't seeded yet) for every `<next_stage>_planned` calculation across " +
+      "the app. stage_name is now restricted client-side to a fixed list (tat-config.jsx's ALL_STAGE_NAMES, " +
+      "migration 2026-08-26) matching stagePlanning.js's actual tatStageName values — the 'New Stage' form " +
+      "used to accept free-text names, which could silently drift out of sync with what stagePlanning.js " +
+      "looks up. responsible_person (migration 0047) is a free-text admin-entered name shown as the " +
+      "'Responsible' column on Dashboard.jsx's Generate Report PDF, replacing an earlier hardcoded map.",
+    fields: [
+      { sheetColumn: null, sheetField: null, supabaseColumn: "stage_name", type: "text", note: "Unique. One of ALL_STAGE_NAMES in tat-config.jsx — must match a stagePlanning.js rule's tatStageName exactly." },
+      { sheetColumn: null, sheetField: null, supabaseColumn: "duration_minutes", type: "integer", note: "TAT for this stage, in minutes. Entered via a Days/Hours/Minutes split in the UI, stored as one total." },
+      { sheetColumn: null, sheetField: null, supabaseColumn: "responsible_person", type: "text", note: "Migration 0047. Free-text — who owns this stage's TAT. Shown on Dashboard.jsx's PDF report; null falls back to that page's own hardcoded STAGE_RESPONSIBLE map." },
+      { sheetColumn: null, sheetField: null, supabaseColumn: "updated_at", type: "timestamptz" },
+    ],
+  },
+
+  officeHours: {
+    supabaseTable: "office_hours",
+    sourceSheet: null,
+    primaryKey: "id",
+    description:
+      "SINGLETON config row (id is fixed at 1 via a check constraint — there is only ever one row), migration " +
+      "0047. Managed via src/pages/Master/tat-config.jsx's 'Office Hours' tab. " +
+      "src/lib/supabase/stagePlanning.js's computeStagePlanned() reads this (+ the holidays table) on every " +
+      "call and confines the computed `<next_stage>_planned` timestamp to this working window via " +
+      "addBusinessMinutes() — a stage submitted after closing time, or whose TAT would run past it, rolls the " +
+      "leftover TAT minutes over to the next working day's opening time instead of landing outside office " +
+      "hours. Seeded with a default (10:00-18:00, Sunday off) so this always has a row even before an admin " +
+      "configures it.",
+    fields: [
+      { sheetColumn: null, sheetField: null, supabaseColumn: "id", type: "integer", note: "Always 1 — enforced by a check constraint, not just convention." },
+      { sheetColumn: null, sheetField: null, supabaseColumn: "start_time", type: "time" },
+      { sheetColumn: null, sheetField: null, supabaseColumn: "end_time", type: "time" },
+      { sheetColumn: null, sheetField: null, supabaseColumn: "weekly_off_days", type: "integer[]", note: "JS Date.getDay() values (0=Sunday..6=Saturday) that recur as off EVERY week — e.g. {0} = every Sunday. One-off exception dates go in the separate `holidays` table instead, per explicit user decision (not re-added here every week)." },
+      { sheetColumn: null, sheetField: null, supabaseColumn: "updated_at", type: "timestamptz" },
+    ],
+  },
+
+  holidays: {
+    supabaseTable: "holidays",
+    sourceSheet: null,
+    primaryKey: "id",
+    description:
+      "One-off non-working dates (national/company holidays), migration 0047, ON TOP OF office_hours." +
+      "weekly_off_days' recurring weekly off-days. Managed via src/pages/Master/tat-config.jsx's 'Holidays' " +
+      "tab. src/lib/supabase/stagePlanning.js's computeStagePlanned()/addBusinessMinutes() skip these dates " +
+      "the same way they skip weekly_off_days when computing `<next_stage>_planned`.",
+    fields: [
+      { sheetColumn: null, sheetField: null, supabaseColumn: "holiday_date", type: "date", note: "Unique — one entry per date." },
+      { sheetColumn: null, sheetField: null, supabaseColumn: "holiday_name", type: "text" },
+      { sheetColumn: null, sheetField: null, supabaseColumn: "created_at", type: "timestamptz" },
+    ],
+  },
+
   warrantyCheck: {
     supabaseTable: "warranty_check",
     sourceSheet: "Ticket_Enquiry",
@@ -229,8 +288,9 @@ export const SCHEMA_MAPPING = {
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "delay_minutes", type: "integer", note: "Trigger-computed only, see description above. Never written by the frontend." },
     ],
     notFields: [
-      "The legacy page's 'Cancel Ticket' flow (handleSubmitCancel, writes to a separate 'Cancel' sheet) isn't " +
-      "part of this table or migrated yet — it's an entirely different destination, out of scope for this stage's migration.",
+      "The page's 'Cancel Ticket' flow (handleSubmitCancel) now inserts into public.cancelled_tickets " +
+      "(migration 0046) instead of the legacy 'Cancel' sheet — see that table's own entry below. It's a " +
+      "separate destination table, not part of this stage's own table.",
     ],
   },
 
@@ -271,8 +331,8 @@ export const SCHEMA_MAPPING = {
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "delay_minutes", type: "integer", note: "Trigger-computed only, see description above. Never written by the frontend." },
     ],
     notFields: [
-      "The legacy page's 'Cancel Ticket' flow (handleSubmitCancel, writes to a separate 'Cancel' sheet) isn't " +
-      "part of this table or migrated yet — same as video_call's Cancel flow.",
+      "The page's 'Cancel Ticket' flow now inserts into public.cancelled_tickets (migration 0046) — same as " +
+      "video_call's Cancel flow.",
       "The pending/history 'Item List' button shows the latest video_call row's item_qty (only populated when " +
       "that stage's enquiry_solved = 'no') — this table has no item list field of its own; a ticket only " +
       "reaches Quotation via that path or by skipping Video-Call entirely (in which case the item list is empty).",
@@ -316,8 +376,8 @@ export const SCHEMA_MAPPING = {
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "delay_minutes", type: "integer", note: "Trigger-computed only, see description above. Never written by the frontend." },
     ],
     notFields: [
-      "The legacy page's 'Cancel Ticket' flow (handleSubmitCancel, writes to a separate 'Cancel' sheet) isn't " +
-      "part of this table or migrated yet — same as Video-Call's and Quotation's Cancel flows.",
+      "The page's 'Cancel Ticket' flow now inserts into public.cancelled_tickets (migration 0046) — same as " +
+      "Video-Call's and Quotation's Cancel flows.",
     ],
   },
 
@@ -355,6 +415,8 @@ export const SCHEMA_MAPPING = {
       "and 'Repair Status' stage scheduling data from the sheet — neither exists in Supabase yet (Repair " +
       "Status hasn't been migrated at all), so those views now only reflect Site Visit history until those " +
       "stages are migrated too.",
+      "The page's 'Cancel Ticket' flow now inserts into public.cancelled_tickets (migration 0046) — same as " +
+      "Video-Call's, Quotation's, and Follow-Up's Cancel flows.",
     ],
   },
 
@@ -703,6 +765,37 @@ export const SCHEMA_MAPPING = {
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "quotation_no", type: "text", note: "FK -> make_quotation(quotation_no)." },
       { sheetColumn: null, sheetIndex: null, sheetField: "code/name/description/units", supabaseColumn: "code/name/description/units", type: "text" },
       { sheetColumn: null, sheetIndex: null, sheetField: "gst/qty/rate/discount/flatDiscount/amount", supabaseColumn: "gst/qty/rate/discount/flat_discount/amount", type: "numeric" },
+    ],
+  },
+
+  cancelledTickets: {
+    supabaseTable: "cancelled_tickets",
+    sourceSheet: "Cancel",
+    primaryKey: "id",
+    description:
+      "'Cancel Ticket' log, owned by src/pages/Cancle.jsx (route /cancel), migration 0046. Migrates the " +
+      "legacy 'Cancel' sheet — the four stage pages that have a 'Cancel Ticket' checkbox+remarks sub-form " +
+      "(FollowUp.jsx, Quotation.jsx, SiteVisitPlan.jsx, VideoCallSolution.jsx) now insert here instead of " +
+      "POSTing to Apps Script. Append-only, no unique constraint on ticket_uuid (a ticket could in principle " +
+      "be cancelled from more than one stage's form — same as the legacy sheet allowed). Client-facing " +
+      "display fields (client_name/phone_number/company_name/category/mention_issue/cre_name) are NOT " +
+      "duplicated here — Cancle.jsx joins back to `tickets` for those, fixing a pre-existing gap in the " +
+      "legacy flow (its sheet row shape had no real ticket link, so role='user' CRE-name filtering on that " +
+      "page silently never worked). " +
+      "IMPORTANT, explicit user decision (2026-08-26): cancelling a ticket ONLY removes it from the " +
+      "cancelling page's own pending list (client-side filter, unchanged from legacy behavior) — it does NOT " +
+      "globally exclude the ticket from any other stage's pending query. Making 'cancelled' a real cross-stage " +
+      "gate was explicitly deferred, not an oversight.",
+    fields: [
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "ticket_uuid", type: "uuid", note: "FK -> tickets(uuid), the real relational key." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "ticket_id", type: "text", note: "Plain denormalized column (not the FK) — populated at insert, used for display/search." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "cancelled_from_stage", type: "text", note: "Which page's form submitted the cancellation: 'Follow-Up' | 'Quotation' | 'Site Visit Plan' | 'Video Call Solution'." },
+      { sheetColumn: null, sheetIndex: null, sheetField: "cancelRemarks", supabaseColumn: "remarks", type: "text" },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "created_at", type: "timestamptz", note: "Defaults to now() at insert time." },
+    ],
+    notFields: [
+      "The legacy sheet row also carried title/description fields — these were always-blank artifacts (the " +
+      "ticket data model has no such fields) and were dropped, not modeled here.",
     ],
   },
 };
