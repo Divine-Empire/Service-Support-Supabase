@@ -246,11 +246,6 @@ export default function SiteVisitOTPVerification() {
       return;
     }
 
-    if (!videoFile) {
-      alert("Please select a Video file first");
-      return;
-    }
-
     if (!formData.locallyPurchasedSpares) {
       alert("Please select Locally purchased spares option");
       return;
@@ -259,13 +254,12 @@ export default function SiteVisitOTPVerification() {
     setIsSubmitting(true);
 
     try {
-      // All three uploads happen here, in parallel, only now that every
-      // other validation has already passed — nothing was uploaded on file
-      // selection.
+      // Uploads happen here, in parallel, only now that every
+      // validation has passed.
       const [serviceReportUrl, quotationReceiveUrl, videoUrl] = await Promise.all([
         uploadToStorage(serviceReportFile, "service_report"),
         quotationReceiveFile ? uploadToStorage(quotationReceiveFile, "quotation_receive") : Promise.resolve(null),
-        uploadToStorage(videoFile, "video"),
+        videoFile ? uploadToStorage(videoFile, "video") : Promise.resolve(null),
       ]);
 
       const { error } = await supabase.from("otp_verification").insert({
@@ -1154,7 +1148,7 @@ export default function SiteVisitOTPVerification() {
 
           <div className="space-y-1">
             <Label className="text-gray-600 font-medium font-sans">
-              Video (max 100MB) *
+              Video (max 100MB)
             </Label>
             {videoFile ? (
               <div className="flex items-center justify-between border border-blue-200 rounded-md p-2 bg-blue-50 text-blue-800 text-sm h-10">

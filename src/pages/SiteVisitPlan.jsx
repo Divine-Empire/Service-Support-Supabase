@@ -8,6 +8,7 @@ import {
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import TimePicker12 from "../components/ui/time-picker-12";
 import {
   Select,
   SelectContent,
@@ -1434,48 +1435,38 @@ export default function SiteVisitPlan() {
               </div>
 
               <div>
-                <Label>Travel-Time *</Label>
-                <Input
-                  type="time"
+                <Label>Travel-Time (AM/PM) *</Label>
+                <TimePicker12
                   value={formData.travelTime || ""}
-                  onChange={(e) =>
-                    handleInputChange("travelTime", e.target.value)
-                  }
-                  required
+                  onChange={(val) => handleInputChange("travelTime", val)}
                 />
               </div>
 
               <div>
                 <Label>Transportation *</Label>
                 <Select
+                  value={formData.transportation || undefined}
                   onValueChange={(value) =>
                     handleInputChange("transportation", value)
                   }
                 >
                   <SelectTrigger
-                    className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                    data-testid="select-person-name"
+                    className="border-gray-300 focus:border-blue-500 focus:ring-blue-500 bg-white"
+                    data-testid="select-transportation"
                   >
                     <SelectValue placeholder="Select transportation" />
                   </SelectTrigger>
                   <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
-                    {masterData.length > 0 &&
-                      masterData[0]["Transportation(drop-down)"] ? (
-                      masterData[0]["Transportation(drop-down)"].map(
-                        (item, ind) => (
-                          <SelectItem
-                            key={ind}
-                            value={item}
-                            className="hover:bg-blue-50 focus:bg-blue-50"
-                          >
-                            {item}
-                          </SelectItem>
-                        )
+                    {["By Bus", "By Train", "By Air", "By Personal Vehicle"].map(
+                      (item, ind) => (
+                        <SelectItem
+                          key={ind}
+                          value={item}
+                          className="hover:bg-blue-50 focus:bg-blue-50"
+                        >
+                          {item}
+                        </SelectItem>
                       )
-                    ) : (
-                      <SelectItem value="Loading" disabled>
-                        Loading options...
-                      </SelectItem>
                     )}
                   </SelectContent>
                 </Select>

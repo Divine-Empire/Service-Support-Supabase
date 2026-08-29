@@ -8,6 +8,7 @@ import {
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import TimePicker12 from "../components/ui/time-picker-12";
 import {
   Select,
   SelectContent,
@@ -69,7 +70,7 @@ export default function TicketAndEnquiry() {
     serviceLocation: "",
     challanCopy: "",
     machinePhoto: "",
-    videoCall: "",
+    videoCall: "Yes",
     subCategory: "",
     videoCallTime: "",
     engineerAssign: ""
@@ -345,6 +346,18 @@ export default function TicketAndEnquiry() {
 
   const userName = localStorage.getItem("currentUsername");
 
+  const isValidVideoCallTime = (timeStr) => {
+    if (!timeStr) return false;
+    const [hoursStr, minutesStr] = timeStr.split(":");
+    const hours = parseInt(hoursStr, 10);
+    const minutes = parseInt(minutesStr, 10);
+    if (isNaN(hours) || isNaN(minutes)) return false;
+    const totalMinutes = hours * 60 + minutes;
+    const startMinutes = 9 * 60 + 30; // 9:30 AM = 570 mins
+    const endMinutes = 19 * 60 + 30;   // 7:30 PM = 1170 mins
+    return totalMinutes >= startMinutes && totalMinutes <= endMinutes;
+  };
+
   const handleNewEnquirySubmit = async (e) => {
     e.preventDefault();
 
@@ -371,6 +384,10 @@ export default function TicketAndEnquiry() {
     if (newEnquiryData.videoCall === "Yes") {
       if (!newEnquiryData.videoCallTime) {
         alert("Error: Video-Call Time is required");
+        return;
+      }
+      if (!isValidVideoCallTime(newEnquiryData.videoCallTime)) {
+        alert("Error: Video Call time must be between 9:30 AM and 7:30 PM.");
         return;
       }
       if (!newEnquiryData.engineerAssign) {
@@ -482,7 +499,7 @@ export default function TicketAndEnquiry() {
             serviceLocation: "",
             challanCopy: "",
             machinePhoto: "",
-            videoCall: "",
+            videoCall: "Yes",
             subCategory: "",
             videoCallTime: "",
             engineerAssign: ""
@@ -565,7 +582,7 @@ export default function TicketAndEnquiry() {
             serviceLocation: "",
             challanCopy: "",
             machinePhoto: "",
-            videoCall: "",
+            videoCall: "Yes",
             subCategory: "",
             videoCallTime: "",
             engineerAssign: ""
@@ -746,7 +763,7 @@ export default function TicketAndEnquiry() {
                   serviceLocation: "",
                   challanCopy: "",
                   machinePhoto: "",
-                  videoCall: "",
+                  videoCall: "Yes",
                   subCategory: "",
                   videoCallTime: "",
                   engineerAssign: "",
@@ -1244,26 +1261,13 @@ export default function TicketAndEnquiry() {
 
               <div className={`md:col-span-2 grid grid-cols-1 ${newEnquiryData.videoCall === "Yes" ? "md:grid-cols-3" : "md:grid-cols-2"} gap-4`}>
                 <div className="space-y-1">
-                  <Label className="text-sm">Video-Call</Label>
-                  <Select
-                    onValueChange={(value) =>
-                      setNewEnquiryData(prev => ({
-                        ...prev,
-                        videoCall: value,
-                        engineerAssign:
-                          value === "Yes"
-                            ? prev.engineerAssign || (masterData[0]?.["Engineer Assign Name"]?.[0] || "")
-                            : prev.engineerAssign,
-                      }))
-                    }
-                    value={newEnquiryData.videoCall || ""}
-                  >
+                  <Label className="text-sm">Video-Call *</Label>
+                  <Select value="Yes" disabled>
                     <SelectTrigger>
-                      <SelectValue placeholder="Yes/No" />
+                      <SelectValue placeholder="Yes" />
                     </SelectTrigger>
                     <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
                       <SelectItem value="Yes">Yes</SelectItem>
-                      <SelectItem value="No">No</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1271,12 +1275,10 @@ export default function TicketAndEnquiry() {
                 {newEnquiryData.videoCall === "Yes" && (
                   <>
                     <div className="space-y-1 animate-in fade-in duration-300">
-                      <Label className="text-sm">Video-Call Time *</Label>
-                      <Input
-                        type="time"
+                      <Label className="text-sm">Video-Call Time (9:30 AM - 7:30 PM) *</Label>
+                      <TimePicker12
                         value={newEnquiryData.videoCallTime || ""}
-                        onChange={(e) => setNewEnquiryData(prev => ({ ...prev, videoCallTime: e.target.value }))}
-                        required
+                        onChange={(val) => setNewEnquiryData(prev => ({ ...prev, videoCallTime: val }))}
                       />
                     </div>
                     <div className="space-y-1 animate-in fade-in duration-300">

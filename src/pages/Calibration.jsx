@@ -71,12 +71,27 @@ export default function Calibration() {
 
       if (calibrationError) throw calibrationError;
 
+      const { data: quotationRows } = await supabase
+        .from("quotation")
+        .select("ticket_id, quotation_no, quotation_pdf_link")
+        .in("ticket_id", ticketIds);
+
+      const { data: invoiceFullRows } = await supabase
+        .from("invoice")
+        .select("ticket_id, invoice_no_nabl, invoice_no_service, invoice_no_spare, attachment_nabl, attachment_service, attachment_spear")
+        .in("ticket_id", ticketIds);
+
       const calibrationByTicket = new Map((calibrationRows || []).map((c) => [c.ticket_id, c]));
+      const quotationByTicket = new Map((quotationRows || []).map((q) => [q.ticket_id, q]));
+      const invoiceByTicket = new Map((invoiceFullRows || []).map((i) => [i.ticket_id, i]));
 
       const pending = [];
       const history = [];
 
       (ticketsData || []).forEach((t) => {
+        const q = quotationByTicket.get(t.ticket_id);
+        const inv = invoiceByTicket.get(t.ticket_id);
+
         const base = {
           ticketId: t.ticket_id,
           ticketUuid: t.uuid,
@@ -85,6 +100,10 @@ export default function Calibration() {
           phoneNumber: t.phone_number || "",
           companyName: t.company_name || "",
           CREName: t.cre_name || "",
+          quotationNo: q?.quotation_no || "",
+          quotationPdfLink: q?.quotation_pdf_link || "",
+          invoiceNo: inv?.invoice_no_nabl || inv?.invoice_no_service || inv?.invoice_no_spare || "",
+          invoiceCopy: inv?.attachment_nabl || inv?.attachment_service || inv?.attachment_spear || "",
         };
 
         const cal = calibrationByTicket.get(t.ticket_id);
@@ -256,7 +275,9 @@ export default function Calibration() {
         String(item.ticketId || "").toLowerCase().includes(q) ||
         String(item.clientName || "").toLowerCase().includes(q) ||
         String(item.companyName || "").toLowerCase().includes(q) ||
-        String(item.phoneNumber || "").toLowerCase().includes(q)
+        String(item.phoneNumber || "").toLowerCase().includes(q) ||
+        String(item.quotationNo || "").toLowerCase().includes(q) ||
+        String(item.invoiceNo || "").toLowerCase().includes(q)
       );
     })
     .reverse();
@@ -268,7 +289,9 @@ export default function Calibration() {
         String(item.ticketId || "").toLowerCase().includes(q) ||
         String(item.clientName || "").toLowerCase().includes(q) ||
         String(item.companyName || "").toLowerCase().includes(q) ||
-        String(item.phoneNumber || "").toLowerCase().includes(q)
+        String(item.phoneNumber || "").toLowerCase().includes(q) ||
+        String(item.quotationNo || "").toLowerCase().includes(q) ||
+        String(item.invoiceNo || "").toLowerCase().includes(q)
       );
     })
     .reverse();
@@ -334,15 +357,19 @@ export default function Calibration() {
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Action</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Date</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Ticket ID</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Client Name</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">Company Name</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Person Name</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Phone Number</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Quotation Number</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Quotation Copy</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Invoice Number</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Invoice Copy</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-blue-100">
                         {filteredPendingData.length === 0 ? (
                           <tr>
-                            <td colSpan={6} className="text-center py-8 bg-white" data-testid="text-no-pending">
+                            <td colSpan={10} className="text-center py-8 bg-white" data-testid="text-no-pending">
                               {fetchLoading ? (
                                 <div className="flex justify-center items-center text-blue-700">
                                   <LoaderIcon className="animate-spin w-8 h-8" />
@@ -368,9 +395,39 @@ export default function Calibration() {
                               </td>
                               <td className="px-4 py-3 text-blue-900">{formatDate(ticket.timeStemp)}</td>
                               <td className="px-4 py-3 font-medium text-blue-800">{ticket.ticketId}</td>
-                              <td className="px-4 py-3 text-blue-900">{ticket.clientName}</td>
                               <td className="px-4 py-3 text-blue-900">{ticket.companyName || "-"}</td>
+                              <td className="px-4 py-3 text-blue-900">{ticket.clientName}</td>
                               <td className="px-4 py-3 text-blue-900">{ticket.phoneNumber}</td>
+                              <td className="px-4 py-3 text-blue-900 font-medium">{ticket.quotationNo || "-"}</td>
+                              <td className="px-4 py-3">
+                                {ticket.quotationPdfLink ? (
+                                  <a
+                                    href={ticket.quotationPdfLink}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
+                                  >
+                                    View
+                                  </a>
+                                ) : (
+                                  "-"
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-blue-900 font-medium">{ticket.invoiceNo || "-"}</td>
+                              <td className="px-4 py-3">
+                                {ticket.invoiceCopy ? (
+                                  <a
+                                    href={ticket.invoiceCopy}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
+                                  >
+                                    View
+                                  </a>
+                                ) : (
+                                  "-"
+                                )}
+                              </td>
                             </tr>
                           ))
                         )}
@@ -399,8 +456,8 @@ export default function Calibration() {
                               <div className="flex justify-between items-start">
                                 <div>
                                   <h3 className="font-bold text-blue-800 text-lg">{ticket.ticketId}</h3>
-                                  <p className="text-sm text-gray-600">{ticket.clientName}</p>
                                   <p className="text-sm text-gray-600 font-medium">Company: {ticket.companyName || "N/A"}</p>
+                                  <p className="text-sm text-gray-600">Person: {ticket.clientName}</p>
                                 </div>
                                 <Button
                                   size="sm"
@@ -411,10 +468,34 @@ export default function Calibration() {
                                   Calibration
                                 </Button>
                               </div>
-                              <div className="text-sm">
-                                <p className="text-gray-500 font-medium">Phone</p>
-                                <p className="text-blue-900">{ticket.phoneNumber}</p>
+                              <div className="grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                  <p className="text-gray-500 font-medium">Phone</p>
+                                  <p className="text-blue-900">{ticket.phoneNumber}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-500 font-medium">Quotation No.</p>
+                                  <p className="text-blue-900">{ticket.quotationNo || "N/A"}</p>
+                                </div>
                               </div>
+                              <div className="grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                  <p className="text-gray-500 font-medium">Invoice No.</p>
+                                  <p className="text-blue-900">{ticket.invoiceNo || "N/A"}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-500 font-medium">Quotation Copy</p>
+                                  {ticket.quotationPdfLink ? (
+                                    <a href={ticket.quotationPdfLink} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">View</a>
+                                  ) : "N/A"}
+                                </div>
+                              </div>
+                              {ticket.invoiceCopy && (
+                                <div className="text-sm">
+                                  <p className="text-gray-500 font-medium">Invoice Copy</p>
+                                  <a href={ticket.invoiceCopy} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">View</a>
+                                </div>
+                              )}
                             </CardContent>
                           </Card>
                         ))
@@ -432,8 +513,13 @@ export default function Calibration() {
                         <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Date</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Ticket ID</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Client Name</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">Company Name</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Person Name</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Phone Number</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Quotation Number</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Quotation Copy</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Invoice Number</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Invoice Copy</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Calibration Date</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Calibration Period (Month)</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Calibration Due Date</th>
@@ -444,7 +530,7 @@ export default function Calibration() {
                       <tbody className="bg-white divide-y divide-blue-100">
                         {filteredHistoryData.length === 0 ? (
                           <tr>
-                            <td colSpan={9} className="text-center py-8 bg-white" data-testid="text-no-history">
+                            <td colSpan={14} className="text-center py-8 bg-white" data-testid="text-no-history">
                               {fetchLoading ? (
                                 <div className="flex justify-center items-center text-blue-700">
                                   <LoaderIcon className="animate-spin w-8 h-8" />
@@ -459,8 +545,39 @@ export default function Calibration() {
                             <tr key={ind} className={ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"}>
                               <td className="px-4 py-3 text-blue-900">{formatDate(ticket.timeStemp)}</td>
                               <td className="px-4 py-3 font-medium text-blue-800">{ticket.ticketId}</td>
+                              <td className="px-4 py-3 text-blue-900">{ticket.companyName || "-"}</td>
                               <td className="px-4 py-3 text-blue-900">{ticket.clientName}</td>
                               <td className="px-4 py-3 text-blue-900">{ticket.phoneNumber}</td>
+                              <td className="px-4 py-3 text-blue-900 font-medium">{ticket.quotationNo || "-"}</td>
+                              <td className="px-4 py-3">
+                                {ticket.quotationPdfLink ? (
+                                  <a
+                                    href={ticket.quotationPdfLink}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
+                                  >
+                                    View
+                                  </a>
+                                ) : (
+                                  "-"
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-blue-900 font-medium">{ticket.invoiceNo || "-"}</td>
+                              <td className="px-4 py-3">
+                                {ticket.invoiceCopy ? (
+                                  <a
+                                    href={ticket.invoiceCopy}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
+                                  >
+                                    View
+                                  </a>
+                                ) : (
+                                  "-"
+                                )}
+                              </td>
                               <td className="px-4 py-3 text-blue-900">{formatDate(ticket.calibrationDate) || ""}</td>
                               <td className="px-4 py-3 text-blue-900">{ticket.calibrationPeriodMonth}</td>
                               <td className="px-4 py-3 text-blue-900">{formatDate(ticket.calibrationDueDate) || ""}</td>
@@ -516,7 +633,30 @@ export default function Calibration() {
                             <CardContent className="p-4 space-y-3">
                               <div>
                                 <h3 className="font-bold text-blue-800 text-lg">{ticket.ticketId}</h3>
-                                <p className="text-sm text-gray-600">{ticket.clientName}</p>
+                                <p className="text-sm text-gray-600 font-medium">Company: {ticket.companyName || "N/A"}</p>
+                                <p className="text-sm text-gray-600">Person: {ticket.clientName}</p>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                  <p className="text-gray-500 font-medium">Phone</p>
+                                  <p className="text-blue-900">{ticket.phoneNumber}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-500 font-medium">Quotation No.</p>
+                                  <p className="text-blue-900">{ticket.quotationNo || "N/A"}</p>
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                  <p className="text-gray-500 font-medium">Invoice No.</p>
+                                  <p className="text-blue-900">{ticket.invoiceNo || "N/A"}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-500 font-medium">Quotation Copy</p>
+                                  {ticket.quotationPdfLink ? (
+                                    <a href={ticket.quotationPdfLink} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">View</a>
+                                  ) : "N/A"}
+                                </div>
                               </div>
                               <div className="grid grid-cols-2 gap-3 text-sm">
                                 <div>

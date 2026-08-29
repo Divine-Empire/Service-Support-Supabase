@@ -501,11 +501,34 @@ export default function FollowUp() {
           </div>
           <div>
             <Label>Next Action *</Label>
-            <Input
-              value={formData.nextAction || ""}
-              onChange={(e) => handleInputChange("nextAction", e.target.value)}
-              data-testid="input-next-action"
-            />
+            <Select
+              value={formData.nextAction || undefined}
+              onValueChange={(value) => handleInputChange("nextAction", value)}
+            >
+              <SelectTrigger className="bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-500" data-testid="select-next-action">
+                <SelectValue placeholder="Select Next Action" />
+              </SelectTrigger>
+              <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                {[
+                  "Quotation Sent",
+                  "Follow-up Required",
+                  "Customer Contacted",
+                  "Under Discussion",
+                  "Price Negotiation",
+                  "Waiting for Customer Response",
+                  "Purchase Decision Pending",
+                  "Quotation Revised",
+                  "Order Confirmed",
+                  "Order Lost",
+                  "On Hold",
+                  "Not Interested",
+                ].map((option) => (
+                  <SelectItem key={option} value={option} className="hover:bg-blue-50 focus:bg-blue-50">
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <Label>Next Date Of Call *</Label>

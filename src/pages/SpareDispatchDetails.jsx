@@ -63,6 +63,11 @@ export default function SpareDispatchDetails() {
 
       if (ticketsError) throw ticketsError;
 
+      const { data: invoiceFullRows } = await supabase
+        .from("invoice")
+        .select("ticket_id, invoice_no_spare, attachment_spear, invoice_no_service, attachment_service, invoice_no_nabl, attachment_nabl")
+        .in("ticket_id", ticketIds);
+
       const { data: dispatchRows, error: dispatchError } = await supabase
         .from("spare_dispatch_details")
         .select("*")
@@ -70,12 +75,15 @@ export default function SpareDispatchDetails() {
 
       if (dispatchError) throw dispatchError;
 
+      const invoiceByTicket = new Map((invoiceFullRows || []).map((i) => [i.ticket_id, i]));
       const dispatchByTicket = new Map((dispatchRows || []).map((d) => [d.ticket_id, d]));
 
       const pending = [];
       const history = [];
 
       (ticketsData || []).forEach((t) => {
+        const inv = invoiceByTicket.get(t.ticket_id);
+
         const base = {
           ticketId: t.ticket_id,
           ticketUuid: t.uuid,
@@ -83,7 +91,10 @@ export default function SpareDispatchDetails() {
           clientName: t.client_name || "",
           phoneNumber: t.phone_number || "",
           companyName: t.company_name || "",
+          mentionIssue: t.mention_issue || "",
           CREName: t.cre_name || "",
+          invoiceNoSpare: inv?.invoice_no_spare || inv?.invoice_no_service || inv?.invoice_no_nabl || "",
+          attachmentSpear: inv?.attachment_spear || inv?.attachment_service || inv?.attachment_nabl || "",
         };
 
         const d = dispatchByTicket.get(t.ticket_id);
@@ -174,6 +185,10 @@ export default function SpareDispatchDetails() {
       alert("Please select Dispatch Date");
       return;
     }
+    if (!biltyCopyFile) {
+      alert("Please select a Bilty Copy file");
+      return;
+    }
 
     setIsSubmitting(true);
 
@@ -240,7 +255,9 @@ export default function SpareDispatchDetails() {
         String(item.ticketId || "").toLowerCase().includes(q) ||
         String(item.clientName || "").toLowerCase().includes(q) ||
         String(item.companyName || "").toLowerCase().includes(q) ||
-        String(item.phoneNumber || "").toLowerCase().includes(q)
+        String(item.phoneNumber || "").toLowerCase().includes(q) ||
+        String(item.mentionIssue || "").toLowerCase().includes(q) ||
+        String(item.invoiceNoSpare || "").toLowerCase().includes(q)
       );
     })
     .reverse();
@@ -252,7 +269,9 @@ export default function SpareDispatchDetails() {
         String(item.ticketId || "").toLowerCase().includes(q) ||
         String(item.clientName || "").toLowerCase().includes(q) ||
         String(item.companyName || "").toLowerCase().includes(q) ||
-        String(item.phoneNumber || "").toLowerCase().includes(q)
+        String(item.phoneNumber || "").toLowerCase().includes(q) ||
+        String(item.mentionIssue || "").toLowerCase().includes(q) ||
+        String(item.invoiceNoSpare || "").toLowerCase().includes(q)
       );
     })
     .reverse();
@@ -318,15 +337,18 @@ export default function SpareDispatchDetails() {
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Action</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Date</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Ticket ID</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Client Name</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">Company Name</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Person Name</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Phone Number</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">Issue</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Spare Invoice No.</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Spare Invoice Copy</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-blue-100">
                         {filteredPendingData.length === 0 ? (
                           <tr>
-                            <td colSpan={6} className="text-center py-8 bg-white" data-testid="text-no-pending">
+                            <td colSpan={9} className="text-center py-8 bg-white" data-testid="text-no-pending">
                               {fetchLoading ? (
                                 <div className="flex justify-center items-center text-blue-700">
                                   <LoaderIcon className="animate-spin w-8 h-8" />
@@ -352,9 +374,25 @@ export default function SpareDispatchDetails() {
                               </td>
                               <td className="px-4 py-3 text-blue-900">{formatDate(ticket.timeStemp)}</td>
                               <td className="px-4 py-3 font-medium text-blue-800">{ticket.ticketId}</td>
-                              <td className="px-4 py-3 text-blue-900">{ticket.clientName}</td>
                               <td className="px-4 py-3 text-blue-900">{ticket.companyName || "-"}</td>
+                              <td className="px-4 py-3 text-blue-900">{ticket.clientName}</td>
                               <td className="px-4 py-3 text-blue-900">{ticket.phoneNumber}</td>
+                              <td className="px-4 py-3 text-blue-900 truncate max-w-xs hover:whitespace-normal">{ticket.mentionIssue || "-"}</td>
+                              <td className="px-4 py-3 text-blue-900 font-medium">{ticket.invoiceNoSpare || "-"}</td>
+                              <td className="px-4 py-3">
+                                {ticket.attachmentSpear ? (
+                                  <a
+                                    href={ticket.attachmentSpear}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
+                                  >
+                                    View
+                                  </a>
+                                ) : (
+                                  "-"
+                                )}
+                              </td>
                             </tr>
                           ))
                         )}
@@ -383,8 +421,8 @@ export default function SpareDispatchDetails() {
                               <div className="flex justify-between items-start">
                                 <div>
                                   <h3 className="font-bold text-blue-800 text-lg">{ticket.ticketId}</h3>
-                                  <p className="text-sm text-gray-600">{ticket.clientName}</p>
                                   <p className="text-sm text-gray-600 font-medium">Company: {ticket.companyName || "N/A"}</p>
+                                  <p className="text-sm text-gray-600">Person: {ticket.clientName}</p>
                                 </div>
                                 <Button
                                   size="sm"
@@ -395,10 +433,26 @@ export default function SpareDispatchDetails() {
                                   Process
                                 </Button>
                               </div>
-                              <div className="text-sm">
-                                <p className="text-gray-500 font-medium">Phone</p>
-                                <p className="text-blue-900">{ticket.phoneNumber}</p>
+                              <div className="grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                  <p className="text-gray-500 font-medium">Phone</p>
+                                  <p className="text-blue-900">{ticket.phoneNumber}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-500 font-medium">Spare Invoice No.</p>
+                                  <p className="text-blue-900">{ticket.invoiceNoSpare || "N/A"}</p>
+                                </div>
                               </div>
+                              <div>
+                                <p className="text-gray-500 font-medium text-sm">Issue</p>
+                                <p className="text-blue-900 line-clamp-2">{ticket.mentionIssue || "N/A"}</p>
+                              </div>
+                              {ticket.attachmentSpear && (
+                                <div className="text-sm">
+                                  <p className="text-gray-500 font-medium">Spare Invoice Copy</p>
+                                  <a href={ticket.attachmentSpear} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">View</a>
+                                </div>
+                              )}
                             </CardContent>
                           </Card>
                         ))
@@ -416,8 +470,12 @@ export default function SpareDispatchDetails() {
                         <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Date</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Ticket ID</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Client Name</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">Company Name</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Person Name</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Phone Number</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">Issue</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Spare Invoice No.</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Spare Invoice Copy</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Transporter Name</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Docket/Bilty No.</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Dispatch Date</th>
@@ -429,7 +487,7 @@ export default function SpareDispatchDetails() {
                       <tbody className="bg-white divide-y divide-blue-100">
                         {filteredHistoryData.length === 0 ? (
                           <tr>
-                            <td colSpan={10} className="text-center py-8 bg-white" data-testid="text-no-history">
+                            <td colSpan={14} className="text-center py-8 bg-white" data-testid="text-no-history">
                               {fetchLoading ? (
                                 <div className="flex justify-center items-center text-blue-700">
                                   <LoaderIcon className="animate-spin w-8 h-8" />
@@ -444,8 +502,25 @@ export default function SpareDispatchDetails() {
                             <tr key={ind} className={ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"}>
                               <td className="px-4 py-3 text-blue-900">{formatDate(ticket.timeStemp)}</td>
                               <td className="px-4 py-3 font-medium text-blue-800">{ticket.ticketId}</td>
+                              <td className="px-4 py-3 text-blue-900">{ticket.companyName || "-"}</td>
                               <td className="px-4 py-3 text-blue-900">{ticket.clientName}</td>
                               <td className="px-4 py-3 text-blue-900">{ticket.phoneNumber}</td>
+                              <td className="px-4 py-3 text-blue-900 truncate max-w-xs hover:whitespace-normal">{ticket.mentionIssue || "-"}</td>
+                              <td className="px-4 py-3 text-blue-900 font-medium">{ticket.invoiceNoSpare || "-"}</td>
+                              <td className="px-4 py-3">
+                                {ticket.attachmentSpear ? (
+                                  <a
+                                    href={ticket.attachmentSpear}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
+                                  >
+                                    View
+                                  </a>
+                                ) : (
+                                  "-"
+                                )}
+                              </td>
                               <td className="px-4 py-3 text-blue-900">{ticket.transporterName}</td>
                               <td className="px-4 py-3 text-blue-900">{ticket.docketBiltyNo}</td>
                               <td className="px-4 py-3 text-blue-900">{formatDate(ticket.dispatchDate) || ""}</td>
@@ -502,8 +577,29 @@ export default function SpareDispatchDetails() {
                             <CardContent className="p-4 space-y-3">
                               <div>
                                 <h3 className="font-bold text-blue-800 text-lg">{ticket.ticketId}</h3>
-                                <p className="text-sm text-gray-600">{ticket.clientName}</p>
+                                <p className="text-sm text-gray-600 font-medium">Company: {ticket.companyName || "N/A"}</p>
+                                <p className="text-sm text-gray-600">Person: {ticket.clientName}</p>
                               </div>
+                              <div className="grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                  <p className="text-gray-500 font-medium">Phone</p>
+                                  <p className="text-blue-900">{ticket.phoneNumber}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-500 font-medium">Spare Invoice No.</p>
+                                  <p className="text-blue-900">{ticket.invoiceNoSpare || "N/A"}</p>
+                                </div>
+                              </div>
+                              <div>
+                                <p className="text-gray-500 font-medium text-sm">Issue</p>
+                                <p className="text-blue-900 line-clamp-2">{ticket.mentionIssue || "N/A"}</p>
+                              </div>
+                              {ticket.attachmentSpear && (
+                                <div className="text-sm">
+                                  <p className="text-gray-500 font-medium">Spare Invoice Copy</p>
+                                  <a href={ticket.attachmentSpear} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">View</a>
+                                </div>
+                              )}
                               <div className="grid grid-cols-2 gap-3 text-sm">
                                 <div>
                                   <p className="text-gray-500 font-medium">Transporter Name</p>
@@ -624,12 +720,13 @@ export default function SpareDispatchDetails() {
             />
           </div>
           <div className="md:col-span-2">
-            <Label>Bilty Copy Upload</Label>
+            <Label>Bilty Copy Upload *</Label>
             <Input
               type="file"
               onChange={handleFileSelect}
               disabled={isSubmitting}
               data-testid="input-bilty-copy"
+              required
             />
             {biltyCopyFile && (
               <p className="text-xs text-emerald-700 mt-1 truncate">Selected: {biltyCopyFile.name}</p>
