@@ -6,7 +6,6 @@ import {
 } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
-import { Label } from "../../components/ui/label";
 import {
   Tabs,
   TabsContent,
@@ -17,6 +16,7 @@ import { Modal } from "../../components/ui/modal";
 import { useToast } from "../../hooks/use-toast";
 import { Loader2Icon, LoaderIcon, Plus, Pencil, Trash2 } from "lucide-react";
 import { supabase } from "../../lib/supabase/client";
+import { ltoSupabase } from "../../lib/supabase/ltoClient";
 import { fetchDropdownRows } from "../../lib/supabase/dropdown";
 
 // Renamed in migration 0043 to match the renamed tickets columns:
@@ -74,22 +74,19 @@ export default function Master() {
   };
 
   // ── Company Details tab state ───────────────────────────────────────
+  // Read-only: sourced live from the production Lead-To-Order-Supabase-New
+  // project's client master. Editing now happens there, not in this testing
+  // project — see [[servicesupport_migration_project]] memory.
   const [companies, setCompanies] = useState([]);
   const [companyLoading, setCompanyLoading] = useState(false);
   const [companySearch, setCompanySearch] = useState("");
-  const [showCompanyModal, setShowCompanyModal] = useState(false);
-  const [isEditingCompany, setIsEditingCompany] = useState(false);
-  const [companyForm, setCompanyForm] = useState({ uuid: null, companyName: "", billingAddress: "", gstNumber: "" });
-  const [isSavingCompany, setIsSavingCompany] = useState(false);
-  const [deleteCompanyTarget, setDeleteCompanyTarget] = useState(null);
-  const [isDeletingCompany, setIsDeletingCompany] = useState(false);
 
   const fetchCompanies = async () => {
     setCompanyLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("company_details")
-        .select("*")
+      const { data, error } = await ltoSupabase
+        .from("lto_client_master")
+        .select("company_name, state, state_code, gst_number, billing_address, company_group_name")
         .order("company_name", { ascending: true });
       if (error) throw error;
       setCompanies(data || []);
@@ -197,74 +194,6 @@ export default function Master() {
       String(c.gst_number || "").toLowerCase().includes(q)
     );
   });
-
-  const openCreateCompanyModal = () => {
-    setIsEditingCompany(false);
-    setCompanyForm({ uuid: null, companyName: "", billingAddress: "", gstNumber: "" });
-    setShowCompanyModal(true);
-  };
-
-  const openEditCompanyModal = (company) => {
-    setIsEditingCompany(true);
-    setCompanyForm({
-      uuid: company.uuid,
-      companyName: company.company_name || "",
-      billingAddress: company.billing_address || "",
-      gstNumber: company.gst_number || "",
-    });
-    setShowCompanyModal(true);
-  };
-
-  const handleCompanySubmit = async (e) => {
-    e.preventDefault();
-    if (!companyForm.companyName.trim()) {
-      alert("Company Name is required");
-      return;
-    }
-
-    setIsSavingCompany(true);
-    try {
-      const payload = {
-        company_name: companyForm.companyName.trim(),
-        billing_address: companyForm.billingAddress.trim() || null,
-        gst_number: companyForm.gstNumber.trim() || null,
-      };
-
-      if (isEditingCompany) {
-        const { error } = await supabase.from("company_details").update(payload).eq("uuid", companyForm.uuid);
-        if (error) throw error;
-        toast({ title: "Success", description: "Company updated successfully" });
-      } else {
-        const { error } = await supabase.from("company_details").insert(payload);
-        if (error) throw error;
-        toast({ title: "Success", description: "Company added successfully" });
-      }
-      setShowCompanyModal(false);
-      fetchCompanies();
-    } catch (error) {
-      console.error("Error saving company:", error);
-      toast({ title: "Error", description: "Failed to save company", variant: "destructive" });
-    } finally {
-      setIsSavingCompany(false);
-    }
-  };
-
-  const handleDeleteCompany = async () => {
-    if (!deleteCompanyTarget) return;
-    setIsDeletingCompany(true);
-    try {
-      const { error } = await supabase.from("company_details").delete().eq("uuid", deleteCompanyTarget.uuid);
-      if (error) throw error;
-      toast({ title: "Success", description: "Company deleted successfully" });
-      setDeleteCompanyTarget(null);
-      fetchCompanies();
-    } catch (error) {
-      console.error("Error deleting company:", error);
-      toast({ title: "Error", description: "Failed to delete company", variant: "destructive" });
-    } finally {
-      setIsDeletingCompany(false);
-    }
-  };
 
   return (
     <div className="space-y-2">
@@ -413,6 +342,8 @@ export default function Master() {
             </TabsContent>
 
             {/* ── Company Details Tab ──────────────────────────────── */}
+            {/* Read-only — sourced live from the production
+                Lead-To-Order-Supabase-New project's client master. */}
             <TabsContent value="company" className="mt-0">
               <div className="flex flex-col sm:flex-row justify-between items-center gap-3 mb-4">
                 <Input
@@ -421,13 +352,6 @@ export default function Master() {
                   onChange={(e) => setCompanySearch(e.target.value)}
                   className="sm:w-80"
                 />
-                <Button
-                  onClick={openCreateCompanyModal}
-                  className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white flex items-center gap-1.5 shrink-0"
-                >
-                  <Plus className="w-4 h-4" />
-                  New Company
-                </Button>
               </div>
 
               <div className="relative overflow-x-auto">
@@ -435,16 +359,18 @@ export default function Master() {
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 z-10">
                       <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                        <th className="text-white px-4 py-3 text-left w-[100px]">Actions</th>
                         <th className="text-white px-4 py-3 text-left">Company Name</th>
-                        <th className="text-white px-4 py-3 text-left">Billing Address</th>
+                        <th className="text-white px-4 py-3 text-left">State</th>
+                        <th className="text-white px-4 py-3 text-left">State Code</th>
                         <th className="text-white px-4 py-3 text-left">GST Number</th>
+                        <th className="text-white px-4 py-3 text-left">Billing Address</th>
+                        <th className="text-white px-4 py-3 text-left">Company Group Name</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-blue-100">
                       {companyLoading ? (
                         <tr>
-                          <td colSpan={4} className="text-center py-8">
+                          <td colSpan={6} className="text-center py-8">
                             <div className="flex justify-center items-center text-blue-700">
                               <LoaderIcon className="animate-spin w-8 h-8" />
                             </div>
@@ -452,26 +378,19 @@ export default function Master() {
                         </tr>
                       ) : filteredCompanies.length === 0 ? (
                         <tr>
-                          <td colSpan={4} className="text-center py-8 text-blue-700">
+                          <td colSpan={6} className="text-center py-8 text-blue-700">
                             No companies found.
                           </td>
                         </tr>
                       ) : (
                         filteredCompanies.map((company, ind) => (
-                          <tr key={company.uuid} className={ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"}>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2">
-                                <Button variant="outline" size="sm" onClick={() => openEditCompanyModal(company)} className="border-blue-200 text-blue-700 hover:bg-blue-50 h-8 px-2">
-                                  <Pencil className="w-4 h-4" />
-                                </Button>
-                                <Button variant="outline" size="sm" onClick={() => setDeleteCompanyTarget(company)} className="border-red-200 text-red-600 hover:bg-red-50 h-8 px-2">
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            </td>
+                          <tr key={company.company_name} className={ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"}>
                             <td className="px-4 py-3 text-blue-900 font-medium">{company.company_name}</td>
-                            <td className="px-4 py-3 text-blue-900">{company.billing_address || "—"}</td>
+                            <td className="px-4 py-3 text-blue-900">{company.state || "—"}</td>
+                            <td className="px-4 py-3 text-blue-900">{company.state_code || "—"}</td>
                             <td className="px-4 py-3 text-blue-900">{company.gst_number || "—"}</td>
+                            <td className="px-4 py-3 text-blue-900">{company.billing_address || "—"}</td>
+                            <td className="px-4 py-3 text-blue-900">{company.company_group_name || "—"}</td>
                           </tr>
                         ))
                       )}
@@ -506,69 +425,6 @@ export default function Master() {
         </div>
       </Modal>
 
-      {/* Company create/edit modal */}
-      <Modal
-        isOpen={showCompanyModal}
-        onClose={() => setShowCompanyModal(false)}
-        title={isEditingCompany ? "Edit Company" : "New Company"}
-        size="lg"
-      >
-        <form onSubmit={handleCompanySubmit} className="space-y-4 p-2">
-          <div>
-            <Label>Company Name *</Label>
-            <Input
-              value={companyForm.companyName}
-              onChange={(e) => setCompanyForm((prev) => ({ ...prev, companyName: e.target.value }))}
-              placeholder="Enter company name"
-            />
-          </div>
-          <div>
-            <Label>Billing Address</Label>
-            <Input
-              value={companyForm.billingAddress}
-              onChange={(e) => setCompanyForm((prev) => ({ ...prev, billingAddress: e.target.value }))}
-              placeholder="Enter billing address"
-            />
-          </div>
-          <div>
-            <Label>GST Number</Label>
-            <Input
-              value={companyForm.gstNumber}
-              onChange={(e) => setCompanyForm((prev) => ({ ...prev, gstNumber: e.target.value }))}
-              placeholder="Enter GST number"
-            />
-          </div>
-          <div className="flex justify-end space-x-4 pt-2">
-            <Button type="button" variant="outline" onClick={() => setShowCompanyModal(false)}>Cancel</Button>
-            <Button type="submit" disabled={isSavingCompany} className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white">
-              {isSavingCompany && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
-              {isEditingCompany ? "Save Changes" : "Create Company"}
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Company delete confirmation */}
-      <Modal
-        isOpen={!!deleteCompanyTarget}
-        onClose={() => setDeleteCompanyTarget(null)}
-        title="Delete Company"
-        size="sm"
-      >
-        <div className="p-2 space-y-4">
-          <p className="text-gray-700">
-            Are you sure you want to delete{" "}
-            <span className="font-semibold">{deleteCompanyTarget?.company_name}</span>? This cannot be undone.
-          </p>
-          <div className="flex justify-end space-x-4">
-            <Button type="button" variant="outline" onClick={() => setDeleteCompanyTarget(null)}>Cancel</Button>
-            <Button type="button" onClick={handleDeleteCompany} disabled={isDeletingCompany} className="bg-red-600 hover:bg-red-700 text-white">
-              {isDeletingCompany && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
-              Delete
-            </Button>
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 }

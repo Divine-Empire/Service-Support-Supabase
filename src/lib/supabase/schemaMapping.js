@@ -53,6 +53,7 @@ export const SCHEMA_MAPPING = {
       { sheetColumn: "I", sheetIndex: 8, sheetField: "phoneNumber", supabaseColumn: "phone_number", type: "text" },
       { sheetColumn: "K", sheetIndex: 10, sheetField: "siteAddress", supabaseColumn: "site_address", type: "text" },
       { sheetColumn: "L", sheetIndex: 11, sheetField: "gstNo", supabaseColumn: "gst_no", type: "text" },
+      { sheetColumn: null, sheetIndex: null, sheetField: "gstAddress", supabaseColumn: "gst_address", type: "text", note: "NEW column, migration 0050 — reintroduces the field dropped in migration 0029 (see notFields below for that history), now actually populated: required via UI validation (not DB-enforced) and, for Existing clients, autofilled together with gstNo from the production Lead-To-Order-Supabase-New project's lto_client_master.billing_address (not the retired company_details table). Shown as 'Billing Address' on Invoice.jsx's Pending tab." },
       { sheetColumn: "M", sheetIndex: 12, sheetField: "machineName", supabaseColumn: "machine_name", type: "text", note: "Comma-joined list of selected machines." },
       { sheetColumn: "N", sheetIndex: 13, sheetField: "category", supabaseColumn: "category", type: "text", note: "Labeled 'Category' in the UI (single-select). History: sheet col N -> 'category' -> renamed to 'enquiry_type' in migration 0015 -> renamed BACK to 'category' in migration 0043 (freed up by column T's field moving to 'sub_category' first), when a genuinely new 'enquiry_type' field was introduced. Sourced from dropdown category='category' (NABL/Service/Spare-style values)." },
       { sheetColumn: "O", sheetIndex: 14, sheetField: "mentionIssue", supabaseColumn: "mention_issue", type: "text" },
@@ -80,7 +81,9 @@ export const SCHEMA_MAPPING = {
       "which itself is always null (0 of 1594 seeded companies have a real value); New-client submissions " +
       "weren't populating it either (0 of 2 live rows had a non-empty value). Removed from the table and " +
       "every migrated page's fetch/display/form (Ticket-and-Enquiry, Warranty-Check, Video-Call, Quotation, " +
-      "FollowUp, SiteVisitPlan).",
+      "FollowUp, SiteVisitPlan). REINTRODUCED in migration 0050 (2026-09-01) as a genuinely-populated field — " +
+      "see the gst_address field entry above — once its data source moved from the always-null " +
+      "company_details table to the production Lead-To-Order-Supabase-New project's lto_client_master.",
     ],
   },
 
@@ -130,7 +133,7 @@ export const SCHEMA_MAPPING = {
       "exceeds (~1400 rows). A plain unpaginated fetch silently truncates and was a real live bug in " +
       "Ticket-and-Enquiry.jsx and VideoCallSolution.jsx (fixed once discovered) before this helper existed.",
     fields: [
-      { sheetColumn: null, sheetField: null, supabaseColumn: "category", type: "text", note: "One of: call_type, source_of_enquiry, enquiry_receiver_name, category, sub_category, enquiry_type, service_location, engineer_assign_name, machine_name, item_name, quotation_share_by, transportation, payment_term, payment_mode, invoice_posted_by." },
+      { sheetColumn: null, sheetField: null, supabaseColumn: "category", type: "text", note: "One of: call_type, source_of_enquiry, enquiry_receiver_name, category, sub_category, enquiry_type, service_location, engineer_assign_name, machine_name, item_name, quotation_share_by, transportation, payment_term, payment_mode, invoice_posted_by, acceptance_via." },
       { sheetColumn: null, sheetField: null, supabaseColumn: "value", type: "text" },
     ],
     notFields: [
@@ -140,8 +143,9 @@ export const SCHEMA_MAPPING = {
       "category='item_name' corresponds to sheet header 'Item-Name' (masterData[0][\"Item-Name\"] in VideoCallSolution.jsx) — seeded in migration 0025, 1414 unique values (case-insensitive de-dup) extracted live from the DROPDOWN sheet, a real spare-parts catalog rather than a short fixed list.",
       "category='quotation_share_by' corresponds to sheet header 'Quotation shared by' (masterData[0][\"Quotation Share by\"] in Quotation.jsx) — seeded in migration 0026, 14 unique values.",
       "category='payment_term' corresponds to the Master sheet's 'Payment Terms' column (masterData[0][\"Payment Terms\"] in OrderReceived.jsx) — seeded in migration 0034, 8 unique values (e.g. 'Against Delivery', '1'..'45' day terms, 'FOC').",
-      "category='payment_mode' corresponds to the Master sheet's 'Payment Mode' column (masterData[0][\"Payment Mode\"] in OrderReceived.jsx) — seeded in migration 0034, 8 unique values.",
+      "category='payment_mode' corresponds to the Master sheet's 'Payment Mode' column (masterData[0][\"Payment Mode\"] in OrderReceived.jsx) — seeded in migration 0034, 8 unique values (includes 'FOC', which closes the ticket at Order Received instead of proceeding to Invoice — see order_received.invoice_planned).",
       "category='invoice_posted_by' corresponds to the Master sheet's 'Invoice Posted By(Drop-Down)' column (masterData[0][\"Invoice Posted By(Drop-Down)\"] in Invoice.jsx) — seeded in migration 0037, 6 unique values.",
+      "category='acceptance_via' (masterData[0][\"Acceptance Via\"] in OrderReceived.jsx) — new in migration 0049, 3 values (PO, Mail, Whatsapp). Replaced a hardcoded single-option ('Mail' only) select.",
       "The DROPDOWN sheet has many more columns (e.g. Expense Approval lists, etc.) used by pages not migrated yet — those aren't in this table.",
     ],
   },
@@ -151,10 +155,16 @@ export const SCHEMA_MAPPING = {
     sourceSheet: "DROPDOWN",
     primaryKey: "uuid",
     description:
-      "Existing-client lookup for the New Enquiry form's 'Company Name' autofill (handleNewEnquiryCompanyChange " +
-      "in Ticket-and-Enquiry.jsx) — selecting a company should fill in its billing address and GST number. " +
-      "Not wired into the app yet; seeded one-time from the live DROPDOWN sheet, de-duplicated by company name " +
-      "(case-insensitive, first occurrence kept).",
+      "RETIRED as of 2026-09-01 — this table still exists (and its data is untouched) but nothing in the app " +
+      "reads or writes it anymore. It used to back Ticket-and-Enquiry.jsx's 'Company Name' autofill and " +
+      "Master/Dropdown.jsx's 'Company Details' tab (a full CRUD admin screen); both were switched to fetch " +
+      "LIVE from the production Lead-To-Order-Supabase-New project's `lto_client_master` table instead, via " +
+      "the new `ltoSupabase` client (src/lib/supabase/ltoClient.js) — see [[servicesupport_migration_project]] " +
+      "memory. Reason: company_details.billing_address was always null in practice (see the fields note " +
+      "below), while lto_client_master is the real, actively-maintained source of company master data. " +
+      "Master/Dropdown.jsx's Company Details tab is now read-only (no Add/Edit/Delete) since editing belongs " +
+      "in the production project, not this testing one. Safe to drop this table entirely once confirmed " +
+      "nothing else references it.",
     fields: [
       { sheetColumn: null, sheetField: null, supabaseColumn: "company_name", type: "text", note: "Sheet header 'Company-Name'." },
       { sheetColumn: null, sheetField: null, supabaseColumn: "billing_address", type: "text", note: "Sheet header is actually 'GST Address', not 'Billing Address' as the app code assumes (masterData[0][\"Billing Address\"] is always empty — a pre-existing bug, left as-is). Of 1594 companies, 0 had a real value here; the one non-blank cell found was placeholder text ('add data in DROPDOWN sheet'), normalized to null." },
@@ -512,11 +522,12 @@ export const SCHEMA_MAPPING = {
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "ticket_uuid", type: "uuid", note: "FK -> tickets(uuid), the real relational key. Unique — one row per ticket." },
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "ticket_id", type: "text", note: "Plain denormalized column (not the FK) — populated at insert, used for display/search." },
       { sheetColumn: "CQ", sheetIndex: 94, sheetField: "paymentTerm", supabaseColumn: "payment_term", type: "text", note: "Dropdown category 'payment_term', seeded in migration 0034 (8 values, from the Master sheet's 'Payment Terms' column)." },
-      { sheetColumn: "CR", sheetIndex: 95, sheetField: "acceptanceVia", supabaseColumn: "acceptance_via", type: "text", note: "Hardcoded single-option select ('Mail') in the UI, not sourced from the dropdown table." },
-      { sheetColumn: "CS", sheetIndex: 96, sheetField: "seniorAttachmentsUrl", supabaseColumn: "senior_attachments", type: "text", note: "File URL in the 'ticket_enquiry' Supabase Storage bucket (path prefix 'order_received/'), replacing the old Google Drive upload." },
-      { sheetColumn: "CT", sheetIndex: 97, sheetField: "paymentMode", supabaseColumn: "payment_mode", type: "text", note: "Dropdown category 'payment_mode', seeded in migration 0034 (8 values, from the Master sheet's 'Payment Mode' column)." },
+      { sheetColumn: "CR", sheetIndex: 95, sheetField: "acceptanceVia", supabaseColumn: "acceptance_via", type: "text", note: "Dropdown category 'acceptance_via' (PO / Mail / Whatsapp), seeded in migration 0049 — was a hardcoded single-option select ('Mail' only) before." },
+      { sheetColumn: "CS", sheetIndex: 96, sheetField: "seniorApprovalUrl", supabaseColumn: "senior_approval", type: "text", note: "File URL in the 'ticket_enquiry' Supabase Storage bucket (path prefix 'order_received/'). Renamed from senior_attachments in migration 0049. Only shown/required in the UI once a Payment Mode is picked, and skipped for payment_mode='FOC'." },
+      { sheetColumn: "CT", sheetIndex: 97, sheetField: "paymentMode", supabaseColumn: "payment_mode", type: "text", note: "Dropdown category 'payment_mode', seeded in migration 0034 (8 values, from the Master sheet's 'Payment Mode' column, includes 'FOC'). Selecting 'FOC' closes the ticket at this stage — invoice_planned is left null instead of computed, see below." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "advance_payment_attachment", type: "text", note: "New in migration 0049. File URL in the 'ticket_enquiry' Storage bucket (path prefix 'order_received/'), proving advance payment received. Same conditional-on-Payment-Mode / skipped-for-FOC UI behavior as senior_approval." },
       { sheetColumn: "CO", sheetIndex: 92, sheetField: "actual", supabaseColumn: "created_at", type: "timestamptz", note: "Defaults to now() at insert time; doubles as this stage's completion timestamp." },
-      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "invoice_planned", type: "timestamptz", note: "Readiness stamp for the next stage (Invoice, not yet migrated). Submitted by the frontend, see description above." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "invoice_planned", type: "timestamptz", note: "Readiness stamp for the next stage (Invoice, not yet migrated). Submitted by the frontend, see description above. Left null when payment_mode='FOC' (migration 0049) — the ticket closes at Order Received instead of proceeding to Invoice." },
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "delay_minutes", type: "integer", note: "Trigger-computed only, see description above. Can be negative (late) or positive (early). Never written by the frontend." },
     ],
     notFields: [
@@ -584,7 +595,7 @@ export const SCHEMA_MAPPING = {
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "ticket_uuid", type: "uuid", note: "FK -> tickets(uuid), the real relational key. Unique — a ticket can only pass through this stage once." },
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "ticket_id", type: "text", note: "Plain denormalized column (not the FK) — populated at insert, used for display/search." },
       { sheetColumn: null, sheetIndex: null, sheetField: "invoicePostedBy", supabaseColumn: "invoice_posted_by", type: "text", note: "Dropdown category 'invoice_posted_by', seeded in migration 0037 (6 values)." },
-      { sheetColumn: null, sheetIndex: null, sheetField: "invoiceDate", supabaseColumn: "invoice_date", type: "date" },
+      { sheetColumn: null, sheetIndex: null, sheetField: "invoiceDate", supabaseColumn: "invoice_date", type: "date", note: "Left blank by default in the Create Invoice modal (2026-09-01) — was previously pre-filled to today's date, which let CREs submit without ever actually checking/changing it, risking a wrong date on the invoice. The input is still `required`." },
       { sheetColumn: null, sheetIndex: null, sheetField: "invoiceNoNABL", supabaseColumn: "invoice_no_nabl", type: "text" },
       { sheetColumn: null, sheetIndex: null, sheetField: "invoiceNoSERVICE", supabaseColumn: "invoice_no_service", type: "text" },
       { sheetColumn: null, sheetIndex: null, sheetField: "invoiceNoSPARE", supabaseColumn: "invoice_no_spare", type: "text" },

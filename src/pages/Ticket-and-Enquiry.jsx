@@ -36,6 +36,7 @@ import {
   DialogTitle,
 } from "../components/ui/dialog";
 import { supabase } from "../lib/supabase/client";
+import { ltoSupabase } from "../lib/supabase/ltoClient";
 import { fetchDropdownRows } from "../lib/supabase/dropdown";
 import { computeStagePlanned } from "../lib/supabase/stagePlanning";
 
@@ -63,6 +64,7 @@ export default function TicketAndEnquiry() {
     phoneNumber: "",
     siteAddress: "",
     gstNo: "",
+    gstAddress: "",
     machineName: "",
     enquiryType: "",
     category: "",
@@ -108,6 +110,7 @@ export default function TicketAndEnquiry() {
       phoneNumber: ticket.phoneNumber || "",
       siteAddress: ticket.siteAddress || "",
       gstNo: ticket.gstNo || "",
+      gstAddress: ticket.gstAddress || "",
       machineName: ticket.machineName || "",
       enquiryType: ticket.enquiryType || "",
       category: ticket.category || "",
@@ -181,6 +184,7 @@ export default function TicketAndEnquiry() {
         phoneNumber: row.phone_number || "",
         siteAddress: row.site_address || "",
         gstNo: row.gst_no || "",
+        gstAddress: row.gst_address || "",
         machineName: row.machine_name || "",
         enquiryType: row.enquiry_type || "",
         category: row.category || "",
@@ -194,6 +198,7 @@ export default function TicketAndEnquiry() {
         engineerAssign: row.engineer_assign || "",
         otp: row.otp || "",
         CREName: row.cre_name || "",
+        currentStage: row.current_stage || "",
       }));
 
       // Show all tickets in the system
@@ -259,10 +264,13 @@ export default function TicketAndEnquiry() {
     }
   };
 
+  // Sourced live from the production Lead-To-Order-Supabase-New project's
+  // client master, not this project's own (now-retired) company_details
+  // table — see [[servicesupport_migration_project]] memory.
   const fetchCompanyDetails = async () => {
     try {
-      const { data, error } = await supabase
-        .from("company_details")
+      const { data, error } = await ltoSupabase
+        .from("lto_client_master")
         .select("company_name, billing_address, gst_number")
         .order("company_name", { ascending: true });
 
@@ -338,6 +346,7 @@ export default function TicketAndEnquiry() {
 
         if (match) {
           updated.gstNo = match.gst_number || "";
+          updated.gstAddress = match.billing_address || "";
         }
       }
       return updated;
@@ -415,6 +424,10 @@ export default function TicketAndEnquiry() {
       alert("Error: Company Name is required for existing clients");
       return;
     }
+    if (!newEnquiryData.gstAddress || !newEnquiryData.gstAddress.trim()) {
+      alert("Error: GST Address is required");
+      return;
+    }
     if (newFormSelectedMachines.length === 0) {
       alert("Error: Machine Name is required");
       return;
@@ -455,6 +468,7 @@ export default function TicketAndEnquiry() {
           phone_number: newEnquiryData.phoneNumber || "",
           site_address: newEnquiryData.siteAddress || "",
           gst_no: newEnquiryData.gstNo || "",
+          gst_address: newEnquiryData.gstAddress || "",
           machine_name: newFormSelectedMachines.join(", "),
           enquiry_type: newEnquiryData.enquiryType || "",
           category: newEnquiryData.category || "",
@@ -492,6 +506,7 @@ export default function TicketAndEnquiry() {
             phoneNumber: "",
             siteAddress: "",
             gstNo: "",
+            gstAddress: "",
             machineName: "",
             enquiryType: "",
             category: "",
@@ -529,6 +544,7 @@ export default function TicketAndEnquiry() {
           phone_number: newEnquiryData.phoneNumber || "",
           site_address: newEnquiryData.siteAddress || "",
           gst_no: newEnquiryData.gstNo || "",
+          gst_address: newEnquiryData.gstAddress || "",
           machine_name: newFormSelectedMachines.join(", "),
           enquiry_type: newEnquiryData.enquiryType || "",
           category: newEnquiryData.category || "",
@@ -575,6 +591,7 @@ export default function TicketAndEnquiry() {
             phoneNumber: "",
             siteAddress: "",
             gstNo: "",
+            gstAddress: "",
             machineName: "",
             enquiryType: "",
             category: "",
@@ -611,11 +628,17 @@ export default function TicketAndEnquiry() {
   const parsedData = roleStorage ? JSON.parse(roleStorage) : null;
   const role = parsedData?.state?.user?.role;
 
+  // Once a ticket reaches one of these stages, editing it here no longer
+  // makes sense (billing/downstream paperwork has already started on it) —
+  // it's dropped from this page's list entirely, not just its Edit button.
+  const EDIT_EXCLUDED_STAGES = ["Invoice", "Calibration", "Calibration Certificate", "Spare Dispatch Details"];
+  const editableData = pendingData.filter((item) => !EDIT_EXCLUDED_STAGES.includes(item.currentStage));
+
   const roleFilteredData = role === "user"
-    ? pendingData.filter((item) => item["CREName"] === userName)
+    ? editableData.filter((item) => item["CREName"] === userName)
     : role === "engineer"
-      ? pendingData.filter((item) => item["engineerAssign"] === userName)
-      : pendingData;
+      ? editableData.filter((item) => item["engineerAssign"] === userName)
+      : editableData;
 
   const filteredPendingData = roleFilteredData
     .filter((item) => {
@@ -788,6 +811,7 @@ export default function TicketAndEnquiry() {
                 <thead className="sticky top-0 z-10">
                   <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
                     <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[100px] sticky top-0">Actions</th>
+                    <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Current Stage</th>
                     <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Date</th>
                     <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Ticket-ID</th>
                     <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[180px] sticky top-0">Source of enquiry</th>
@@ -809,7 +833,7 @@ export default function TicketAndEnquiry() {
                 <tbody className="bg-white divide-y divide-blue-100">
                   {filteredPendingData.length === 0 ? (
                     <tr>
-                      <td colSpan={17} className="text-center py-8 bg-white">
+                      <td colSpan={18} className="text-center py-8 bg-white">
                         {fetchLoading ? (
                           <div className="flex justify-center items-center text-blue-700">
                             <LoaderIcon className="animate-spin w-8 h-8" />
@@ -831,6 +855,11 @@ export default function TicketAndEnquiry() {
                           >
                             Edit
                           </Button>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-indigo-100 text-indigo-800">
+                            {ticket.currentStage || "—"}
+                          </span>
                         </td>
                         <td className="px-4 py-3 text-blue-900">{formatDate(ticket.timeStemp)}</td>
                         <td className="px-4 py-3 text-blue-900 font-semibold">{ticket.ticketId}</td>
@@ -881,6 +910,9 @@ export default function TicketAndEnquiry() {
                             </div>
                             <h3 className="font-bold text-blue-800 text-lg mt-1">{ticket.companyName || "No Company"}</h3>
                             <p className="text-sm text-gray-600">{ticket.clientName}</p>
+                            <span className="inline-block mt-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-indigo-100 text-indigo-800">
+                              {ticket.currentStage || "—"}
+                            </span>
                           </div>
                           <Button
                             variant="outline"
@@ -986,7 +1018,8 @@ export default function TicketAndEnquiry() {
                       ...prev,
                       clientType: value,
                       companyName: value === "New" ? "" : prev.companyName,
-                      gstNo: value === "New" ? "" : prev.gstNo
+                      gstNo: value === "New" ? "" : prev.gstNo,
+                      gstAddress: value === "New" ? "" : prev.gstAddress
                     }));
                   }}
                   value={newEnquiryData.clientType}
@@ -1311,6 +1344,17 @@ export default function TicketAndEnquiry() {
                   value={newEnquiryData.gstNo || ""}
                   onChange={(e) => setNewEnquiryData(prev => ({ ...prev, gstNo: e.target.value }))}
                   placeholder="Enter GST No."
+                  disabled={newEnquiryData.clientType === "Existing" && newEnquiryData.companyName !== ""}
+                  className={newEnquiryData.clientType === "Existing" && newEnquiryData.companyName !== "" ? "bg-gray-100" : ""}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-sm">GST Address *</Label>
+                <Input
+                  value={newEnquiryData.gstAddress || ""}
+                  onChange={(e) => setNewEnquiryData(prev => ({ ...prev, gstAddress: e.target.value }))}
+                  placeholder="Enter GST Address"
                   disabled={newEnquiryData.clientType === "Existing" && newEnquiryData.companyName !== ""}
                   className={newEnquiryData.clientType === "Existing" && newEnquiryData.companyName !== "" ? "bg-gray-100" : ""}
                 />

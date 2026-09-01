@@ -34,6 +34,9 @@ export const useQuotationData = (initialSpecialDiscount = 0) => {
     consigneeGSTIN: "",
     consigneeStateCode: "",
     msmeNumber: "",
+    // Set when built via "Lead No." selection — links this quotation to the
+    // ticket it was built for (make_quotation.ticket_uuid, nullable).
+    linkedTicketUuid: "",
     items: [
       {
         id: 1,
@@ -59,11 +62,13 @@ export const useQuotationData = (initialSpecialDiscount = 0) => {
     sgstAmount: 0,
     igstAmount: 0,
     total: 0,
+    // Matches Lead-To-Order-Supabase-New's own use-quotation-data.jsx defaults,
+    // so this "unconditional" section behaves identically out of the box.
     validity:
-      "The quoted service rates are valid for 15 days from the date of this offer.",
+      "The above quoted prices are valid up to 10 days from date of offer.",
 
     paymentTerms:
-      "A 100% advance payment is required through NEFT, RTGS, or Demand Draft (DD).All payments must be made only to the company account: DIVINE EMPIRE INDIA PVT. LTD.",
+      "100% advance payment in the mode of NEFT, RTGS & DD.Payment only accepted in company's account - DIVINE EMPIRE INDIA PVT LTD.",
 
     scopOfWork:
       "Includes repair/installation/service as specified in quotation. Any additional work will be chargeable separately.",

@@ -639,6 +639,7 @@ function MakeQuotation() {
         special_discount: Number(specialDiscount) || 0,
         pdf_url: pdfUrl,
         grand_total: Number(finalGrandTotal),
+        ticket_uuid: quotationData.linkedTicketUuid || null,
       });
 
       if (headerError) {
@@ -657,6 +658,7 @@ function MakeQuotation() {
         discount: item.discount || 0,
         flat_discount: item.flatDiscount || 0,
         amount: item.amount || 0,
+        is_freight: (item.name || "").trim().toLowerCase() === "freight",
       }));
 
       const { error: itemsError } = await supabase.from("quotation_items").insert(itemRows);
@@ -676,7 +678,17 @@ function MakeQuotation() {
       alert("Quotation saved successfully with all items!");
 
       const nextQuotationNumber = await getNextQuotationNumber();
-      setQuotationData({
+      setQuotationData((prev) => ({
+        // Bank details are a static, company-wide row fetched once on mount
+        // (not tied to state anymore) — carry them forward instead of
+        // clearing them, since nothing will re-fetch them after this reset.
+        accountNo: prev.accountNo,
+        bankName: prev.bankName,
+        bankAddress: prev.bankAddress,
+        ifscCode: prev.ifscCode,
+        email: prev.email,
+        website: prev.website,
+        pan: prev.pan,
         quotationNo: nextQuotationNumber,
         date: new Date().toLocaleDateString("en-GB"),
         consignorState: "",
@@ -695,6 +707,7 @@ function MakeQuotation() {
         consigneeGSTIN: "",
         consigneeStateCode: "",
         msmeNumber: "",
+        linkedTicketUuid: "",
         items: [
           {
             id: 1,
@@ -717,23 +730,17 @@ function MakeQuotation() {
         sgstAmount: 0,
         total: 0,
         validity:
-          "The above quoted prices are valid up to 5 days from date of offer.",
-        paymentTerms: "100% advance payment in the mode of NEFT, RTGS & DD",
+          "The above quoted prices are valid up to 10 days from date of offer.",
+        paymentTerms:
+          "100% advance payment in the mode of NEFT, RTGS & DD.Payment only accepted in company's account - DIVINE EMPIRE INDIA PVT LTD.",
         delivery: "Material is ready in our stock",
         freight: "Extra as per actual.",
         insurance: "Transit insurance for all shipment is at Buyer's risk.",
         taxes: "Extra as per actual.",
-        accountNo: "",
-        bankName: "",
-        bankAddress: "",
-        ifscCode: "",
-        email: "",
-        website: "",
-        pan: "",
         notes: [""],
         preparedBy: "",
         specialOffers: [""],
-      });
+      }));
     } catch (error) {
       alert("Error: " + error.message);
     } finally {

@@ -16,26 +16,11 @@ const QuotationDetails = ({
     const selectedState = e.target.value
     handleInputChange("consignorState", selectedState)
 
+    // Bank details are a single company-wide row (fetched once, independent
+    // of state — see quotation-form.jsx's fetchBankDetails), so state
+    // selection only fills the consignor's own address/GSTIN/MSME details.
     if (selectedState && dropdownData.states && dropdownData.states[selectedState]) {
       const stateDetails = dropdownData.states[selectedState]
-
-      if (stateDetails.bankDetails) {
-        const bankDetailsText = stateDetails.bankDetails
-
-        const accountNoMatch = bankDetailsText.match(/Account No\.: ([^\n]+)/)
-        const bankNameMatch = bankDetailsText.match(/Bank Name: ([^\n]+)/)
-        const bankAddressMatch = bankDetailsText.match(/Bank Address: ([^\n]+)/)
-        const ifscMatch = bankDetailsText.match(/IFSC CODE: ([^\n]+)/)
-        const emailMatch = bankDetailsText.match(/Email: ([^\n]+)/)
-        const websiteMatch = bankDetailsText.match(/Website: ([^\n]+)/)
-
-        if (accountNoMatch) handleInputChange("accountNo", accountNoMatch[1])
-        if (bankNameMatch) handleInputChange("bankName", bankNameMatch[1])
-        if (bankAddressMatch) handleInputChange("bankAddress", bankAddressMatch[1])
-        if (ifscMatch) handleInputChange("ifscCode", ifscMatch[1])
-        if (emailMatch) handleInputChange("email", emailMatch[1])
-        if (websiteMatch) handleInputChange("website", websiteMatch[1])
-      }
 
       if (stateDetails.consignerAddress) {
         handleInputChange("consignorAddress", stateDetails.consignerAddress)
@@ -52,18 +37,7 @@ const QuotationDetails = ({
       if (stateDetails.msmeNumber) {
         handleInputChange("msmeNumber", stateDetails.msmeNumber)
       }
-
-      if (stateDetails.pan) {
-        handleInputChange("pan", stateDetails.pan)
-      }
     } else {
-      handleInputChange("accountNo", "")
-      handleInputChange("bankName", "")
-      handleInputChange("bankAddress", "")
-      handleInputChange("ifscCode", "")
-      handleInputChange("email", "")
-      handleInputChange("website", "")
-      handleInputChange("pan", "")
       handleInputChange("consignorAddress", "")
       handleInputChange("consignorStateCode", "")
       handleInputChange("consignorGSTIN", "")

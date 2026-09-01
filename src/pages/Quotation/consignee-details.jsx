@@ -1,6 +1,6 @@
 ﻿"use client"
 
-import { getCompanyPrefix, getNextQuotationNumber } from "./quotation-service"
+import { getNextQuotationNumber } from "./quotation-service"
 
 const ConsigneeDetails = ({
   quotationData,
@@ -8,7 +8,6 @@ const ConsigneeDetails = ({
   companyOptions,
   dropdownData,
   onQuotationNumberUpdate,
-  onAutoFillItems,
   showLeadNoDropdown,
   setShowLeadNoDropdown,
   leadNoOptions,
@@ -28,25 +27,17 @@ const ConsigneeDetails = ({
       handleInputChange("consigneeGSTIN", companyDetails.gstin)
       handleInputChange("consigneeStateCode", companyDetails.stateCode)
 
-      // Get company prefix and update quotation number
+      // Update quotation number (items are only auto-filled via Lead No.
+      // selection now — typing a Company Name directly no longer looks up
+      // an item list, since that used to come from the retired Google Sheet).
       try {
-        const companyPrefix = await getCompanyPrefix(selectedCompany)
-        const newQuotationNumber = await getNextQuotationNumber(companyPrefix)
+        const newQuotationNumber = await getNextQuotationNumber()
 
         if (onQuotationNumberUpdate) {
           onQuotationNumberUpdate(newQuotationNumber)
         }
       } catch (error) {
         console.error("Error updating quotation number:", error)
-      }
-
-      // Auto-fill items based on company selection
-      if (onAutoFillItems) {
-        try {
-          await onAutoFillItems(selectedCompany)
-        } catch (error) {
-          console.error("Error auto-filling items:", error)
-        }
       }
     } else {
       handleInputChange("consigneeAddress", "")

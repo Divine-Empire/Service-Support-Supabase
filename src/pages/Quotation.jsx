@@ -41,6 +41,10 @@ export default function Quotation() {
   const [showMakeQuotationModal, setShowMakeQuotationModal] = useState(false);
   const [showItemListModal, setShowItemListModal] = useState(false);
   const [selectedItemList, setSelectedItemList] = useState([]);
+  // Quotations previously built (via "Make Quotation") for the ticket
+  // currently open in the Create/Revise Quotation modal — powers the
+  // Quotation No. dropdown and its Basic/Total/PDF autofill.
+  const [generatedQuotations, setGeneratedQuotations] = useState([]);
   const { toast } = useToast();
 
   const fetchData = async () => {
@@ -187,7 +191,6 @@ export default function Quotation() {
   };
 
   const DROPDOWN_CATEGORY_TO_KEY = {
-    engineer_assign_name: "Engineer Assign Name",
     quotation_share_by: "Quotation Share by",
   };
 
@@ -307,7 +310,6 @@ export default function Quotation() {
       phoneNumber: ticket.phoneNumber,
       enquiryReceiverName: ticket.enquiryReceiverName || "",
       machineName: ticket.machineName || "",
-      engineerAssign: ticket.engineerAssign || "",
       siteAddress: ticket.siteAddress || "",
       // Prefill from the existing quotation when revising; blank for a first-time quote.
       quotationNo: ticket.quotationNo || "",
@@ -319,7 +321,65 @@ export default function Quotation() {
       remarks: ticket.remarks || "",
     });
     setQuotationPdfFile(null);
+    setGeneratedQuotations([]);
     setShowQuotationModal(true);
+
+    if (ticket.ticketUuid) {
+      fetchGeneratedQuotations(ticket.ticketUuid);
+    }
+  };
+
+  // Every quotation (and revision) built via "Make Quotation" for this
+  // ticket — mirrors Lead-To-Order-Supabase-New's MakeQuotationFrom.jsx
+  // fetchGeneratedQuotations, sourced from make_quotation.ticket_uuid.
+  const fetchGeneratedQuotations = async (ticketUuid) => {
+    try {
+      const { data, error } = await supabase
+        .from("make_quotation")
+        .select("quotation_no, grand_total, pdf_url, created_at")
+        .eq("ticket_uuid", ticketUuid)
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
+      setGeneratedQuotations(data || []);
+    } catch (error) {
+      console.error("Error fetching generated quotations for ticket:", error);
+      setGeneratedQuotations([]);
+    }
+  };
+
+  // Selecting a Quotation No. pre-fills Total Amount / PDF link from the
+  // matched make_quotation row, and Basic Amount from the sum of that
+  // quotation's non-freight quotation_items.amount. Fields stay editable
+  // afterward (pre-fill, not lock) — same as MakeQuotationFrom.jsx.
+  const handleQuotationNoChange = (value) => {
+    handleInputChange("quotationNo", value);
+
+    const matched = generatedQuotations.find((q) => q.quotation_no === value);
+    if (matched) {
+      if (matched.grand_total !== undefined && matched.grand_total !== null) {
+        handleInputChange("totalAmountWithTax", String(matched.grand_total));
+      }
+      if (matched.pdf_url) {
+        handleInputChange("quotationPdfLink", matched.pdf_url);
+      }
+    }
+
+    if (value) {
+      supabase
+        .from("quotation_items")
+        .select("amount, is_freight")
+        .eq("quotation_no", value)
+        .then(({ data: items, error }) => {
+          if (!error && items && items.length > 0) {
+            const subtotal = items.reduce((sum, item) => {
+              if (item.is_freight) return sum;
+              return sum + (Number(item.amount) || 0);
+            }, 0);
+            handleInputChange("basicAmount", String(Math.round(subtotal * 100) / 100));
+          }
+        });
+    }
   };
 
   const handleInputChange = (field, value) => {
@@ -1403,36 +1463,22 @@ export default function Quotation() {
                 </div>
 
                 <div>
-                  <Label>Engineer Assign</Label>
+                  <Label>Quotation No. *</Label>
                   <select
-                    value={formData.engineerAssign || ""}
-                    onChange={(e) =>
-                      handleInputChange("engineerAssign", e.target.value)
-                    }
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <option value="">Select Engineer</option>
-                    {masterData[0]?.["Engineer Assign Name"]?.map(
-                      (engineer) => (
-                        <option key={engineer} value={engineer}>
-                          {engineer}
-                        </option>
-                      )
-                    )}
-                  </select>
-                </div>
-
-                <div>
-                  <Label>Quotation No.</Label>
-                  <Input
-                    type="text"
-                    placeholder="Enter Quotation No"
                     value={formData.quotationNo || ""}
-                    onChange={(e) =>
-                      handleInputChange("quotationNo", e.target.value)
-                    }
-                    data-testid="input-quotation-no"
-                  />
+                    onChange={(e) => handleQuotationNoChange(e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    data-testid="select-quotation-no"
+                    required
+                  >
+                    <option value="">Select quotation number</option>
+                    {generatedQuotations.map((q) => (
+                      <option key={q.quotation_no} value={q.quotation_no}>
+                        {q.quotation_no}
+                        {q.grand_total ? ` — ₹${q.grand_total}` : ""}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Editable fields */}

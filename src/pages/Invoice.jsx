@@ -15,7 +15,7 @@ import {
 } from "../components/ui/tabs";
 import { Modal } from "../components/ui/modal";
 import { useToast } from "../hooks/use-toast";
-import { Loader2Icon, LoaderIcon } from "lucide-react";
+import { Loader2Icon, LoaderIcon, Eye } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -48,6 +48,9 @@ export default function Invoice() {
   const [attachmentServiceFile, setAttachmentServiceFile] = useState(null);
   const [attachmentSpearFile, setAttachmentSpearFile] = useState(null);
   const [attachmentNABLFile, setAttachmentNABLFile] = useState(null);
+  // "Advance Details" eye icon on the Pending tab — shows Payment Mode +
+  // Advance Payment Attachment + Senior Approval together for one ticket.
+  const [advanceDetailsTicket, setAdvanceDetailsTicket] = useState(null);
 
   const fetchData = async () => {
     setFetchLoading(true);
@@ -86,6 +89,39 @@ export default function Invoice() {
 
       const quotationByTicket = new Map((quotationRows || []).map((q) => [q.ticket_id, q]));
 
+      // Full order_received row — every pending-Invoice ticket has one by
+      // definition (invoice_planned only ever gets set on that row), so this
+      // also doubles as the Payment Term/Payment Mode/Senior Approval/
+      // Advance Payment Attachment source for the Pending tab.
+      const { data: orderReceivedFullRows, error: orderReceivedFullError } = await supabase
+        .from("order_received")
+        .select("ticket_id, payment_term, payment_mode, senior_approval, advance_payment_attachment")
+        .in("ticket_id", ticketIds);
+
+      if (orderReceivedFullError) throw orderReceivedFullError;
+
+      const orderReceivedFullByTicket = new Map(
+        (orderReceivedFullRows || []).map((o) => [o.ticket_id, o])
+      );
+
+      // "Client Approval" — same attachment FollowUp.jsx collects when it
+      // logs stage='Order Received' (see OrderReceived.jsx's identical fetch).
+      const { data: invoiceFollowUpRows, error: invoiceFollowUpError } = await supabase
+        .from("follow_up")
+        .select("ticket_id, stage, client_attachment_url, created_at")
+        .in("ticket_id", ticketIds)
+        .eq("stage", "Order Received")
+        .order("created_at", { ascending: false });
+
+      if (invoiceFollowUpError) throw invoiceFollowUpError;
+
+      const clientApprovalByTicket = new Map();
+      (invoiceFollowUpRows || []).forEach((f) => {
+        if (!clientApprovalByTicket.has(f.ticket_id)) {
+          clientApprovalByTicket.set(f.ticket_id, f.client_attachment_url || "");
+        }
+      });
+
       const { data: invoiceRows, error: invoiceError } = await supabase
         .from("invoice")
         .select("*")
@@ -100,6 +136,7 @@ export default function Invoice() {
 
       (ticketsData || []).forEach((t) => {
         const q = quotationByTicket.get(t.ticket_id);
+        const orderReceived = orderReceivedFullByTicket.get(t.ticket_id);
 
         const base = {
           ticketId: t.ticket_id,
@@ -109,12 +146,19 @@ export default function Invoice() {
           phoneNumber: t.phone_number || "",
           companyName: t.company_name || "",
           siteAddress: t.site_address || "",
+          gstNo: t.gst_no || "",
+          gstAddress: t.gst_address || "",
           CREName: t.cre_name || "",
           // Drives whether this ticket gets calibration_planned/spare_dispatch_planned
           // at submit time — see stagePlanning.js's 'calibration'/'sparedispatch' rules.
           enquiryType: t.enquiry_type || "",
           quotationNo: q?.quotation_no || "",
           quotationPdfLink: q?.quotation_pdf_link || "",
+          paymentTerm: orderReceived?.payment_term || "",
+          paymentMode: orderReceived?.payment_mode || "",
+          seniorApproval: orderReceived?.senior_approval || "",
+          advancePaymentAttachment: orderReceived?.advance_payment_attachment || "",
+          clientApproval: clientApprovalByTicket.get(t.ticket_id) || "",
         };
 
         const inv = invoiceByTicket.get(t.ticket_id);
@@ -199,7 +243,10 @@ export default function Invoice() {
       quotationNo: ticket.quotationNo || "",
       quotationPdfLink: ticket.quotationPdfLink || "",
       invoicePostedBy: "",
-      invoiceDate: new Date().toISOString().split("T")[0],
+      // Left blank on purpose (was defaulted to today) — CREs were clicking
+      // straight past it without checking, risking a wrong date going onto
+      // the invoice. Now they must pick it deliberately.
+      invoiceDate: "",
       invoiceNoNABL: "",
       invoiceNoSERVICE: "",
       invoiceNoSPARE: "",
@@ -434,6 +481,24 @@ export default function Invoice() {
                           Site Address
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
+                          GST Number
+                        </th>
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
+                          Billing Address
+                        </th>
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
+                          Payment Term
+                        </th>
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
+                          Client Approval
+                        </th>
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
+                          Senior Approval
+                        </th>
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
+                          Advance Details
+                        </th>
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                           Quotation Pdf Link
                         </th>
                       </tr>
@@ -442,7 +507,7 @@ export default function Invoice() {
                       {filteredPendingData.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={8}
+                            colSpan={14}
                             className="text-center py-8 bg-white"
                             data-testid="text-no-pending"
                           >
@@ -493,6 +558,54 @@ export default function Invoice() {
                             </td>
                             <td className="px-4 py-3 text-blue-900">
                               {ticket.siteAddress || ""}
+                            </td>
+                            <td className="px-4 py-3 text-blue-900">
+                              {ticket.gstNo || ""}
+                            </td>
+                            <td className="px-4 py-3 text-blue-900">
+                              {ticket.gstAddress || ""}
+                            </td>
+                            <td className="px-4 py-3 text-blue-900">
+                              {ticket.paymentTerm || ""}
+                            </td>
+                            <td className="px-4 py-3">
+                              {ticket.clientApproval ? (
+                                <a
+                                  href={ticket.clientApproval}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
+                                >
+                                  View
+                                </a>
+                              ) : (
+                                ""
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              {ticket.seniorApproval ? (
+                                <a
+                                  href={ticket.seniorApproval}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
+                                >
+                                  View
+                                </a>
+                              ) : (
+                                ""
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setAdvanceDetailsTicket(ticket)}
+                                className="h-7 px-2 border-purple-200 text-purple-700 hover:bg-purple-50"
+                                data-testid={`button-advance-details-${ticket.ticketId}`}
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </Button>
                             </td>
                             <td className="px-4 py-3">
                               {ticket.quotationPdfLink ? (
@@ -593,6 +706,67 @@ export default function Invoice() {
                               <p className="text-blue-900">
                                 {ticket.siteAddress || "N/A"}
                               </p>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3 text-sm">
+                              <div>
+                                <p className="text-gray-500 font-medium">
+                                  GST Number
+                                </p>
+                                <p className="text-blue-900">
+                                  {ticket.gstNo || "N/A"}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500 font-medium">
+                                  Payment Term
+                                </p>
+                                <p className="text-blue-900">
+                                  {ticket.paymentTerm || "N/A"}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div>
+                              <p className="text-gray-500 font-medium text-sm">
+                                Billing Address
+                              </p>
+                              <p className="text-blue-900">
+                                {ticket.gstAddress || "N/A"}
+                              </p>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3 text-sm items-end">
+                              <div>
+                                <p className="text-gray-500 font-medium">
+                                  Client Approval
+                                </p>
+                                {ticket.clientApproval ? (
+                                  <a href={ticket.clientApproval} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 text-xs">View</a>
+                                ) : (
+                                  <p className="text-blue-900 text-xs">N/A</p>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <div>
+                                  <p className="text-gray-500 font-medium">
+                                    Senior Approval
+                                  </p>
+                                  {ticket.seniorApproval ? (
+                                    <a href={ticket.seniorApproval} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 text-xs">View</a>
+                                  ) : (
+                                    <p className="text-blue-900 text-xs">N/A</p>
+                                  )}
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setAdvanceDetailsTicket(ticket)}
+                                  className="h-7 px-2 border-purple-200 text-purple-700 hover:bg-purple-50"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                </Button>
+                              </div>
                             </div>
 
                             <div>
@@ -1177,6 +1351,57 @@ export default function Invoice() {
               </Button>
             </div>
           </form>
+        </div>
+      </Modal>
+
+      {/* Advance Details — Payment Mode + Advance Payment Attachment +
+          Senior Approval together, for the Pending tab's eye icon. */}
+      <Modal
+        isOpen={!!advanceDetailsTicket}
+        onClose={() => setAdvanceDetailsTicket(null)}
+        title="Advance Details"
+        size="sm"
+      >
+        <div className="p-2 space-y-4">
+          <div>
+            <p className="text-gray-500 font-medium text-sm">Payment Mode</p>
+            <p className="text-blue-900">{advanceDetailsTicket?.paymentMode || "N/A"}</p>
+          </div>
+          <div>
+            <p className="text-gray-500 font-medium text-sm">Advance Payment Attachment</p>
+            {advanceDetailsTicket?.advancePaymentAttachment ? (
+              <a
+                href={advanceDetailsTicket.advancePaymentAttachment}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:text-blue-800 underline"
+              >
+                View File
+              </a>
+            ) : (
+              <p className="text-blue-900">N/A</p>
+            )}
+          </div>
+          <div>
+            <p className="text-gray-500 font-medium text-sm">Senior Approval</p>
+            {advanceDetailsTicket?.seniorApproval ? (
+              <a
+                href={advanceDetailsTicket.seniorApproval}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:text-blue-800 underline"
+              >
+                View File
+              </a>
+            ) : (
+              <p className="text-blue-900">N/A</p>
+            )}
+          </div>
+          <div className="flex justify-end pt-2">
+            <Button type="button" variant="outline" onClick={() => setAdvanceDetailsTicket(null)}>
+              Close
+            </Button>
+          </div>
         </div>
       </Modal>
     </div>

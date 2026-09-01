@@ -38,7 +38,8 @@ export default function OrderReceived() {
   const [historyData, setHistoryData] = useState([]);
   const [fetchLoading, setFetchLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isUploadingSeniorAttachments, setIsUploadingSeniorAttachments] = useState(false);
+  const [isUploadingSeniorApproval, setIsUploadingSeniorApproval] = useState(false);
+  const [isUploadingAdvancePaymentAttachment, setIsUploadingAdvancePaymentAttachment] = useState(false);
   const [searchItem, setSearchItem] = useState("");
   const [enquiryTypeFilter, setEnquiryTypeFilter] = useState("all");
   const { toast } = useToast();
@@ -75,15 +76,34 @@ export default function OrderReceived() {
 
       if (ticketsError) throw ticketsError;
 
-      // Quotation No. is display-only here — joined from its owning stage.
+      // Quotation No./PDF are display-only here — joined from their owning stage.
       const { data: quotationRows, error: quotationError } = await supabase
         .from("quotation")
-        .select("ticket_id, quotation_no")
+        .select("ticket_id, quotation_no, quotation_pdf_link")
         .in("ticket_id", ticketIds);
 
       if (quotationError) throw quotationError;
 
-      const quotationByTicket = new Map((quotationRows || []).map((q) => [q.ticket_id, q.quotation_no]));
+      const quotationByTicket = new Map((quotationRows || []).map((q) => [q.ticket_id, q]));
+
+      // "Client Approval" — the attachment FollowUp.jsx collects when it logs
+      // stage='Order Received' (the proof the client actually confirmed the
+      // order). Take the latest such row per ticket.
+      const { data: orderReceivedFollowUpRows, error: orderReceivedFollowUpError } = await supabase
+        .from("follow_up")
+        .select("ticket_id, stage, client_attachment_url, created_at")
+        .in("ticket_id", ticketIds)
+        .eq("stage", "Order Received")
+        .order("created_at", { ascending: false });
+
+      if (orderReceivedFollowUpError) throw orderReceivedFollowUpError;
+
+      const clientApprovalByTicket = new Map();
+      (orderReceivedFollowUpRows || []).forEach((f) => {
+        if (!clientApprovalByTicket.has(f.ticket_id)) {
+          clientApprovalByTicket.set(f.ticket_id, f.client_attachment_url || "");
+        }
+      });
 
       const { data: orderReceivedRows, error: orderReceivedError } = await supabase
         .from("order_received")
@@ -98,6 +118,7 @@ export default function OrderReceived() {
       const history = [];
 
       (ticketsData || []).forEach((t) => {
+        const q = quotationByTicket.get(t.ticket_id);
         const base = {
           ticketId: t.ticket_id,
           ticketUuid: t.uuid,
@@ -108,7 +129,10 @@ export default function OrderReceived() {
           machineName: t.machine_name || "",
           CREName: t.cre_name || "",
           engineerAssign: t.engineer_assign || "",
-          quotationNo: quotationByTicket.get(t.ticket_id) || "",
+          quotationNo: q?.quotation_no || "",
+          issue: t.mention_issue || "",
+          quotationCopy: q?.quotation_pdf_link || "",
+          clientApproval: clientApprovalByTicket.get(t.ticket_id) || "",
           // Drives the "Enquiry Type" filter below (All/NABL/NON-NABL/SERVICE/SPARE).
           enquiryType: t.enquiry_type || "",
         };
@@ -119,7 +143,8 @@ export default function OrderReceived() {
             ...base,
             paymentTerm: orderReceived.payment_term || "",
             acceptanceVia: orderReceived.acceptance_via || "",
-            seniorAttachments: orderReceived.senior_attachments || "",
+            seniorApproval: orderReceived.senior_approval || "",
+            advancePaymentAttachment: orderReceived.advance_payment_attachment || "",
             paymentMode: orderReceived.payment_mode || "",
             delayMinutes: orderReceived.delay_minutes,
           });
@@ -145,6 +170,7 @@ export default function OrderReceived() {
   const DROPDOWN_CATEGORY_TO_KEY = {
     payment_term: "Payment Terms",
     payment_mode: "Payment Mode",
+    acceptance_via: "Acceptance Via",
   };
 
   const fetchMasterSheet = async () => {
@@ -236,7 +262,8 @@ export default function OrderReceived() {
       quotationNo: ticket.quotationNo || "",
       paymentTerm: "",
       acceptanceVia: "",
-      seniorAttachmentsUrl: "",
+      seniorApprovalUrl: "",
+      advancePaymentAttachmentUrl: "",
       paymentMode: "",
     });
     setShowOrderReceivedModal(true);
@@ -259,29 +286,55 @@ export default function OrderReceived() {
     return data.publicUrl;
   };
 
-  const handleSeniorAttachmentsChange = async (e) => {
+  const handleSeniorApprovalChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    setIsUploadingSeniorAttachments(true);
+    setIsUploadingSeniorApproval(true);
     try {
       const url = await uploadToStorage(file);
-      handleInputChange("seniorAttachmentsUrl", url);
+      handleInputChange("seniorApprovalUrl", url);
       toast({
         title: "Success",
-        description: "Senior Attachments uploaded successfully",
+        description: "Senior Approval uploaded successfully",
       });
     } catch (error) {
       console.error(error);
       e.target.value = null;
-      handleInputChange("seniorAttachmentsUrl", "");
+      handleInputChange("seniorApprovalUrl", "");
       toast({
         title: "Error",
-        description: "Failed to upload Senior Attachments",
+        description: "Failed to upload Senior Approval",
         variant: "destructive",
       });
     } finally {
-      setIsUploadingSeniorAttachments(false);
+      setIsUploadingSeniorApproval(false);
+    }
+  };
+
+  const handleAdvancePaymentAttachmentChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setIsUploadingAdvancePaymentAttachment(true);
+    try {
+      const url = await uploadToStorage(file);
+      handleInputChange("advancePaymentAttachmentUrl", url);
+      toast({
+        title: "Success",
+        description: "Advance Payment Attachment uploaded successfully",
+      });
+    } catch (error) {
+      console.error(error);
+      e.target.value = null;
+      handleInputChange("advancePaymentAttachmentUrl", "");
+      toast({
+        title: "Error",
+        description: "Failed to upload Advance Payment Attachment",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploadingAdvancePaymentAttachment(false);
     }
   };
 
@@ -296,32 +349,49 @@ export default function OrderReceived() {
       alert("Please select Acceptance Via");
       return;
     }
-    if (!formData.seniorAttachmentsUrl) {
-      alert("Please add and upload Senior Attachments");
-      return;
-    }
     if (!formData.paymentMode) {
       alert("Please select Payment Mode");
       return;
+    }
+
+    // Advance Payment Attachment / Senior Approval only apply once a Payment
+    // Mode is chosen, and are skipped entirely for FOC (no payment is
+    // actually happening, so there's nothing to attach/approve).
+    const isFOC = formData.paymentMode === "FOC";
+    if (!isFOC) {
+      if (!formData.advancePaymentAttachmentUrl) {
+        alert("Please add and upload Advance Payment Attachment");
+        return;
+      }
+      if (!formData.seniorApprovalUrl) {
+        alert("Please add and upload Senior Approval");
+        return;
+      }
     }
 
     setIsSubmitting(true);
 
     try {
       const submittedAt = new Date();
-      const invoicePlanned = await computeStagePlanned("invoice", {
-        orderReceivedSubmittedAt: submittedAt,
-      });
+      // FOC closes the ticket right here — invoice_planned is left null so
+      // it never reaches Invoice.jsx's pending list.
+      const invoicePlanned = isFOC
+        ? null
+        : await computeStagePlanned("invoice", {
+            orderReceivedSubmittedAt: submittedAt,
+          });
 
       const { error } = await supabase.from("order_received").insert({
         ticket_id: selectedTicket.ticketId,
         ticket_uuid: selectedTicket.ticketUuid,
         payment_term: formData.paymentTerm || null,
         acceptance_via: formData.acceptanceVia || null,
-        senior_attachments: formData.seniorAttachmentsUrl || null,
+        senior_approval: isFOC ? null : formData.seniorApprovalUrl || null,
+        advance_payment_attachment: isFOC ? null : formData.advancePaymentAttachmentUrl || null,
         payment_mode: formData.paymentMode || null,
         // Readiness stamp for the next stage (Invoice, not yet migrated) —
-        // see stagePlanning.js.
+        // null for Payment Mode = FOC, which closes the ticket at this stage
+        // instead. See stagePlanning.js.
         invoice_planned: invoicePlanned,
       });
 
@@ -448,12 +518,21 @@ export default function OrderReceived() {
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                             Quotation No.
                           </th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
+                            Issue
+                          </th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[130px] sticky top-0">
+                            Quotation Copy
+                          </th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[130px] sticky top-0">
+                            Client Approval
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-blue-100">
                         {fetchLoading ? (
                           <tr>
-                            <td colSpan={8} className="text-center py-8 bg-white">
+                            <td colSpan={11} className="text-center py-8 bg-white">
                               <div className="flex justify-center items-center text-blue-700">
                                 <LoaderIcon className="animate-spin w-8 h-8 mr-2" />
                               </div>
@@ -462,7 +541,7 @@ export default function OrderReceived() {
                         ) : filteredPendingData.length === 0 ? (
                           <tr>
                             <td
-                              colSpan={8}
+                              colSpan={11}
                               className="text-center py-8 bg-white"
                               data-testid="text-no-pending"
                             >
@@ -510,6 +589,37 @@ export default function OrderReceived() {
                               </td>
                               <td className="px-4 py-3 text-blue-900">
                                 {ticket.quotationNo || ""}
+                              </td>
+                              <td className="px-4 py-3 text-blue-900">
+                                {ticket.issue || ""}
+                              </td>
+                              <td className="px-4 py-3 text-blue-900">
+                                {ticket.quotationCopy ? (
+                                  <a
+                                    href={ticket.quotationCopy}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:text-blue-800 hover:underline"
+                                  >
+                                    View
+                                  </a>
+                                ) : (
+                                  ""
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-blue-900">
+                                {ticket.clientApproval ? (
+                                  <a
+                                    href={ticket.clientApproval}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:text-blue-800 hover:underline"
+                                  >
+                                    View
+                                  </a>
+                                ) : (
+                                  ""
+                                )}
                               </td>
                             </tr>
                           ))
@@ -598,6 +708,52 @@ export default function OrderReceived() {
                                   </p>
                                 </div>
                               </div>
+
+                              <div>
+                                <p className="text-gray-500 font-medium text-sm">
+                                  Issue
+                                </p>
+                                <p className="text-blue-900 line-clamp-2">
+                                  {ticket.issue || "N/A"}
+                                </p>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                  <p className="text-gray-500 font-medium">
+                                    Quotation Copy
+                                  </p>
+                                  {ticket.quotationCopy ? (
+                                    <a
+                                      href={ticket.quotationCopy}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-blue-600 hover:text-blue-800 text-sm"
+                                    >
+                                      View
+                                    </a>
+                                  ) : (
+                                    <p className="text-blue-900">N/A</p>
+                                  )}
+                                </div>
+                                <div>
+                                  <p className="text-gray-500 font-medium">
+                                    Client Approval
+                                  </p>
+                                  {ticket.clientApproval ? (
+                                    <a
+                                      href={ticket.clientApproval}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-blue-600 hover:text-blue-800 text-sm"
+                                    >
+                                      View
+                                    </a>
+                                  ) : (
+                                    <p className="text-blue-900">N/A</p>
+                                  )}
+                                </div>
+                              </div>
                             </CardContent>
                           </Card>
                         ))
@@ -638,7 +794,10 @@ export default function OrderReceived() {
                             Acceptance Via
                           </th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                            Senior Attachments
+                            Advance Payment Attachment
+                          </th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
+                            Senior Approval
                           </th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                             Payment Mode
@@ -651,7 +810,7 @@ export default function OrderReceived() {
                       <tbody className="bg-white divide-y divide-blue-100">
                         {fetchLoading ? (
                           <tr>
-                            <td colSpan={11} className="text-center py-8 bg-white">
+                            <td colSpan={12} className="text-center py-8 bg-white">
                               <div className="flex justify-center items-center text-blue-700">
                                 <LoaderIcon className="animate-spin w-8 h-8 mr-2" />
                               </div>
@@ -660,7 +819,7 @@ export default function OrderReceived() {
                         ) : filteredHistoryData.length === 0 ? (
                           <tr>
                             <td
-                              colSpan={11}
+                              colSpan={12}
                               className="text-center py-8 bg-white"
                               data-testid="text-no-history"
                             >
@@ -702,9 +861,23 @@ export default function OrderReceived() {
                                 {ticket.acceptanceVia || ""}
                               </td>
                               <td className="px-4 py-3 text-blue-900">
-                                {ticket.seniorAttachments ? (
+                                {ticket.advancePaymentAttachment ? (
                                   <a
-                                    href={ticket.seniorAttachments}
+                                    href={ticket.advancePaymentAttachment}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:text-blue-800 hover:underline"
+                                  >
+                                    View
+                                  </a>
+                                ) : (
+                                  ""
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-blue-900">
+                                {ticket.seniorApproval ? (
+                                  <a
+                                    href={ticket.seniorApproval}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-blue-600 hover:text-blue-800 hover:underline"
@@ -799,11 +972,11 @@ export default function OrderReceived() {
                                 </div>
                                 <div>
                                   <p className="text-gray-500 font-medium">
-                                    Senior Attachments
+                                    Senior Approval
                                   </p>
-                                  {ticket.seniorAttachments ? (
+                                  {ticket.seniorApproval ? (
                                     <a
-                                      href={ticket.seniorAttachments}
+                                      href={ticket.seniorApproval}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       className="text-blue-600 hover:text-blue-800 text-sm"
@@ -814,6 +987,24 @@ export default function OrderReceived() {
                                     <p className="text-blue-900">N/A</p>
                                   )}
                                 </div>
+                              </div>
+
+                              <div>
+                                <p className="text-gray-500 font-medium">
+                                  Advance Payment Attachment
+                                </p>
+                                {ticket.advancePaymentAttachment ? (
+                                  <a
+                                    href={ticket.advancePaymentAttachment}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:text-blue-800 text-sm"
+                                  >
+                                    View
+                                  </a>
+                                ) : (
+                                  <p className="text-blue-900">N/A</p>
+                                )}
                               </div>
 
                               <div>
@@ -930,42 +1121,26 @@ export default function OrderReceived() {
                   <SelectValue placeholder="Acceptance Via" />
                 </SelectTrigger>
                 <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
-                  <SelectItem value="Mail" className="hover:bg-blue-50 focus:bg-blue-50">
-                    Mail
-                  </SelectItem>
+                  {masterData.length > 0 && masterData[0]["Acceptance Via"] ? (
+                    masterData[0]["Acceptance Via"].map(
+                      (item, ind) =>
+                        item && (
+                          <SelectItem
+                            key={ind}
+                            value={item}
+                            className="hover:bg-blue-50 focus:bg-blue-50"
+                          >
+                            {item}
+                          </SelectItem>
+                        )
+                    )
+                  ) : (
+                    <SelectItem value="loading" disabled>
+                      Loading options...
+                    </SelectItem>
+                  )}
                 </SelectContent>
               </Select>
-            </div>
-
-            <div>
-              <Label className="flex items-center gap-2">
-                Senior Attachments *
-                {isUploadingSeniorAttachments && (
-                  <LoaderIcon className="animate-spin w-4 h-4 text-blue-600" />
-                )}
-              </Label>
-              <Input
-                type="file"
-                disabled={isUploadingSeniorAttachments}
-                onChange={handleSeniorAttachmentsChange}
-                data-testid="input-senior-attachments"
-              />
-              {isUploadingSeniorAttachments && (
-                <p className="text-xs text-blue-600 mt-1">Uploading file, please wait...</p>
-              )}
-              {formData.seniorAttachmentsUrl && (
-                <p className="mt-1 text-sm text-green-600">
-                  Uploaded:{" "}
-                  <a
-                    href={formData.seniorAttachmentsUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline hover:text-green-800 font-medium"
-                  >
-                    View File
-                  </a>
-                </p>
-              )}
             </div>
 
             <div>
@@ -1000,10 +1175,79 @@ export default function OrderReceived() {
               </Select>
             </div>
 
+            {/* Conditional fields based on Payment Mode — same pattern as
+                FollowUp.jsx's renderConditionalFields(). Skipped entirely for
+                FOC, since no payment is actually happening there. */}
+            {formData.paymentMode && formData.paymentMode !== "FOC" && (
+              <>
+                <div>
+                  <Label className="flex items-center gap-2">
+                    Advance Payment Attachment *
+                    {isUploadingAdvancePaymentAttachment && (
+                      <LoaderIcon className="animate-spin w-4 h-4 text-blue-600" />
+                    )}
+                  </Label>
+                  <Input
+                    type="file"
+                    disabled={isUploadingAdvancePaymentAttachment}
+                    onChange={handleAdvancePaymentAttachmentChange}
+                    data-testid="input-advance-payment-attachment"
+                  />
+                  {isUploadingAdvancePaymentAttachment && (
+                    <p className="text-xs text-blue-600 mt-1">Uploading file, please wait...</p>
+                  )}
+                  {formData.advancePaymentAttachmentUrl && (
+                    <p className="mt-1 text-sm text-green-600">
+                      Uploaded:{" "}
+                      <a
+                        href={formData.advancePaymentAttachmentUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline hover:text-green-800 font-medium"
+                      >
+                        View File
+                      </a>
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <Label className="flex items-center gap-2">
+                    Senior Approval *
+                    {isUploadingSeniorApproval && (
+                      <LoaderIcon className="animate-spin w-4 h-4 text-blue-600" />
+                    )}
+                  </Label>
+                  <Input
+                    type="file"
+                    disabled={isUploadingSeniorApproval}
+                    onChange={handleSeniorApprovalChange}
+                    data-testid="input-senior-approval"
+                  />
+                  {isUploadingSeniorApproval && (
+                    <p className="text-xs text-blue-600 mt-1">Uploading file, please wait...</p>
+                  )}
+                  {formData.seniorApprovalUrl && (
+                    <p className="mt-1 text-sm text-green-600">
+                      Uploaded:{" "}
+                      <a
+                        href={formData.seniorApprovalUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline hover:text-green-800 font-medium"
+                      >
+                        View File
+                      </a>
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
+
             <div className="md:col-span-2 flex space-x-4 pt-4 sticky bottom-0 bg-white py-4">
               <Button
                 type="submit"
-                disabled={isSubmitting || isUploadingSeniorAttachments}
+                disabled={isSubmitting || isUploadingSeniorApproval || isUploadingAdvancePaymentAttachment}
                 data-testid="button-submit-order-received"
                 className="px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-70 disabled:transform-none"
               >
