@@ -41,7 +41,7 @@ export default function CalibrationCertificate() {
       // Tickets ready for Calibration Certificate
       // (calibration.calibration_certificate_planned set).
       const { data: calibrationRows, error: calibrationError } = await supabase
-        .from("calibration")
+        .from("sss_calibration")
         .select("ticket_id, calibration_certificate_planned")
         .not("calibration_certificate_planned", "is", null);
 
@@ -56,7 +56,7 @@ export default function CalibrationCertificate() {
       }
 
       const { data: ticketsData, error: ticketsError } = await supabase
-        .from("tickets")
+        .from("sss_tickets")
         .select("*")
         .in("ticket_id", ticketIds)
         .order("created_at", { ascending: true });
@@ -64,19 +64,19 @@ export default function CalibrationCertificate() {
       if (ticketsError) throw ticketsError;
 
       const { data: certificateRows, error: certificateError } = await supabase
-        .from("calibration_certificate")
+        .from("sss_calibration_certificate")
         .select("*")
         .in("ticket_id", ticketIds);
 
       if (certificateError) throw certificateError;
 
       const { data: quotationRows } = await supabase
-        .from("quotation")
+        .from("sss_quotation")
         .select("ticket_id, quotation_no, quotation_pdf_link")
         .in("ticket_id", ticketIds);
 
       const { data: invoiceFullRows } = await supabase
-        .from("invoice")
+        .from("sss_invoice")
         .select("ticket_id, invoice_no_nabl, invoice_no_service, invoice_no_spare, attachment_nabl, attachment_service, attachment_spear")
         .in("ticket_id", ticketIds);
 
@@ -227,7 +227,7 @@ export default function CalibrationCertificate() {
       // uploaded on file selection.
       const attachmentUrl = attachmentFile ? await uploadToStorage(attachmentFile) : null;
 
-      const { error } = await supabase.from("calibration_certificate").insert({
+      const { error } = await supabase.from("sss_calibration_certificate").insert({
         ticket_id: selectedTicket.ticketId,
         ticket_uuid: selectedTicket.ticketUuid,
         certificate_type_name: formData.certificateTypeName || null,

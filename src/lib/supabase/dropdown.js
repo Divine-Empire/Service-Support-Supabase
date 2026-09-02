@@ -17,7 +17,7 @@ export async function fetchDropdownRows(categories, columns = "category, value")
 
   while (true) {
     let query = supabase
-      .from("dropdown")
+      .from("sss_dropdown")
       .select(columns)
       .order("category", { ascending: true })
       .order("value", { ascending: true })

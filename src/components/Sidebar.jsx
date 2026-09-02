@@ -72,8 +72,7 @@ export default function Sidebar({ onClose, isMobile = false }) {
     if (item.name === "Settings" || item.name === "Master" || item.name === "TAT Config") return user?.role === "admin";
     return (
       allowedPages.includes(item.name) ||
-      item.name === "Service Installation" ||
-      item.name === "IMS"
+      item.name === "Service Installation"
     );
   });
 

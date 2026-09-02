@@ -137,7 +137,7 @@ export default function VideoCallSolution() {
     try {
       // Tickets ready for Video-Call (warranty_check.video_call_planned set).
       const { data: warrantyRows, error: warrantyError } = await supabase
-        .from("warranty_check")
+        .from("sss_warranty_check")
         .select("ticket_id, video_call_planned")
         .not("video_call_planned", "is", null);
 
@@ -152,7 +152,7 @@ export default function VideoCallSolution() {
       }
 
       const { data: ticketsData, error: ticketsError } = await supabase
-        .from("tickets")
+        .from("sss_tickets")
         .select("*")
         .in("ticket_id", ticketIds)
         .order("created_at", { ascending: true });
@@ -162,7 +162,7 @@ export default function VideoCallSolution() {
       // All attempts for these tickets, newest first, so the first one seen
       // per ticket_id below is that ticket's LATEST attempt.
       const { data: attempts, error: attemptsError } = await supabase
-        .from("video_call")
+        .from("sss_video_call")
         .select("*")
         .in("ticket_id", ticketIds)
         .order("created_at", { ascending: false });
@@ -415,7 +415,7 @@ export default function VideoCallSolution() {
       // this attempt while the ticket stays pending. fetchData() below
       // recomputes pending/history from the latest attempt, so a
       // 'rescheduled' ticket correctly stays in the pending list.
-      const { error } = await supabase.from("video_call").insert(insertPayload);
+      const { error } = await supabase.from("sss_video_call").insert(insertPayload);
       if (error) throw error;
 
       toast({
@@ -446,7 +446,7 @@ export default function VideoCallSolution() {
     setCancelSubmit(true);
 
     try {
-      const { error } = await supabase.from("cancelled_tickets").insert({
+      const { error } = await supabase.from("sss_cancelled_tickets").insert({
         ticket_id: selectedTicket.ticketId,
         ticket_uuid: selectedTicket.ticketUuid,
         cancelled_from_stage: "Video Call Solution",
@@ -542,7 +542,7 @@ export default function VideoCallSolution() {
       // The live/regeneratable OTP lives on tickets.otp — there's no
       // video_call row yet for a still-pending ticket to hold it.
       const { error } = await supabase
-        .from("tickets")
+        .from("sss_tickets")
         .update({ otp: sixDigitNumber1 })
         .eq("ticket_id", ticketId);
 

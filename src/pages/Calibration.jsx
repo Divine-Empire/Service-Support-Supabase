@@ -42,7 +42,7 @@ export default function Calibration() {
       // Tickets ready for Calibration (invoice.calibration_planned set —
       // only true when tickets.enquiry_type = 'NABL').
       const { data: invoiceRows, error: invoiceError } = await supabase
-        .from("invoice")
+        .from("sss_invoice")
         .select("ticket_id, calibration_planned")
         .not("calibration_planned", "is", null);
 
@@ -57,7 +57,7 @@ export default function Calibration() {
       }
 
       const { data: ticketsData, error: ticketsError } = await supabase
-        .from("tickets")
+        .from("sss_tickets")
         .select("*")
         .in("ticket_id", ticketIds)
         .order("created_at", { ascending: true });
@@ -65,19 +65,19 @@ export default function Calibration() {
       if (ticketsError) throw ticketsError;
 
       const { data: calibrationRows, error: calibrationError } = await supabase
-        .from("calibration")
+        .from("sss_calibration")
         .select("*")
         .in("ticket_id", ticketIds);
 
       if (calibrationError) throw calibrationError;
 
       const { data: quotationRows } = await supabase
-        .from("quotation")
+        .from("sss_quotation")
         .select("ticket_id, quotation_no, quotation_pdf_link")
         .in("ticket_id", ticketIds);
 
       const { data: invoiceFullRows } = await supabase
-        .from("invoice")
+        .from("sss_invoice")
         .select("ticket_id, invoice_no_nabl, invoice_no_service, invoice_no_spare, attachment_nabl, attachment_service, attachment_spear")
         .in("ticket_id", ticketIds);
 
@@ -217,7 +217,7 @@ export default function Calibration() {
         calibrationSubmittedAt: submittedAt,
       });
 
-      const { error } = await supabase.from("calibration").insert({
+      const { error } = await supabase.from("sss_calibration").insert({
         ticket_id: selectedTicket.ticketId,
         ticket_uuid: selectedTicket.ticketUuid,
         calibration_date: formData.calibrationDate || null,

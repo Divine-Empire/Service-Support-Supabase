@@ -1,13 +1,23 @@
 /**
  * Centralized sheet-to-Supabase mapping.
  *
+ * NOTE (migration 0053, 2026-09-02): every table/view/function/trigger/RLS-
+ * policy in this project's public schema was renamed with an `sss_` prefix
+ * (e.g. `tickets` -> `sss_tickets`), so this schema can later be migrated
+ * into an existing production Supabase project's DB without name collisions.
+ * Explicit user decision — every object got the prefix, no exceptions. The
+ * `supabaseTable` values below already reflect the new (prefixed) names;
+ * historical/narrative text elsewhere in this file that mentions the old
+ * unprefixed names (in prose, describing past migrations) was left as-is —
+ * only the actual identifiers matter going forward.
+ *
  * The legacy backend is a single wide "Ticket_Enquiry" Google Sheet — every
  * pipeline stage (Ticket-and-Enquiry, Quotation, Follow-Up, Site Visit,
  * Invoice, ...) reads/writes its own slice of columns on the same row.
  *
  * The Supabase side is normalized instead: one table per stage, each FKing
- * on the root `tickets` table (owned by src/pages/Ticket-and-Enquiry.jsx) via
- * `ticket_uuid -> tickets.uuid` (the real primary key — migration 0030;
+ * on the root `sss_tickets` table (owned by src/pages/Ticket-and-Enquiry.jsx)
+ * via `ticket_uuid -> sss_tickets.uuid` (the real primary key — migration 0030;
  * before that, the FK was on tickets.ticket_id, the "TN-XXXX" business key).
  * `ticket_id` text is still kept on every stage table as a plain
  * denormalized column — populated at insert time, used throughout the app
@@ -34,7 +44,7 @@
 /** @type {Record<string, { supabaseTable: string, sourceSheet: string, primaryKey: string, description: string, fields: FieldMapping[] }>} */
 export const SCHEMA_MAPPING = {
   ticketEnquiry: {
-    supabaseTable: "tickets",
+    supabaseTable: "sss_tickets",
     sourceSheet: "Ticket_Enquiry",
     primaryKey: "uuid",
     description:
@@ -88,7 +98,7 @@ export const SCHEMA_MAPPING = {
   },
 
   loginMaster: {
-    supabaseTable: "login_users",
+    supabaseTable: "sss_login_users",
     sourceSheet: "Login Master",
     primaryKey: "uuid",
     description:
@@ -118,7 +128,7 @@ export const SCHEMA_MAPPING = {
   },
 
   dropdown: {
-    supabaseTable: "dropdown",
+    supabaseTable: "sss_dropdown",
     sourceSheet: "DROPDOWN",
     primaryKey: "uuid",
     description:
@@ -151,7 +161,7 @@ export const SCHEMA_MAPPING = {
   },
 
   companyDetails: {
-    supabaseTable: "company_details",
+    supabaseTable: "sss_company_details",
     sourceSheet: "DROPDOWN",
     primaryKey: "uuid",
     description:
@@ -173,7 +183,7 @@ export const SCHEMA_MAPPING = {
   },
 
   tatConfig: {
-    supabaseTable: "tat_config",
+    supabaseTable: "sss_tat_config",
     sourceSheet: null,
     primaryKey: "uuid",
     description:
@@ -194,7 +204,7 @@ export const SCHEMA_MAPPING = {
   },
 
   officeHours: {
-    supabaseTable: "office_hours",
+    supabaseTable: "sss_office_hours",
     sourceSheet: null,
     primaryKey: "id",
     description:
@@ -216,7 +226,7 @@ export const SCHEMA_MAPPING = {
   },
 
   holidays: {
-    supabaseTable: "holidays",
+    supabaseTable: "sss_holidays",
     sourceSheet: null,
     primaryKey: "id",
     description:
@@ -232,7 +242,7 @@ export const SCHEMA_MAPPING = {
   },
 
   warrantyCheck: {
-    supabaseTable: "warranty_check",
+    supabaseTable: "sss_warranty_check",
     sourceSheet: "Ticket_Enquiry",
     primaryKey: "id",
     description:
@@ -262,7 +272,7 @@ export const SCHEMA_MAPPING = {
   },
 
   videoCall: {
-    supabaseTable: "video_call",
+    supabaseTable: "sss_video_call",
     sourceSheet: "Ticket_Enquiry",
     primaryKey: "id",
     description:
@@ -305,7 +315,7 @@ export const SCHEMA_MAPPING = {
   },
 
   quotation: {
-    supabaseTable: "quotation",
+    supabaseTable: "sss_quotation",
     sourceSheet: "Ticket_Enquiry",
     primaryKey: "id",
     description:
@@ -350,7 +360,7 @@ export const SCHEMA_MAPPING = {
   },
 
   followUp: {
-    supabaseTable: "follow_up",
+    supabaseTable: "sss_follow_up",
     sourceSheet: "Follow-Up",
     primaryKey: "id",
     description:
@@ -392,7 +402,7 @@ export const SCHEMA_MAPPING = {
   },
 
   siteVisit: {
-    supabaseTable: "site_visit",
+    supabaseTable: "sss_site_visit",
     sourceSheet: "Ticket_Enquiry",
     primaryKey: "id",
     description:
@@ -431,7 +441,7 @@ export const SCHEMA_MAPPING = {
   },
 
   tada: {
-    supabaseTable: "tada",
+    supabaseTable: "sss_tada",
     sourceSheet: "Ticket_Enquiry",
     primaryKey: "id",
     description:
@@ -465,7 +475,7 @@ export const SCHEMA_MAPPING = {
   },
 
   otpVerification: {
-    supabaseTable: "otp_verification",
+    supabaseTable: "sss_otp_verification",
     sourceSheet: "Ticket_Enquiry",
     primaryKey: "id",
     description:
@@ -498,7 +508,7 @@ export const SCHEMA_MAPPING = {
   },
 
   orderReceived: {
-    supabaseTable: "order_received",
+    supabaseTable: "sss_order_received",
     sourceSheet: "Ticket_Enquiry",
     primaryKey: "id",
     description:
@@ -538,7 +548,7 @@ export const SCHEMA_MAPPING = {
   },
 
   warehouse: {
-    supabaseTable: "warehouse",
+    supabaseTable: "sss_warehouse",
     sourceSheet: "Ticket_Enquiry",
     primaryKey: "id",
     description:
@@ -572,7 +582,7 @@ export const SCHEMA_MAPPING = {
   },
 
   invoice: {
-    supabaseTable: "invoice",
+    supabaseTable: "sss_invoice",
     sourceSheet: "Ticket_Enquiry",
     primaryKey: "id",
     description:
@@ -626,7 +636,7 @@ export const SCHEMA_MAPPING = {
   },
 
   calibration: {
-    supabaseTable: "calibration",
+    supabaseTable: "sss_calibration",
     sourceSheet: null,
     primaryKey: "id",
     description:
@@ -660,7 +670,7 @@ export const SCHEMA_MAPPING = {
   },
 
   calibrationCertificate: {
-    supabaseTable: "calibration_certificate",
+    supabaseTable: "sss_calibration_certificate",
     sourceSheet: null,
     primaryKey: "id",
     description:
@@ -688,7 +698,7 @@ export const SCHEMA_MAPPING = {
   },
 
   spareDispatchDetails: {
-    supabaseTable: "spare_dispatch_details",
+    supabaseTable: "sss_spare_dispatch_details",
     sourceSheet: null,
     primaryKey: "id",
     description:
@@ -712,7 +722,7 @@ export const SCHEMA_MAPPING = {
   },
 
   makeQuotation: {
-    supabaseTable: "make_quotation",
+    supabaseTable: "sss_make_quotation",
     sourceSheet: "Make Quotation",
     primaryKey: "id",
     description:
@@ -725,11 +735,12 @@ export const SCHEMA_MAPPING = {
       "querying existing quotation_no values for the current prefix+financial-year instead of asking Apps " +
       "Script, with the same no-atomicity-guarantee tradeoff the legacy version already had (a low-stakes " +
       "internal numbering scheme, not part of the ticket_id generation trigger's guarantees). " +
-      "quotation-service.jsx also still contains a full second dead copy of this whole page (its own default " +
-      "export, never imported anywhere) — left alone, flagged for future cleanup. The 'Generate Link' email-" +
-      "sending feature (handleGenerateLink) is INTENTIONALLY NOT migrated — it still posts to the separate " +
-      "VITE_QUOTATION_EMAIL_API Apps Script deployment, since real email sending needs a Supabase Edge " +
-      "Function + an email provider, a separate infrastructure decision from this data migration.",
+      "quotation-service.jsx's dead second copy of this page (its unused default export) and its Apps-Script-" +
+      "only getCompanyPrefix() were both deleted (2026-09-02) — only getNextQuotationNumber remains there now. " +
+      "The 'Generate Link' feature (handleGenerateLink) was also unlinked from Apps Script the same day: it " +
+      "now uploads the PDF straight to the 'ticket_enquiry' Storage bucket (path prefix 'make_quotation/') and " +
+      "hands back that link for manual sharing — no automated email. Real email sending still needs a " +
+      "Supabase Edge Function + an email provider, a separate infrastructure decision from this data migration.",
     fields: [
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "quotation_no", type: "text", note: "Unique. Client-generated (see description) or a revision suffix of an existing one." },
       { sheetColumn: null, sheetIndex: null, sheetField: "date", supabaseColumn: "quotation_date", type: "text" },
@@ -747,7 +758,7 @@ export const SCHEMA_MAPPING = {
   },
 
   pipelineOverview: {
-    supabaseTable: "pipeline_overview",
+    supabaseTable: "sss_pipeline_overview",
     sourceSheet: null,
     primaryKey: "ticket_uuid",
     description:
@@ -768,7 +779,7 @@ export const SCHEMA_MAPPING = {
   },
 
   quotationItems: {
-    supabaseTable: "quotation_items",
+    supabaseTable: "sss_quotation_items",
     sourceSheet: "Quotation Items",
     primaryKey: "id",
     description: "Line items for make_quotation — one row per item per quotation_no. See makeQuotation entry above.",
@@ -780,7 +791,7 @@ export const SCHEMA_MAPPING = {
   },
 
   cancelledTickets: {
-    supabaseTable: "cancelled_tickets",
+    supabaseTable: "sss_cancelled_tickets",
     sourceSheet: "Cancel",
     primaryKey: "id",
     description:
@@ -807,6 +818,39 @@ export const SCHEMA_MAPPING = {
     notFields: [
       "The legacy sheet row also carried title/description fields — these were always-blank artifacts (the " +
       "ticket data model has no such fields) and were dropped, not modeled here.",
+    ],
+  },
+
+  sssServiceInstallation: {
+    supabaseTable: "sss_service_installation",
+    sourceSheet: "Service-Installation",
+    primaryKey: "id",
+    description:
+      "Service Installation stage, owned by src/pages/ServiceInstallation.jsx (route /serviceinstallation), " +
+      "migration 0052. Replaces this page's old Apps Script/Google Sheets + Drive backend (VITE_APPS_SCRIPT_API, " +
+      "VITE_GOOGLE_SHEET_ID, VITE_SERVICE_INSTALLATION_FOLDER_ID, VITE_DRIVE_FOLDER_ID — all removed from .env). " +
+      "UNLIKE every other stage table above, this one is NOT keyed off tickets.uuid — it's a standalone log fed " +
+      "by two independent writers: (1) a separate external 'OTP system' (not part of this codebase) INSERTs a " +
+      "row per installation job with the first 14 columns below plus `planned`; (2) this page UPDATEs that same " +
+      "row once an engineer completes/defers the follow-up. Pending vs History: planned is not null and actual " +
+      "is null -> Pending; both not null -> History. `actual` is only stamped when installation_follow_up is " +
+      "submitted as 'Yes' (job genuinely completed) — 'No' and 'Next Date for Follow-Up' update the row in " +
+      "place but leave it in Pending. This page's 'New Enquiry' modal (a trimmed copy of Ticket-and-Enquiry.jsx's " +
+      "form) is unrelated to this table — it inserts a brand new root ticket into public.tickets directly.",
+    fields: [
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "created_at", type: "timestamptz", note: "'Timestamp'. Written by the external OTP system." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "order_no", type: "text", note: "Written by the OTP system." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "is_installation_required", type: "text", note: "'Yes'/'No'. Written by the OTP system." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "company_name / contact_person_name / contact_person_no", type: "text", note: "Written by the OTP system." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "item_name / qty / serial / si_no", type: "text/numeric", note: "Written by the OTP system." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "invoice_date / invoice_no / invoice_copy_upload / actual_material_rcvd", type: "date/text", note: "Written by the OTP system." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "planned", type: "timestamptz", note: "Readiness stamp — written by the OTP system, gates the Pending tab." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "actual", type: "timestamptz", note: "Written by this page, only when installation_follow_up = 'Yes'." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "installation_follow_up", type: "text", note: "'Yes' | 'No' | 'Next Date for Follow-Up'. Written by this page's Approval dialog." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "service_type / engineer_name", type: "text", note: "Written by this page, only when installation_follow_up = 'Yes'." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "service_report_file", type: "text", note: "File URL in the 'ticket_enquiry' Storage bucket (path prefix 'service_installation/'). NOT in the original column list the user specified — added by explicit follow-up decision (2026-09-02) to keep the old Apps Script version's file-upload feature." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "next_date / what_did_customer_say", type: "date/text", note: "Written by this page for all three installation_follow_up outcomes." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "delay", type: "integer", note: "Trigger-computed: greatest(0, round((actual - planned) in minutes)). Never written by the frontend." },
     ],
   },
 };

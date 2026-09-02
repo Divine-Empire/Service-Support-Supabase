@@ -51,7 +51,7 @@ export default function SiteVisitOTPVerification() {
     try {
       // Tickets ready for OTP Verification (tada.otp_verification_planned set).
       const { data: tadaRows, error: tadaError } = await supabase
-        .from("tada")
+        .from("sss_tada")
         .select("ticket_id, ticket_uuid, travel_date, return_date, otp_verification_planned")
         .not("otp_verification_planned", "is", null)
         .order("created_at", { ascending: false });
@@ -69,7 +69,7 @@ export default function SiteVisitOTPVerification() {
       const tadaByTicket = new Map((tadaRows || []).map((t) => [t.ticket_id, t]));
 
       const { data: ticketsData, error: ticketsError } = await supabase
-        .from("tickets")
+        .from("sss_tickets")
         .select("*")
         .in("ticket_id", ticketIds)
         .order("created_at", { ascending: true });
@@ -77,7 +77,7 @@ export default function SiteVisitOTPVerification() {
       if (ticketsError) throw ticketsError;
 
       const { data: otpRows, error: otpError } = await supabase
-        .from("otp_verification")
+        .from("sss_otp_verification")
         .select("*")
         .in("ticket_id", ticketIds);
 
@@ -262,7 +262,7 @@ export default function SiteVisitOTPVerification() {
         videoFile ? uploadToStorage(videoFile, "video") : Promise.resolve(null),
       ]);
 
-      const { error } = await supabase.from("otp_verification").insert({
+      const { error } = await supabase.from("sss_otp_verification").insert({
         ticket_id: selectedTicket.ticketId,
         ticket_uuid: selectedTicket.ticketUuid,
         site_visit_date: formData.siteVisitDate || null,
@@ -336,7 +336,7 @@ export default function SiteVisitOTPVerification() {
 
     try {
       const { error } = await supabase
-        .from("tickets")
+        .from("sss_tickets")
         .update({ site_visit_otp: sixDigitNumber1 })
         .eq("uuid", selectedTicket.ticketUuid);
 

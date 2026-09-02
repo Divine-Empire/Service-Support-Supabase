@@ -163,7 +163,7 @@ const QuotationForm = ({
     const fetchCompanyOptions = async () => {
       try {
         const { data, error } = await supabase
-          .from("tickets")
+          .from("sss_tickets")
           .select("company_name, site_address, client_name, phone_number, gst_no, created_at")
           .order("created_at", { ascending: false })
           .limit(500)
@@ -202,7 +202,7 @@ const QuotationForm = ({
     const fetchLeadNumbers = async () => {
       try {
         const { data, error } = await supabase
-          .from("tickets")
+          .from("sss_tickets")
           .select("ticket_id, uuid, company_name, site_address, gst_no, client_name, phone_number, created_at")
           .order("created_at", { ascending: false })
           .limit(300)
@@ -344,7 +344,7 @@ const QuotationForm = ({
     // ([{ item, qty }, ...]), matched against the production product master.
     try {
       const { data: videoCallRows, error: videoCallError } = await supabase
-        .from("video_call")
+        .from("sss_video_call")
         .select("item_qty, created_at")
         .eq("ticket_id", leadData.ticketId)
         .order("created_at", { ascending: false })

@@ -57,7 +57,7 @@ export default function Invoice() {
     try {
       // Tickets ready for Invoice (order_received.invoice_planned set).
       const { data: orderReceivedRows, error: orderReceivedError } = await supabase
-        .from("order_received")
+        .from("sss_order_received")
         .select("ticket_id, invoice_planned")
         .not("invoice_planned", "is", null);
 
@@ -72,7 +72,7 @@ export default function Invoice() {
       }
 
       const { data: ticketsData, error: ticketsError } = await supabase
-        .from("tickets")
+        .from("sss_tickets")
         .select("*")
         .in("ticket_id", ticketIds)
         .order("created_at", { ascending: true });
@@ -81,7 +81,7 @@ export default function Invoice() {
 
       // Quotation No./PDF are display-only here — joined from their owning stage.
       const { data: quotationRows, error: quotationError } = await supabase
-        .from("quotation")
+        .from("sss_quotation")
         .select("ticket_id, quotation_no, quotation_pdf_link")
         .in("ticket_id", ticketIds);
 
@@ -94,7 +94,7 @@ export default function Invoice() {
       // also doubles as the Payment Term/Payment Mode/Senior Approval/
       // Advance Payment Attachment source for the Pending tab.
       const { data: orderReceivedFullRows, error: orderReceivedFullError } = await supabase
-        .from("order_received")
+        .from("sss_order_received")
         .select("ticket_id, payment_term, payment_mode, senior_approval, advance_payment_attachment")
         .in("ticket_id", ticketIds);
 
@@ -107,7 +107,7 @@ export default function Invoice() {
       // "Client Approval" — same attachment FollowUp.jsx collects when it
       // logs stage='Order Received' (see OrderReceived.jsx's identical fetch).
       const { data: invoiceFollowUpRows, error: invoiceFollowUpError } = await supabase
-        .from("follow_up")
+        .from("sss_follow_up")
         .select("ticket_id, stage, client_attachment_url, created_at")
         .in("ticket_id", ticketIds)
         .eq("stage", "Order Received")
@@ -123,7 +123,7 @@ export default function Invoice() {
       });
 
       const { data: invoiceRows, error: invoiceError } = await supabase
-        .from("invoice")
+        .from("sss_invoice")
         .select("*")
         .in("ticket_id", ticketIds);
 
@@ -309,7 +309,7 @@ export default function Invoice() {
       const calibrationPlanned = await computeStagePlanned("calibration", planningCtx);
       const spareDispatchPlanned = await computeStagePlanned("sparedispatch", planningCtx);
 
-      const { error } = await supabase.from("invoice").insert({
+      const { error } = await supabase.from("sss_invoice").insert({
         ticket_id: selectedTicket.ticketId,
         ticket_uuid: selectedTicket.ticketUuid,
         invoice_posted_by: formData.invoicePostedBy || null,

@@ -41,7 +41,7 @@ export default function SpareDispatchDetails() {
       // Tickets ready for Spare Dispatch Details (invoice.spare_dispatch_planned
       // set — only true when tickets.enquiry_type = 'SPARE').
       const { data: invoiceRows, error: invoiceError } = await supabase
-        .from("invoice")
+        .from("sss_invoice")
         .select("ticket_id, spare_dispatch_planned")
         .not("spare_dispatch_planned", "is", null);
 
@@ -56,7 +56,7 @@ export default function SpareDispatchDetails() {
       }
 
       const { data: ticketsData, error: ticketsError } = await supabase
-        .from("tickets")
+        .from("sss_tickets")
         .select("*")
         .in("ticket_id", ticketIds)
         .order("created_at", { ascending: true });
@@ -64,12 +64,12 @@ export default function SpareDispatchDetails() {
       if (ticketsError) throw ticketsError;
 
       const { data: invoiceFullRows } = await supabase
-        .from("invoice")
+        .from("sss_invoice")
         .select("ticket_id, invoice_no_spare, attachment_spear, invoice_no_service, attachment_service, invoice_no_nabl, attachment_nabl")
         .in("ticket_id", ticketIds);
 
       const { data: dispatchRows, error: dispatchError } = await supabase
-        .from("spare_dispatch_details")
+        .from("sss_spare_dispatch_details")
         .select("*")
         .in("ticket_id", ticketIds);
 
@@ -197,7 +197,7 @@ export default function SpareDispatchDetails() {
       // uploaded on file selection.
       const biltyCopyUrl = biltyCopyFile ? await uploadToStorage(biltyCopyFile) : null;
 
-      const { error } = await supabase.from("spare_dispatch_details").insert({
+      const { error } = await supabase.from("sss_spare_dispatch_details").insert({
         ticket_id: selectedTicket.ticketId,
         ticket_uuid: selectedTicket.ticketUuid,
         transporter_name: formData.transporterName || null,

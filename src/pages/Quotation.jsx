@@ -52,7 +52,7 @@ export default function Quotation() {
     try {
       // Tickets ready for Quotation (warranty_check.quotation_planned set).
       const { data: warrantyRows, error: warrantyError } = await supabase
-        .from("warranty_check")
+        .from("sss_warranty_check")
         .select("ticket_id, quotation_planned")
         .not("quotation_planned", "is", null);
 
@@ -67,7 +67,7 @@ export default function Quotation() {
       }
 
       const { data: ticketsData, error: ticketsError } = await supabase
-        .from("tickets")
+        .from("sss_tickets")
         .select("*")
         .in("ticket_id", ticketIds)
         .order("created_at", { ascending: true });
@@ -75,7 +75,7 @@ export default function Quotation() {
       if (ticketsError) throw ticketsError;
 
       const { data: quotationRows, error: quotationError } = await supabase
-        .from("quotation")
+        .from("sss_quotation")
         .select("*")
         .in("ticket_id", ticketIds);
 
@@ -89,7 +89,7 @@ export default function Quotation() {
       // the item list (a ticket only reaches Quotation via Video-Call's 'no'
       // outcome, or by skipping Video-Call entirely).
       const { data: videoCallRows, error: videoCallError } = await supabase
-        .from("video_call")
+        .from("sss_video_call")
         .select("ticket_id, regeneration_status, item_qty, created_at")
         .in("ticket_id", ticketIds)
         .order("created_at", { ascending: false });
@@ -109,7 +109,7 @@ export default function Quotation() {
       // and drops out of Quotation's pending (still stays in history if it
       // was ever quoted).
       const { data: followUpRows, error: followUpError } = await supabase
-        .from("follow_up")
+        .from("sss_follow_up")
         .select("ticket_id, stage, created_at")
         .in("ticket_id", ticketIds)
         .order("created_at", { ascending: false });
@@ -335,7 +335,7 @@ export default function Quotation() {
   const fetchGeneratedQuotations = async (ticketUuid) => {
     try {
       const { data, error } = await supabase
-        .from("make_quotation")
+        .from("sss_make_quotation")
         .select("quotation_no, grand_total, pdf_url, created_at")
         .eq("ticket_uuid", ticketUuid)
         .order("created_at", { ascending: true });
@@ -367,7 +367,7 @@ export default function Quotation() {
 
     if (value) {
       supabase
-        .from("quotation_items")
+        .from("sss_quotation_items")
         .select("amount, is_freight")
         .eq("quotation_no", value)
         .then(({ data: items, error }) => {
@@ -477,7 +477,7 @@ export default function Quotation() {
       }
 
       const { error } = await supabase
-        .from("quotation")
+        .from("sss_quotation")
         .upsert(payload, { onConflict: "ticket_uuid" });
 
       if (error) throw error;
@@ -510,7 +510,7 @@ export default function Quotation() {
     setCancelSubmit(true);
 
     try {
-      const { error } = await supabase.from("cancelled_tickets").insert({
+      const { error } = await supabase.from("sss_cancelled_tickets").insert({
         ticket_id: selectedTicket.ticketId,
         ticket_uuid: selectedTicket.ticketUuid,
         cancelled_from_stage: "Quotation",

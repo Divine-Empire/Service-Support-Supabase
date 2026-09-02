@@ -197,7 +197,7 @@ export default function SiteVisitPlan() {
     try {
       // Tickets ready for Site Visit Plan (follow_up.site_visit_planned set).
       const { data: followUpRows, error: followUpError } = await supabase
-        .from("follow_up")
+        .from("sss_follow_up")
         .select("ticket_id, site_visit_planned")
         .not("site_visit_planned", "is", null)
         .order("created_at", { ascending: false });
@@ -215,27 +215,34 @@ export default function SiteVisitPlan() {
       }
 
       const { data: ticketsData, error: ticketsError } = await supabase
-        .from("tickets")
+        .from("sss_tickets")
         .select("*")
         .in("ticket_id", ticketIds)
         .order("created_at", { ascending: true });
 
       if (ticketsError) throw ticketsError;
 
+      // Unfiltered — a ticket can now have more than one row (each a past
+      // assignment attempt; see migration 0054's Reschedule flow). Group per
+      // ticket below into the current active plan (if any) plus a log of
+      // rescheduled ones.
       const { data: siteVisitRows, error: siteVisitError } = await supabase
-        .from("site_visit")
+        .from("sss_site_visit")
         .select("*")
-        .in("ticket_id", ticketIds);
+        .in("ticket_id", ticketIds)
+        .order("created_at", { ascending: true });
 
       if (siteVisitError) throw siteVisitError;
 
-      const siteVisitByTicket = new Map(
-        (siteVisitRows || []).map((s) => [s.ticket_id, s])
-      );
+      const siteVisitRowsByTicket = new Map();
+      (siteVisitRows || []).forEach((s) => {
+        if (!siteVisitRowsByTicket.has(s.ticket_id)) siteVisitRowsByTicket.set(s.ticket_id, []);
+        siteVisitRowsByTicket.get(s.ticket_id).push(s);
+      });
 
       // Warranty Check is display-only here — joined from its owning stage.
       const { data: warrantyRows, error: warrantyError } = await supabase
-        .from("warranty_check")
+        .from("sss_warranty_check")
         .select("ticket_id, warranty_check")
         .in("ticket_id", ticketIds);
 
@@ -272,20 +279,41 @@ export default function SiteVisitPlan() {
           warrantyCheck: warrantyByTicket.get(t.ticket_id) || "",
         };
 
-        const sv = siteVisitByTicket.get(t.ticket_id);
-        if (sv) {
+        const rows = siteVisitRowsByTicket.get(t.ticket_id) || [];
+        const activeSv = rows.find((s) => !s.rescheduled_at);
+        const rescheduledRows = rows.filter((s) => s.rescheduled_at);
+
+        if (activeSv) {
           history.push({
             ...base,
-            engineerAssign: sv.engineer_assign || base.engineerAssign,
-            dateOfVisit: sv.date_of_visit || "",
-            travelDate: sv.date_of_visit || "",
-            travelTime: sv.travel_time || "",
-            transportation: sv.transportation || "",
-            expectedCompletionDate: sv.date_of_visit || "",
+            engineerAssign: activeSv.engineer_assign || base.engineerAssign,
+            dateOfVisit: activeSv.date_of_visit || "",
+            travelDate: activeSv.date_of_visit || "",
+            travelTime: activeSv.travel_time || "",
+            transportation: activeSv.transportation || "",
+            expectedCompletionDate: activeSv.date_of_visit || "",
             type: "Site Visit",
           });
         } else {
-          pending.push(base);
+          // No active plan — either never planned, or every past attempt was
+          // rescheduled. In the latter case, surface a "Rescheduled" tag +
+          // last-assigned-engineer log on the pending row (migration 0054).
+          const lastReschedule = rescheduledRows[rescheduledRows.length - 1];
+          pending.push({
+            ...base,
+            wasRescheduled: rescheduledRows.length > 0,
+            lastAssignedEngineer: lastReschedule?.engineer_assign || "",
+            rescheduledAt: lastReschedule?.rescheduled_at || "",
+            rescheduledBy: lastReschedule?.rescheduled_by || "",
+            rescheduleRemarks: lastReschedule?.reschedule_remarks || "",
+            rescheduleLog: rescheduledRows.map((s) => ({
+              engineerAssign: s.engineer_assign || "",
+              dateOfVisit: s.date_of_visit || "",
+              rescheduledAt: s.rescheduled_at || "",
+              rescheduledBy: s.rescheduled_by || "",
+              remarks: s.reschedule_remarks || "",
+            })),
+          });
         }
       });
 
@@ -370,7 +398,7 @@ export default function SiteVisitPlan() {
     setIsSubmitting(true);
 
     try {
-      const { error } = await supabase.from("site_visit").insert({
+      const { error } = await supabase.from("sss_site_visit").insert({
         ticket_id: selectedTicket.ticketId,
         ticket_uuid: selectedTicket.ticketUuid,
         engineer_assign: formData.engineerAssign || selectedTicket.engineerAssign || null,
@@ -410,7 +438,7 @@ export default function SiteVisitPlan() {
     setCancelSubmit(true);
 
     try {
-      const { error } = await supabase.from("cancelled_tickets").insert({
+      const { error } = await supabase.from("sss_cancelled_tickets").insert({
         ticket_id: selectedTicket.ticketId,
         ticket_uuid: selectedTicket.ticketUuid,
         cancelled_from_stage: "Site Visit Plan",
@@ -925,6 +953,25 @@ export default function SiteVisitPlan() {
                             </td>
                             <td className="px-4 py-3 text-blue-900">
                               {ticket.engineerAssign || ""}
+                              {ticket.wasRescheduled && (
+                                <div
+                                  className="mt-1 flex flex-col gap-0.5"
+                                  title={ticket.rescheduleLog
+                                    .map(
+                                      (log) =>
+                                        `${log.engineerAssign || "N/A"} — rescheduled ${formatDate(log.rescheduledAt)}${log.rescheduledBy ? ` by ${log.rescheduledBy}` : ""
+                                        }${log.remarks ? `: ${log.remarks}` : ""}`
+                                    )
+                                    .join("\n")}
+                                >
+                                  <span className="inline-flex w-fit items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                    🔄 Rescheduled
+                                  </span>
+                                  <span className="text-[11px] text-gray-500">
+                                    Previously: {ticket.lastAssignedEngineer || "N/A"}
+                                  </span>
+                                </div>
+                              )}
                             </td>
                           </tr>
                         ))
@@ -1036,6 +1083,21 @@ export default function SiteVisitPlan() {
                                 </p>
                               </div>
                             </div>
+
+                            {ticket.wasRescheduled && (
+                              <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 space-y-0.5">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                  🔄 Rescheduled
+                                </span>
+                                <p className="text-[11px] text-amber-800">
+                                  Previously assigned: <span className="font-semibold">{ticket.lastAssignedEngineer || "N/A"}</span>
+                                  {ticket.rescheduledAt ? ` (${formatDate(ticket.rescheduledAt)})` : ""}
+                                </p>
+                                {ticket.rescheduleRemarks && (
+                                  <p className="text-[11px] text-amber-700">Reason: {ticket.rescheduleRemarks}</p>
+                                )}
+                              </div>
+                            )}
 
                             {/* Enquiry Type */}
                             <div>

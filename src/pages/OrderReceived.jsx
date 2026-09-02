@@ -54,7 +54,7 @@ export default function OrderReceived() {
       // ticket, so they reach here the same way once their Follow-Up log
       // records stage='Order Received' — no separate warehouse-side gate.
       const { data: followUpRows, error: followUpError } = await supabase
-        .from("follow_up")
+        .from("sss_follow_up")
         .select("ticket_id, order_received_planned")
         .not("order_received_planned", "is", null);
 
@@ -69,7 +69,7 @@ export default function OrderReceived() {
       }
 
       const { data: ticketsData, error: ticketsError } = await supabase
-        .from("tickets")
+        .from("sss_tickets")
         .select("*")
         .in("ticket_id", ticketIds)
         .order("created_at", { ascending: true });
@@ -78,7 +78,7 @@ export default function OrderReceived() {
 
       // Quotation No./PDF are display-only here — joined from their owning stage.
       const { data: quotationRows, error: quotationError } = await supabase
-        .from("quotation")
+        .from("sss_quotation")
         .select("ticket_id, quotation_no, quotation_pdf_link")
         .in("ticket_id", ticketIds);
 
@@ -90,7 +90,7 @@ export default function OrderReceived() {
       // stage='Order Received' (the proof the client actually confirmed the
       // order). Take the latest such row per ticket.
       const { data: orderReceivedFollowUpRows, error: orderReceivedFollowUpError } = await supabase
-        .from("follow_up")
+        .from("sss_follow_up")
         .select("ticket_id, stage, client_attachment_url, created_at")
         .in("ticket_id", ticketIds)
         .eq("stage", "Order Received")
@@ -106,7 +106,7 @@ export default function OrderReceived() {
       });
 
       const { data: orderReceivedRows, error: orderReceivedError } = await supabase
-        .from("order_received")
+        .from("sss_order_received")
         .select("*")
         .in("ticket_id", ticketIds);
 
@@ -381,7 +381,7 @@ export default function OrderReceived() {
             orderReceivedSubmittedAt: submittedAt,
           });
 
-      const { error } = await supabase.from("order_received").insert({
+      const { error } = await supabase.from("sss_order_received").insert({
         ticket_id: selectedTicket.ticketId,
         ticket_uuid: selectedTicket.ticketUuid,
         payment_term: formData.paymentTerm || null,

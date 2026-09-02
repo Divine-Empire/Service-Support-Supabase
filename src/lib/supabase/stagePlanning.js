@@ -17,7 +17,7 @@ import { supabase } from "./client";
 /** Duration_minutes for a tat_config row, or `fallbackMinutes` if that stage isn't configured yet. */
 export async function getStageTatMinutes(stageName, fallbackMinutes = 60) {
   const { data, error } = await supabase
-    .from("tat_config")
+    .from("sss_tat_config")
     .select("duration_minutes")
     .eq("stage_name", stageName)
     .maybeSingle();
@@ -40,7 +40,7 @@ export function addMinutes(date, minutes) {
  */
 export async function getOfficeHours() {
   const { data, error } = await supabase
-    .from("office_hours")
+    .from("sss_office_hours")
     .select("*")
     .eq("id", 1)
     .maybeSingle();
@@ -50,7 +50,7 @@ export async function getOfficeHours() {
 }
 
 export async function getHolidayDates() {
-  const { data, error } = await supabase.from("holidays").select("holiday_date");
+  const { data, error } = await supabase.from("sss_holidays").select("holiday_date");
   if (error) throw error;
   return new Set((data || []).map((h) => h.holiday_date));
 }

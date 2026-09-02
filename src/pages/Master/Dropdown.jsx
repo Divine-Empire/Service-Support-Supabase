@@ -122,7 +122,7 @@ export default function Master() {
 
     setIsAddingValue(true);
     try {
-      const { error } = await supabase.from("dropdown").insert({ category, value });
+      const { error } = await supabase.from("sss_dropdown").insert({ category, value });
       if (error) throw error;
       toast({ title: "Success", description: "Value added successfully" });
       setNewValue("");
@@ -153,7 +153,7 @@ export default function Master() {
     setIsSavingEdit(true);
     try {
       const { error } = await supabase
-        .from("dropdown")
+        .from("sss_dropdown")
         .update({ value })
         .eq("uuid", editingRow.uuid);
       if (error) throw error;
@@ -173,7 +173,7 @@ export default function Master() {
     if (!deleteDropdownTarget) return;
     setIsDeletingDropdown(true);
     try {
-      const { error } = await supabase.from("dropdown").delete().eq("uuid", deleteDropdownTarget.uuid);
+      const { error } = await supabase.from("sss_dropdown").delete().eq("uuid", deleteDropdownTarget.uuid);
       if (error) throw error;
       toast({ title: "Success", description: "Value deleted successfully" });
       setDeleteDropdownTarget(null);

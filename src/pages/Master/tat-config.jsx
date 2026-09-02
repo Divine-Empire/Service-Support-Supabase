@@ -122,7 +122,7 @@ export default function TatConfig() {
     setFetchLoading(true);
     try {
       const { data, error } = await supabase
-        .from("tat_config")
+        .from("sss_tat_config")
         .select("*")
         .order("stage_name", { ascending: true });
       if (error) throw error;
@@ -138,7 +138,7 @@ export default function TatConfig() {
   const fetchOfficeHours = async () => {
     setOfficeHoursLoading(true);
     try {
-      const { data, error } = await supabase.from("office_hours").select("*").eq("id", 1).maybeSingle();
+      const { data, error } = await supabase.from("sss_office_hours").select("*").eq("id", 1).maybeSingle();
       if (error) throw error;
       if (data) {
         setOfficeHours(data);
@@ -160,7 +160,7 @@ export default function TatConfig() {
     setHolidaysLoading(true);
     try {
       const { data, error } = await supabase
-        .from("holidays")
+        .from("sss_holidays")
         .select("*")
         .order("holiday_date", { ascending: true });
       if (error) throw error;
@@ -223,7 +223,7 @@ export default function TatConfig() {
     try {
       if (isEditMode) {
         const { error } = await supabase
-          .from("tat_config")
+          .from("sss_tat_config")
           .update({
             stage_name: formData.stageName.trim(),
             duration_minutes: durationMinutes,
@@ -234,7 +234,7 @@ export default function TatConfig() {
         if (error) throw error;
         toast({ title: "Success", description: "TAT updated successfully" });
       } else {
-        const { error } = await supabase.from("tat_config").insert({
+        const { error } = await supabase.from("sss_tat_config").insert({
           stage_name: formData.stageName.trim(),
           duration_minutes: durationMinutes,
           responsible_person: formData.responsiblePerson.trim() || null,
@@ -260,7 +260,7 @@ export default function TatConfig() {
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
-      const { error } = await supabase.from("tat_config").delete().eq("uuid", deleteTarget.uuid);
+      const { error } = await supabase.from("sss_tat_config").delete().eq("uuid", deleteTarget.uuid);
       if (error) throw error;
       toast({ title: "Success", description: "Stage deleted successfully" });
       setDeleteTarget(null);
@@ -300,7 +300,7 @@ export default function TatConfig() {
     setIsSavingOfficeHours(true);
     try {
       const { error } = await supabase
-        .from("office_hours")
+        .from("sss_office_hours")
         .update({
           start_time: `${officeHoursForm.startTime}:00`,
           end_time: `${officeHoursForm.endTime}:00`,
@@ -345,13 +345,13 @@ export default function TatConfig() {
     try {
       if (holidayForm.uuid) {
         const { error } = await supabase
-          .from("holidays")
+          .from("sss_holidays")
           .update({ holiday_name: holidayForm.holidayName.trim(), holiday_date: holidayForm.holidayDate })
           .eq("id", holidayForm.uuid);
         if (error) throw error;
         toast({ title: "Success", description: "Holiday updated successfully" });
       } else {
-        const { error } = await supabase.from("holidays").insert({
+        const { error } = await supabase.from("sss_holidays").insert({
           holiday_name: holidayForm.holidayName.trim(),
           holiday_date: holidayForm.holidayDate,
         });
@@ -376,7 +376,7 @@ export default function TatConfig() {
     if (!deleteHolidayTarget) return;
     setIsDeletingHoliday(true);
     try {
-      const { error } = await supabase.from("holidays").delete().eq("id", deleteHolidayTarget.id);
+      const { error } = await supabase.from("sss_holidays").delete().eq("id", deleteHolidayTarget.id);
       if (error) throw error;
       toast({ title: "Success", description: "Holiday deleted successfully" });
       setDeleteHolidayTarget(null);

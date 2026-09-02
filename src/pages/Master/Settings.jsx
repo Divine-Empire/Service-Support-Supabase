@@ -26,7 +26,7 @@ const ROLES = ["admin", "user", "engineer"];
 // offering them as toggles here wouldn't do anything — leave them out.
 const ASSIGNABLE_PAGES = navigation
   .map((item) => item.name)
-  .filter((name) => !["Service Installation", "IMS", "Settings", "Master"].includes(name));
+  .filter((name) => !["Service Installation", "Settings", "Master"].includes(name));
 
 const emptyForm = {
   uuid: null,
@@ -51,7 +51,7 @@ export default function Settings() {
   const fetchUsers = async () => {
     setFetchLoading(true);
     try {
-      const { data, error } = await supabase.rpc("admin_list_users");
+      const { data, error } = await supabase.rpc("sss_admin_list_users");
       if (error) throw error;
       setUsers(data || []);
     } catch (error) {
@@ -121,7 +121,7 @@ export default function Settings() {
     setIsSubmitting(true);
     try {
       if (isEditMode) {
-        const { error } = await supabase.rpc("admin_update_user", {
+        const { error } = await supabase.rpc("sss_admin_update_user", {
           p_uuid: formData.uuid,
           p_full_name: formData.fullName.trim(),
           p_username: formData.username.trim(),
@@ -132,7 +132,7 @@ export default function Settings() {
         if (error) throw error;
         toast({ title: "Success", description: "User updated successfully" });
       } else {
-        const { error } = await supabase.rpc("admin_create_user", {
+        const { error } = await supabase.rpc("sss_admin_create_user", {
           p_full_name: formData.fullName.trim(),
           p_username: formData.username.trim(),
           p_password: formData.password.trim(),
@@ -162,7 +162,7 @@ export default function Settings() {
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
-      const { error } = await supabase.rpc("admin_delete_user", {
+      const { error } = await supabase.rpc("sss_admin_delete_user", {
         p_uuid: deleteTarget.uuid,
       });
       if (error) throw error;

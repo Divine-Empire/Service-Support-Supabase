@@ -89,7 +89,7 @@ export default function Warehouse() {
       // Tickets ready for Warehouse (warranty_check.warehouse_planned set —
       // only true when tickets.video_call != 'Yes').
       const { data: warrantyRows, error: warrantyError } = await supabase
-        .from("warranty_check")
+        .from("sss_warranty_check")
         .select("ticket_id, warehouse_planned")
         .not("warehouse_planned", "is", null);
 
@@ -104,7 +104,7 @@ export default function Warehouse() {
       }
 
       const { data: ticketsData, error: ticketsError } = await supabase
-        .from("tickets")
+        .from("sss_tickets")
         .select("*")
         .in("ticket_id", ticketIds)
         .order("created_at", { ascending: true });
@@ -112,7 +112,7 @@ export default function Warehouse() {
       if (ticketsError) throw ticketsError;
 
       const { data: warehouseRows, error: warehouseError } = await supabase
-        .from("warehouse")
+        .from("sss_warehouse")
         .select("*")
         .in("ticket_id", ticketIds);
 
@@ -203,7 +203,7 @@ export default function Warehouse() {
     setIsSubmitting(true);
 
     try {
-      const { error } = await supabase.from("warehouse").insert({
+      const { error } = await supabase.from("sss_warehouse").insert({
         ticket_id: selectedTicket.ticketId,
         ticket_uuid: selectedTicket.ticketUuid,
         assigned_engineer: formData.assignedEngineer,

@@ -70,7 +70,7 @@ export default function FollowUp() {
     try {
       // Tickets ready for Follow-Up (quotation.follow_up_planned set).
       const { data: quotationRows, error: quotationError } = await supabase
-        .from("quotation")
+        .from("sss_quotation")
         .select("ticket_id, follow_up_planned, quotation_no, basic_amount, total_amount, quotation_pdf_link, quotation_share_by, share_through, remarks")
         .not("follow_up_planned", "is", null);
 
@@ -90,7 +90,7 @@ export default function FollowUp() {
       );
 
       const { data: ticketsData, error: ticketsError } = await supabase
-        .from("tickets")
+        .from("sss_tickets")
         .select("*")
         .in("ticket_id", ticketIds)
         .order("created_at", { ascending: true });
@@ -101,7 +101,7 @@ export default function FollowUp() {
       // per ticket allowed) — matches the legacy Follow-Up sheet's own
       // always-insert behavior.
       const { data: followUpRows, error: followUpError } = await supabase
-        .from("follow_up")
+        .from("sss_follow_up")
         .select("*")
         .in("ticket_id", ticketIds)
         .order("created_at", { ascending: true });
@@ -120,7 +120,7 @@ export default function FollowUp() {
       // stamps site_visit_planned (only when the ticket's own video_call
       // attempt chose Service Type = 'Site Visit').
       const { data: videoCallRows, error: videoCallError } = await supabase
-        .from("video_call")
+        .from("sss_video_call")
         .select("ticket_id, service_type, created_at")
         .in("ticket_id", ticketIds)
         .order("created_at", { ascending: false });
@@ -202,7 +202,7 @@ export default function FollowUp() {
   const fetchMasterSheet = async () => {
     try {
       const { data, error } = await supabase
-        .from("dropdown")
+        .from("sss_dropdown")
         .select("value")
         .eq("category", "engineer_assign_name")
         .order("value", { ascending: true });
@@ -370,7 +370,7 @@ export default function FollowUp() {
     setIsSubmitting(true);
 
     try {
-      const { error } = await supabase.from("follow_up").insert({
+      const { error } = await supabase.from("sss_follow_up").insert({
         ticket_id: formData.ticketId,
         ticket_uuid: formData.ticketUuid,
         stage: formData.stage,
@@ -420,7 +420,7 @@ export default function FollowUp() {
     setCancelSubmit(true);
 
     try {
-      const { error } = await supabase.from("cancelled_tickets").insert({
+      const { error } = await supabase.from("sss_cancelled_tickets").insert({
         ticket_id: selectedTicket.ticketId,
         ticket_uuid: selectedTicket.ticketUuid,
         cancelled_from_stage: "Follow-Up",

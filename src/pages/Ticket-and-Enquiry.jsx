@@ -166,7 +166,7 @@ export default function TicketAndEnquiry() {
     setFetchLoading(true);
     try {
       const { data, error } = await supabase
-        .from("tickets")
+        .from("sss_tickets")
         .select("*")
         .order("created_at", { ascending: true });
 
@@ -484,7 +484,7 @@ export default function TicketAndEnquiry() {
         };
 
         const { error } = await supabase
-          .from("tickets")
+          .from("sss_tickets")
           .update(updatePayload)
           .eq("ticket_id", editingTicket.ticketId);
 
@@ -566,7 +566,7 @@ export default function TicketAndEnquiry() {
         };
 
         const { data: inserted, error } = await supabase
-          .from("tickets")
+          .from("sss_tickets")
           .insert(insertPayload)
           .select("ticket_id")
           .single();

@@ -17,6 +17,7 @@ import {
 import { Modal } from "../components/ui/modal";
 import { useToast } from "../hooks/use-toast";
 import { Eye, Loader2Icon, LoaderIcon } from "lucide-react";
+import { Textarea } from "../components/ui/textarea";
 import { supabase } from "../lib/supabase/client";
 import { computeStagePlanned } from "../lib/supabase/stagePlanning";
 
@@ -73,14 +74,23 @@ export default function TADA() {
   const [fetchLoading, setFetchLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const [showRescheduleModal, setShowRescheduleModal] = useState(false);
+  const [rescheduleTicket, setRescheduleTicket] = useState(null);
+  const [rescheduleRemarks, setRescheduleRemarks] = useState("");
+  const [isRescheduling, setIsRescheduling] = useState(false);
+
   const fetchData = async () => {
     setFetchLoading(true);
     try {
-      // Tickets ready for TADA (site_visit.tada_planned set).
+      // Tickets ready for TADA (site_visit.tada_planned set). Excludes
+      // rescheduled rows — once an engineer reschedules, that row's
+      // tada_planned no longer counts and the ticket drops out of this
+      // pending list (see migration 0054).
       const { data: siteVisitRows, error: siteVisitError } = await supabase
-        .from("site_visit")
+        .from("sss_site_visit")
         .select("ticket_id, ticket_uuid, engineer_assign, date_of_visit, transportation, tada_planned")
         .not("tada_planned", "is", null)
+        .is("rescheduled_at", null)
         .order("created_at", { ascending: false });
 
       if (siteVisitError) throw siteVisitError;
@@ -96,7 +106,7 @@ export default function TADA() {
       const siteVisitByTicket = new Map((siteVisitRows || []).map((s) => [s.ticket_id, s]));
 
       const { data: ticketsData, error: ticketsError } = await supabase
-        .from("tickets")
+        .from("sss_tickets")
         .select("*")
         .in("ticket_id", ticketIds)
         .order("created_at", { ascending: true });
@@ -106,7 +116,7 @@ export default function TADA() {
       // Warranty Check and Quotation are display-only here — joined from
       // their owning stages.
       const { data: warrantyRows, error: warrantyError } = await supabase
-        .from("warranty_check")
+        .from("sss_warranty_check")
         .select("ticket_id, warranty_check")
         .in("ticket_id", ticketIds);
 
@@ -115,7 +125,7 @@ export default function TADA() {
       const warrantyByTicket = new Map((warrantyRows || []).map((w) => [w.ticket_id, w.warranty_check]));
 
       const { data: quotationRows, error: quotationError } = await supabase
-        .from("quotation")
+        .from("sss_quotation")
         .select("ticket_id, quotation_no, quotation_pdf_link")
         .in("ticket_id", ticketIds);
 
@@ -124,7 +134,7 @@ export default function TADA() {
       const quotationByTicket = new Map((quotationRows || []).map((q) => [q.ticket_id, q]));
 
       const { data: tadaRows, error: tadaError } = await supabase
-        .from("tada")
+        .from("sss_tada")
         .select("*")
         .in("ticket_id", ticketIds);
 
@@ -261,7 +271,7 @@ export default function TADA() {
         tadaSubmittedAt: submittedAt,
       });
 
-      const { error } = await supabase.from("tada").insert({
+      const { error } = await supabase.from("sss_tada").insert({
         ticket_id: selectedTicket.ticketId,
         ticket_uuid: selectedTicket.ticketUuid,
         travel_date: formData.travelDate || null,
@@ -306,6 +316,62 @@ export default function TADA() {
     const year = date.getFullYear();
 
     return `${day}/${month}/${year}`;
+  };
+
+  const handleRescheduleClick = (ticket) => {
+    setRescheduleTicket(ticket);
+    setRescheduleRemarks("");
+    setShowRescheduleModal(true);
+  };
+
+  // Marks the ticket's current (active) sss_site_visit row as rescheduled —
+  // an UPDATE, not a delete, so it stays as a log/audit entry. This both
+  // drops the ticket out of TADA's own pending query (tada_planned no
+  // longer counts once rescheduled_at is set) and makes it pending again in
+  // SiteVisitPlan.jsx (its "already planned" check only counts the active
+  // row) for the admin to re-assign a different engineer. See migration 0054.
+  const handleRescheduleSubmit = async (e) => {
+    e.preventDefault();
+    if (!rescheduleTicket) return;
+
+    setIsRescheduling(true);
+    try {
+      const { error: siteVisitError } = await supabase
+        .from("sss_site_visit")
+        .update({
+          rescheduled_at: new Date().toISOString(),
+          rescheduled_by: userName || null,
+          reschedule_remarks: rescheduleRemarks || null,
+        })
+        .eq("ticket_id", rescheduleTicket.ticketId)
+        .is("rescheduled_at", null);
+
+      if (siteVisitError) throw siteVisitError;
+
+      // Cosmetic — keeps tickets.current_stage in sync with where the
+      // ticket actually is now (back at Site Visit Plan).
+      await supabase
+        .from("sss_tickets")
+        .update({ current_stage: "Site Visit Plan" })
+        .eq("uuid", rescheduleTicket.ticketUuid);
+
+      toast({
+        title: "Rescheduled",
+        description: `${rescheduleTicket.ticketId} sent back to Site Visit Plan for re-assignment.`,
+      });
+      setShowRescheduleModal(false);
+      setRescheduleTicket(null);
+      fetchData();
+    } catch (error) {
+      console.error("Error rescheduling ticket:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reschedule ticket",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRescheduling(false);
+    }
   };
 
   const filteredPendingDataa = pendingData
@@ -503,16 +569,30 @@ export default function TADA() {
                             }
                           >
                             <td className="px-4 py-3">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 hover:from-blue-100 hover:to-indigo-100 hover:text-blue-700 transition-all duration-300 border border-blue-200 hover:border-blue-300 rounded-lg px-3 py-1.5 shadow-sm hover:shadow-md group"
-                                onClick={() => handleTADAClick(ticket)}
-                                data-testid={`button-tada-${ticket.ticketId}`}
-                              >
-                                <Eye className="w-4 h-4 mr-2 transition-all group-hover:scale-110 text-blue-500 group-hover:text-blue-600" />
-                                <span className="font-medium">TADA</span>
-                              </Button>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 hover:from-blue-100 hover:to-indigo-100 hover:text-blue-700 transition-all duration-300 border border-blue-200 hover:border-blue-300 rounded-lg px-3 py-1.5 shadow-sm hover:shadow-md group"
+                                  onClick={() => handleTADAClick(ticket)}
+                                  data-testid={`button-tada-${ticket.ticketId}`}
+                                >
+                                  <Eye className="w-4 h-4 mr-2 transition-all group-hover:scale-110 text-blue-500 group-hover:text-blue-600" />
+                                  <span className="font-medium">TADA</span>
+                                </Button>
+                                {(role === "admin" || role === "engineer") && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-amber-600 border-amber-200 hover:bg-amber-50 hover:text-amber-700 rounded-lg px-3 py-1.5 shadow-sm"
+                                    onClick={() => handleRescheduleClick(ticket)}
+                                    data-testid={`button-reschedule-${ticket.ticketId}`}
+                                    title="Send this ticket back to Site Visit Plan for re-assignment"
+                                  >
+                                    Reschedule
+                                  </Button>
+                                )}
+                              </div>
                             </td>
                             <td className="px-4 py-3 text-blue-900">
                               {formatDate(ticket.timeStemp)}
@@ -658,15 +738,27 @@ export default function TADA() {
                                   )}
                                 </div>
                               </div>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 hover:from-blue-100 hover:to-indigo-100 border border-blue-200"
-                                onClick={() => handleTADAClick(ticket)}
-                              >
-                                <Eye className="w-4 h-4 mr-1" />
-                                TADA
-                              </Button>
+                              <div className="flex flex-col gap-1.5 items-end">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 hover:from-blue-100 hover:to-indigo-100 border border-blue-200"
+                                  onClick={() => handleTADAClick(ticket)}
+                                >
+                                  <Eye className="w-4 h-4 mr-1" />
+                                  TADA
+                                </Button>
+                                {(role === "admin" || role === "engineer") && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-amber-600 border-amber-200 hover:bg-amber-50"
+                                    onClick={() => handleRescheduleClick(ticket)}
+                                  >
+                                    Reschedule
+                                  </Button>
+                                )}
+                              </div>
                             </div>
 
                             {/* Contact & Warranty Info */}
@@ -1327,6 +1419,53 @@ export default function TADA() {
             </form>
           </div>
         </div>
+      </Modal>
+
+      {/* Reschedule Confirmation Modal */}
+      <Modal
+        isOpen={showRescheduleModal}
+        onClose={() => setShowRescheduleModal(false)}
+        title="Reschedule Site Visit"
+        size="md"
+      >
+        <form onSubmit={handleRescheduleSubmit} className="space-y-4 p-1">
+          <p className="text-sm text-gray-600">
+            Ticket <span className="font-semibold text-gray-900">{rescheduleTicket?.ticketId}</span> will be sent
+            back to <span className="font-semibold text-gray-900">Site Visit Plan</span>'s Pending tab for
+            re-assignment to a different engineer. The current assignment (
+            <span className="font-semibold text-gray-900">{rescheduleTicket?.engineerAssign || "N/A"}</span>) will
+            be kept as a log and tagged "Rescheduled" there.
+          </p>
+
+          <div className="space-y-1">
+            <Label className="text-gray-600 font-medium">Reason (optional)</Label>
+            <Textarea
+              rows={3}
+              value={rescheduleRemarks}
+              onChange={(e) => setRescheduleRemarks(e.target.value)}
+              placeholder="Why is this being rescheduled?"
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowRescheduleModal(false)}
+              disabled={isRescheduling}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              disabled={isRescheduling}
+            >
+              {isRescheduling && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
+              Confirm Reschedule
+            </Button>
+          </div>
+        </form>
       </Modal>
     </div>
   );

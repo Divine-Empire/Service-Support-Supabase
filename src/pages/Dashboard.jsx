@@ -129,7 +129,7 @@ export default function Dashboard() {
       const { userName, role } = getRoleAndUser();
 
       const { data: ticketsRaw, error: ticketsError } = await supabase
-        .from("tickets")
+        .from("sss_tickets")
         .select("ticket_id, cre_name, engineer_assign, category, company_name, site_address, warranty_check_planned, created_at");
       if (ticketsError) throw ticketsError;
 
@@ -148,16 +148,16 @@ export default function Dashboard() {
         { data: otpRows, error: e9 },
         { data: tatConfigRows, error: e10 },
       ] = await Promise.all([
-        supabase.from("warranty_check").select("ticket_id, video_call_planned, quotation_planned"),
-        supabase.from("video_call").select("ticket_id, enquiry_solved, created_at").order("created_at", { ascending: true }),
-        supabase.from("quotation").select("ticket_id, follow_up_planned, basic_amount"),
-        supabase.from("follow_up").select("ticket_id, stage, site_visit_planned, what_did_customer_say, next_date_of_call, created_at").order("created_at", { ascending: true }),
-        supabase.from("site_visit").select("ticket_id"),
-        supabase.from("order_received").select("ticket_id, invoice_planned"),
-        supabase.from("invoice").select("ticket_id"),
-        supabase.from("tada").select("ticket_id, otp_verification_planned"),
-        supabase.from("otp_verification").select("ticket_id"),
-        supabase.from("tat_config").select("stage_name, responsible_person"),
+        supabase.from("sss_warranty_check").select("ticket_id, video_call_planned, quotation_planned"),
+        supabase.from("sss_video_call").select("ticket_id, enquiry_solved, created_at").order("created_at", { ascending: true }),
+        supabase.from("sss_quotation").select("ticket_id, follow_up_planned, basic_amount"),
+        supabase.from("sss_follow_up").select("ticket_id, stage, site_visit_planned, what_did_customer_say, next_date_of_call, created_at").order("created_at", { ascending: true }),
+        supabase.from("sss_site_visit").select("ticket_id"),
+        supabase.from("sss_order_received").select("ticket_id, invoice_planned"),
+        supabase.from("sss_invoice").select("ticket_id"),
+        supabase.from("sss_tada").select("ticket_id, otp_verification_planned"),
+        supabase.from("sss_otp_verification").select("ticket_id"),
+        supabase.from("sss_tat_config").select("stage_name, responsible_person"),
       ]);
       for (const err of [e1, e2, e3, e4, e5, e6, e7, e8, e9, e10]) if (err) throw err;
 
@@ -346,11 +346,11 @@ export default function Dashboard() {
         { data: quotationRows, error: e4 },
         { data: invoiceRows, error: e5 },
       ] = await Promise.all([
-        supabase.from("tickets").select("ticket_id, cre_name, engineer_assign, call_type, category, created_at, warranty_check_planned"),
-        supabase.from("warranty_check").select("ticket_id, video_call_planned, quotation_planned"),
-        supabase.from("video_call").select("ticket_id"),
-        supabase.from("quotation").select("ticket_id, basic_amount"),
-        supabase.from("invoice").select("ticket_id, created_at, spare_amount_basic, service_amount_basic, invoice_amount_nabl_basic"),
+        supabase.from("sss_tickets").select("ticket_id, cre_name, engineer_assign, call_type, category, created_at, warranty_check_planned"),
+        supabase.from("sss_warranty_check").select("ticket_id, video_call_planned, quotation_planned"),
+        supabase.from("sss_video_call").select("ticket_id"),
+        supabase.from("sss_quotation").select("ticket_id, basic_amount"),
+        supabase.from("sss_invoice").select("ticket_id, created_at, spare_amount_basic, service_amount_basic, invoice_amount_nabl_basic"),
       ]);
       for (const err of [e1, e2, e3, e4, e5]) if (err) throw err;
 

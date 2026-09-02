@@ -13,7 +13,7 @@ const useAuthStore = create(
         set({ isLoading: true });
 
         try {
-          const { data, error } = await supabase.rpc("login", {
+          const { data, error } = await supabase.rpc("sss_login", {
             p_username: username,
             p_password: password,
           });

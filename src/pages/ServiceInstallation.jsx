@@ -27,6 +27,10 @@ import { LoaderIcon, Loader2Icon, Plus, Search, Calendar, Filter, Clock, CheckCi
 import { useToast } from "../hooks/use-toast";
 import { Textarea } from "../components/ui/textarea";
 import { Modal } from "../components/ui/modal";
+import { supabase } from "../lib/supabase/client";
+import { ltoSupabase } from "../lib/supabase/ltoClient";
+import { fetchDropdownRows } from "../lib/supabase/dropdown";
+import { computeStagePlanned } from "../lib/supabase/stagePlanning";
 
 
 const formatDateTime = (date) => {
@@ -160,47 +164,52 @@ const ServiceInstallation = () => {
   });
 
 
-  const sheet_url = import.meta.env.VITE_APPS_SCRIPT_API;
-  const Sheet_Id = import.meta.env.VITE_GOOGLE_SHEET_ID;
-  const Folder_Id = import.meta.env.VITE_SERVICE_INSTALLATION_FOLDER_ID;
+  // Dropdown category holding the Service-Type options this page's follow-up
+  // form needs ("Site Visit", "Video-Call", ...). Not one of the categories
+  // seeded yet in public.dropdown (see schemaMapping.js) — falls back to a
+  // small hardcoded list, same "empty until seeded" convention used
+  // elsewhere (e.g. Ticket-and-Enquiry.jsx's Call-type fallback), so seeding
+  // category='installation_service_type' via Master > Dropdown later just
+  // works without a code change.
+  const SERVICE_TYPE_FALLBACK = ["Site Visit", "Video-Call", "On-Site"];
 
   const fetchInstallations = async () => {
     try {
       setFetchLoading(true);
-      const response = await fetch(`${sheet_url}?sheetId=${Sheet_Id}&sheet=Service-Installation`);
-      const result = await response.json();
+      const { data, error } = await supabase
+        .from("sss_service_installation")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-      if (result.success && result.data && result.data.length > 0) {
-        const headerRowIndex = result.data.findIndex(row => row[0] === "Timestamp");
-        if (headerRowIndex === -1) throw new Error("Header row not found");
+      if (error) throw error;
 
-        const headers = result.data[headerRowIndex];
-        const rows = result.data.slice(headerRowIndex + 1);
+      const formattedData = (data || []).map((row) => ({
+        id: row.id,
+        "Timestamp": row.created_at || "",
+        "Order No.": row.order_no || "",
+        "Is Installation Required Or Not?": row.is_installation_required || "",
+        "COMPANY NAME": row.company_name || "",
+        "CONTACT PERSON NAME": row.contact_person_name || "",
+        "CONTACT PERSON NO.": row.contact_person_no || "",
+        "Item-Name": row.item_name || "",
+        "Qty": row.qty ?? "",
+        "Serial": row.serial || "",
+        "SI NO": row.si_no || "",
+        "INVOICE DATE": row.invoice_date || "",
+        "INVOICE NO": row.invoice_no || "",
+        "Invoice Copy": row.invoice_copy_upload || "",
+        "Actual material rcvd": row.actual_material_rcvd || "",
+        "Client Status": row.installation_follow_up || "",
+        "Service-Type": row.service_type || "",
+        "Engineer Name": row.engineer_name || "",
+        "Service Report": row.service_report_file || "",
+        "Next Date": row.next_date || "",
+        "What Did Customer's Say (Remarks)": row.what_did_customer_say || "",
+        _planned1: row.planned || "",
+        _actual1: row.actual || "",
+      }));
 
-        const billingAddressIdx = headers.findLastIndex(h => h && h.toLowerCase() === "billing address");
-        const siteAddressIdx = headers.findLastIndex(h => h && (h.toLowerCase() === "site address" || h.toLowerCase() === "shipping address"));
-        const gstNoIdx = headers.findLastIndex(h => h && h.toLowerCase().includes("gst no"));
-
-        const formattedData = rows
-          .filter(row => row[0])
-          .map((row, index) => {
-            const item = {};
-            headers.forEach((header, index) => {
-              item[header] = row[index] || "";
-            });
-            item._planned1 = row[14] || ""; // Column O
-            item._actual1 = row[15] || "";  // Column P
-            item["INVOICE DATE"] = row[10] || ""; // Column K
-            item["Invoice Copy"] = row[12] || ""; // Column M
-            item._billingAddress = row[billingAddressIdx !== -1 ? billingAddressIdx : 28] || ""; // Column AC (col no. 29)
-            item._siteAddress = row[siteAddressIdx !== -1 ? siteAddressIdx : 29] || "";    // Column AD (col no. 30)
-            item._gstNo = row[gstNoIdx !== -1 ? gstNoIdx : 30] || "";          // Column AE (col no. 31)
-            item._rowIndex = headerRowIndex + index + 2; // For update logic
-            return item;
-          });
-
-        setInstallations(formattedData);
-      }
+      setInstallations(formattedData);
     } catch (error) {
       console.error("Error fetching installations:", error);
       toast({ title: "Error", description: "Failed to fetch data", variant: "destructive" });
@@ -209,72 +218,61 @@ const ServiceInstallation = () => {
     }
   };
 
+  // Dropdown categories mirror src/pages/Ticket-and-Enquiry.jsx's
+  // DROPDOWN_CATEGORY_TO_KEY exactly (same public.dropdown table, same
+  // display keys) so the New Enquiry form below — copied from that page —
+  // needs no changes.
+  const DROPDOWN_CATEGORY_TO_KEY = {
+    call_type: "Call type",
+    source_of_enquiry: "Source of enquiry",
+    enquiry_receiver_name: "Enquiry Receiver Name",
+    category: "Requirement Service Category",
+    sub_category: "Category",
+    service_location: "Service Location",
+    engineer_assign_name: "Engineer Assign Name",
+    machine_name: "Machine Name",
+    installation_service_type: "__service_type__",
+  };
+
   const fetchDropdownData = async () => {
     try {
-      const response = await fetch(`${sheet_url}?sheetId=${Sheet_Id}&sheet=DROPDOWN`);
-      const result = await response.json();
-      if (result.success && result.data && result.data.length > 0) {
-        const headers = result.data[0];
-        
-        let engineerIdx = headers.indexOf("Engineer Assign Name");
-        if (engineerIdx === -1) engineerIdx = 94; // fallback CQ (index 94)
-        
-        let serviceIdx = headers.indexOf("Installation/Service");
-        if (serviceIdx === -1) serviceIdx = 96; // fallback CS (index 96)
+      const [dropdownRows, { data: companies, error: companyError }] = await Promise.all([
+        fetchDropdownRows(Object.keys(DROPDOWN_CATEGORY_TO_KEY)),
+        ltoSupabase
+          .from("lto_client_master")
+          .select("company_name, billing_address, gst_number")
+          .order("company_name", { ascending: true }),
+      ]);
 
-        const engineers = result.data.slice(1).map(row => row[engineerIdx]).filter(Boolean);
-        const services = result.data.slice(1).map(row => row[serviceIdx]).filter(Boolean);
+      if (companyError) throw companyError;
 
-        setEmployeeNames([...new Set(engineers)]);
-        setServiceTypes([...new Set(services)]);
-
-        // Parse structured data for the new enquiry form
-        const structuredData = {};
-        headers.forEach((header, index) => {
-          let normalizedHeader = header;
-          if (header === "Enquiry-Receiver-Name") normalizedHeader = "Enquiry Receiver Name";
-          if (header === "Company-Name") normalizedHeader = "Company Name";
-          if (header === "GST-No.") normalizedHeader = "GST No.";
-          if (index === 92) {
-            structuredData["Requirement Service Category"] = [];
-          }
-          structuredData[normalizedHeader] = [];
-        });
-
-        result.data.slice(1).forEach((row) => {
-          row.forEach((value, index) => {
-            const header = headers[index];
-            let normalizedHeader = header;
-            if (header === "Enquiry-Receiver-Name") normalizedHeader = "Enquiry Receiver Name";
-            if (header === "Company-Name") normalizedHeader = "Company Name";
-            if (header === "GST-No.") normalizedHeader = "GST No.";
-
-            const stringValue =
-              value !== null && value !== undefined ? String(value).trim() : "";
-            
-            if (structuredData[normalizedHeader]) {
-              structuredData[normalizedHeader].push(stringValue);
-            }
-            if (index === 92 && structuredData["Requirement Service Category"]) {
-              structuredData["Requirement Service Category"].push(stringValue);
-            }
-          });
-        });
-
-        if (!structuredData["Call type"] || structuredData["Call type"].filter(x => x).length === 0) {
-          structuredData["Call type"] = ["Call Out", "Service Call", "Installation", "Warranty Call"];
+      const structuredData = {};
+      const serviceTypeValues = [];
+      (dropdownRows || []).forEach(({ category, value }) => {
+        const key = DROPDOWN_CATEGORY_TO_KEY[category];
+        if (!key) return;
+        if (key === "__service_type__") {
+          serviceTypeValues.push(value);
+          return;
         }
-        if (!structuredData["Enquiry Receiver Name"] || structuredData["Enquiry Receiver Name"].filter(x => x).length === 0) {
-          structuredData["Enquiry Receiver Name"] = ["Receiver A", "Receiver B"];
-        }
-        if (!structuredData["Source of enquiry"] || structuredData["Source of enquiry"].filter(x => x).length === 0) {
-          structuredData["Source of enquiry"] = ["Email", "Phone", "Website", "Referral"];
-        }
+        if (!structuredData[key]) structuredData[key] = [];
+        structuredData[key].push(value);
+      });
 
-        setMasterData([structuredData]);
-      }
+      structuredData["Company Name"] = (companies || []).map((c) => c.company_name || "");
+      structuredData["BILLING ADDRESS"] = (companies || []).map((c) => c.billing_address || "");
+      structuredData["GST No."] = (companies || []).map((c) => c.gst_number || "");
+
+      setMasterData([structuredData]);
+      setEmployeeNames([...new Set(structuredData["Engineer Assign Name"] || [])]);
+      setServiceTypes(
+        serviceTypeValues.filter(Boolean).length > 0
+          ? [...new Set(serviceTypeValues.filter(Boolean))]
+          : SERVICE_TYPE_FALLBACK
+      );
     } catch (error) {
       console.error("Error fetching dropdown data:", error);
+      toast({ title: "Error", description: "Failed to load dropdown data", variant: "destructive" });
     }
   };
 
@@ -324,9 +322,12 @@ const ServiceInstallation = () => {
     const client = item["CONTACT PERSON NAME"] || "";
     const phone = item["CONTACT PERSON NO."] || "";
 
-    let gstAddress = item._billingAddress || item["Billing Address"] || item["BILLING ADDRESS"] || "";
-    let gstNo = item._gstNo || item["GST No."] || item["GST No"] || item["GST NO."] || item["GST NO"] || "";
-    let siteAddress = item._siteAddress || item["Site Address"] || item["SITE ADDRESS"] || item["Shipping Address"] || item["SHIPPING ADDRESS"] || "";
+    // sss_service_installation carries no billing/site/GST columns of its
+    // own — sourced entirely from the LTO company master, same as
+    // handleSiteVisitEnquiry below.
+    let gstAddress = "";
+    let gstNo = "";
+    let siteAddress = "";
 
     if ((!gstAddress || !gstNo) && masterData[0]) {
       const companyNames = masterData[0]["Company Name"] || [];
@@ -370,40 +371,24 @@ const ServiceInstallation = () => {
     setShowEnquiryModal(true);
   };
 
+  // Uploads to the same Supabase Storage bucket/convention used by
+  // Ticket-and-Enquiry.jsx's uploadWarehouseFile — replaces the old
+  // Apps Script + Google Drive upload.
+  const uploadFileToStorage = async (file, folder, prefix) => {
+    const path = `${folder}/${prefix}_${Date.now()}_${file.name}`;
+    const { error: uploadError } = await supabase.storage
+      .from("ticket_enquiry")
+      .upload(path, file, { contentType: file.type });
+    if (uploadError) throw uploadError;
+    const { data } = supabase.storage.from("ticket_enquiry").getPublicUrl(path);
+    return data.publicUrl;
+  };
+
   const uploadFileToDrive = async (file, field) => {
     setUploadingFiles(prev => ({ ...prev, [field]: true }));
     try {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      const base64Data = await new Promise((resolve, reject) => {
-        reader.onload = () => {
-          const result = reader.result.split(",")[1];
-          resolve(result);
-        };
-        reader.onerror = () => {
-          reject(new Error("Failed to read file"));
-        };
-      });
-
-      const response = await fetch(`${sheet_url}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: new URLSearchParams({
-          action: "uploadFile",
-          fileName: `Warehouse_${field}_${Date.now()}_${file.name}`,
-          base64Data: base64Data,
-          mimeType: file.type,
-          folderId: import.meta.env.VITE_DRIVE_FOLDER_ID,
-        }),
-      });
-
-      const result = await response.json();
-      if (!result.success) {
-        throw new Error(result.error || "Failed to upload file");
-      }
-      setNewEnquiryData(prev => ({ ...prev, [field]: result.fileUrl }));
+      const fileUrl = await uploadFileToStorage(file, "warehouse", field);
+      setNewEnquiryData(prev => ({ ...prev, [field]: fileUrl }));
       toast({
         title: "Upload Success",
         description: `${field === "challanCopy" ? "Challan Copy" : "Machine Photo"} uploaded successfully.`,
@@ -441,75 +426,66 @@ const ServiceInstallation = () => {
     }
 
     setIsSubmitting(true);
-    const currentDateTime = formatDateTime(new Date());
+
+    // Generate and assign an OTP only when Video-Call is "Yes" — same rule
+    // as Ticket-and-Enquiry.jsx's own new-ticket submit.
+    const generateSixDigitOTP = () => {
+      let res = "";
+      for (let i = 0; i < 6; i++) {
+        res += Math.floor(Math.random() * 10).toString();
+      }
+      return res;
+    };
 
     try {
-      const rowData = Array(160).fill("");
-      rowData[0] = currentDateTime;
-      rowData[1] = "";
-      rowData[9] = currentDateTime;
-
-      rowData[2] = newEnquiryData.sourceOfEnquiry || "";
-      rowData[3] = newEnquiryData.callType || "";
-      rowData[4] = newEnquiryData.enquiryReceiverName || "";
-      rowData[5] = newEnquiryData.clientType || "";
-      rowData[6] = newEnquiryData.companyName || "";
-      rowData[7] = newEnquiryData.clientName || "";
-      rowData[8] = newEnquiryData.phoneNumber || "";
-      rowData[9] = newEnquiryData.gstAddress || "";
-      rowData[10] = newEnquiryData.siteAddress || "";
-      rowData[11] = newEnquiryData.gstNo || "";
-      rowData[12] = newFormSelectedMachines.join(", ");
-      rowData[13] = newEnquiryData.category || "";
-      rowData[14] = newEnquiryData.mentionIssue || "";
-      rowData[15] = newEnquiryData.serviceLocation || "";
-
-      const isLocWarehouse = newEnquiryData.serviceLocation?.trim() === "Warehouse";
-      rowData[16] = isLocWarehouse ? (newEnquiryData.challanCopy || "") : "";
-      rowData[17] = isLocWarehouse ? (newEnquiryData.machinePhoto || "") : "";
-      rowData[18] = newEnquiryData.videoCall || "";
-      rowData[19] = newFormSelectedCategories.join(", ");
-      rowData[20] = newEnquiryData.videoCallTime || "";
-      rowData[21] = newEnquiryData.engineerAssign || "";
-
-      // Generate and assign OTP to column AJ (index 35) only when Video-Call is "Yes"
-      const generateSixDigitOTP = () => {
-        let res = "";
-        for (let i = 0; i < 6; i++) {
-          res += Math.floor(Math.random() * 10).toString();
-        }
-        return res;
-      };
-      rowData[35] = newEnquiryData.videoCall === "Yes" ? generateSixDigitOTP() : "";
-
-      rowData[117] = "No";
       const userName = localStorage.getItem("currentUsername") || "";
-      rowData[127] = userName;
-
-      const response = await fetch(sheet_url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: new URLSearchParams({
-          sheetId: Sheet_Id,
-          sheetName: "Ticket_Enquiry",
-          action: "insertTicket",
-          rowData: JSON.stringify(rowData),
-        }),
+      const submittedAt = new Date();
+      const warrantyCheckPlanned = await computeStagePlanned("warrantyCheck", {
+        ticketSubmittedAt: submittedAt,
       });
 
-      const result = await response.json();
+      // This creates a brand new root ticket in public.tickets — same table
+      // and insert shape as Ticket-and-Enquiry.jsx's "New Enquiry" flow
+      // (this modal is a trimmed-down copy of that page's form).
+      const insertPayload = {
+        source_of_enquiry: newEnquiryData.sourceOfEnquiry || "",
+        call_type: newEnquiryData.callType || "",
+        enquiry_receiver_name: newEnquiryData.enquiryReceiverName || "",
+        client_type: newEnquiryData.clientType || "",
+        company_name: newEnquiryData.companyName || "",
+        client_name: newEnquiryData.clientName || "",
+        phone_number: newEnquiryData.phoneNumber || "",
+        gst_address: newEnquiryData.gstAddress || "",
+        site_address: newEnquiryData.siteAddress || "",
+        gst_no: newEnquiryData.gstNo || "",
+        machine_name: newFormSelectedMachines.join(", "),
+        category: newEnquiryData.category || "",
+        mention_issue: newEnquiryData.mentionIssue || "",
+        service_location: newEnquiryData.serviceLocation || "",
+        challan_copy: newEnquiryData.serviceLocation?.trim() === "Warehouse" ? (newEnquiryData.challanCopy || "") : "",
+        machine_photo: newEnquiryData.serviceLocation?.trim() === "Warehouse" ? (newEnquiryData.machinePhoto || "") : "",
+        video_call: newEnquiryData.videoCall || "",
+        sub_category: newFormSelectedCategories.join(", "),
+        video_call_time: newEnquiryData.videoCallTime || "",
+        engineer_assign: newEnquiryData.engineerAssign || "",
+        otp: newEnquiryData.videoCall === "Yes" ? generateSixDigitOTP() : "",
+        cre_name: userName,
+        warranty_check_planned: warrantyCheckPlanned,
+      };
 
-      if (result.success) {
-        toast({
-          title: "Success",
-          description: `Enquiry created successfully with Ticket ID: ${result.ticketId}`,
-        });
-        setShowEnquiryModal(false);
-      } else {
-        throw new Error(result.error || "Failed to create enquiry");
-      }
+      const { data: inserted, error } = await supabase
+        .from("sss_tickets")
+        .insert(insertPayload)
+        .select("ticket_id")
+        .single();
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `Enquiry created successfully with Ticket ID: ${inserted.ticket_id}`,
+      });
+      setShowEnquiryModal(false);
     } catch (error) {
       console.error("Error saving enquiry:", error);
       toast({
@@ -625,79 +601,55 @@ const ServiceInstallation = () => {
     try {
       let finalFileUrl = "";
 
-      // Step 1: Upload File if exists
+      // Step 1: Upload the service report file (if any) to Supabase Storage —
+      // same "ticket_enquiry" bucket the rest of the app uses.
       if (fileData.base64) {
-        const uploadParams = new URLSearchParams({
-          action: "uploadFile",
-          base64Data: fileData.base64,
-          fileName: fileData.name,
-          mimeType: fileData.name.toLowerCase().endsWith(".pdf") ? "application/pdf" :
-            fileData.name.toLowerCase().endsWith(".mp4") ? "video/mp4" : "image/jpeg",
-          folderId: Folder_Id
-        });
-
-        const uploadResponse = await fetch(sheet_url, {
-          method: "POST",
-          headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: uploadParams.toString(),
-        });
-
-        const uploadResult = await uploadResponse.json();
-        if (uploadResult.success) {
-          finalFileUrl = uploadResult.fileUrl;
-        } else {
-          throw new Error("File upload failed: " + uploadResult.error);
+        const mimeType = fileData.name.toLowerCase().endsWith(".pdf") ? "application/pdf" :
+          fileData.name.toLowerCase().endsWith(".mp4") ? "video/mp4" : "image/jpeg";
+        const byteCharacters = atob(fileData.base64);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
         }
+        const fileBlob = new Blob([new Uint8Array(byteNumbers)], { type: mimeType });
+        finalFileUrl = await uploadFileToStorage(fileBlob, "service_installation", "report");
       }
 
-      // Step 2: Prepare column data
-      const columnData = {
-        R: approvalData.clientStatus, // Client Status
+      // Step 2: Prepare the row update. `actual` is only stamped when the
+      // job is genuinely done ("Yes") — "No" and "Next Date for Follow-Up"
+      // update the row in place but leave it pending (see migration 0052).
+      const updatePayload = {
+        installation_follow_up: approvalData.clientStatus,
       };
 
       if (approvalData.clientStatus === "Yes") {
-        columnData.P = approvalData.actualDate; // Actual 1
-        columnData.S = approvalData.serviceType; // Installation/Service
-        columnData.T = approvalData.engineerName; // Engineer Name
-        columnData.U = finalFileUrl; // Service Video Upload (URL)
-        columnData.W = approvalData.remarks; // What Did Customer's Say (Remarks) (Column W instead of X)
-        if (approvalData.serviceType && ["video-call", "video call"].includes(approvalData.serviceType.trim().toLowerCase())) {
-          columnData.AB = approvalData.videoCallTime;
-        }
+        updatePayload.actual = new Date().toISOString();
+        updatePayload.service_type = approvalData.serviceType;
+        updatePayload.engineer_name = approvalData.engineerName;
+        if (finalFileUrl) updatePayload.service_report_file = finalFileUrl;
+        updatePayload.what_did_customer_say = approvalData.remarks;
       } else if (approvalData.clientStatus === "No") {
-        columnData.W = approvalData.remarks; // What Did Customer's Say (Remarks) (Column W instead of X)
+        updatePayload.what_did_customer_say = approvalData.remarks;
       } else if (approvalData.clientStatus === "Next Date for Follow-Up") {
-        columnData.V = approvalData.followUpDate; // Next Date
-        columnData.W = approvalData.customerSay; // What Did Customer's Say
+        updatePayload.next_date = approvalData.followUpDate || null;
+        updatePayload.what_did_customer_say = approvalData.customerSay;
       }
 
-      // Step 3: Update Sheet
-      const updateParams = new URLSearchParams({
-        sheetId: Sheet_Id,
-        sheetName: "Service-Installation",
-        action: "update",
-        rowIndex: selectedItem._rowIndex.toString(),
-        columnData: JSON.stringify(columnData),
-      });
+      // Step 3: Update the row
+      const { error } = await supabase
+        .from("sss_service_installation")
+        .update(updatePayload)
+        .eq("id", selectedItem.id);
 
-      const response = await fetch(sheet_url, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: updateParams.toString(),
-      });
+      if (error) throw error;
 
-      const result = await response.json();
-      if (result.success) {
-        toast({ title: "Success", description: "Installation updated successfully" });
-        if (isSiteVisitFollowUp) {
-          handleSiteVisitEnquiry();
-        } else {
-          setShowApprovalDialog(false);
-        }
-        fetchInstallations(); // Refresh data
+      toast({ title: "Success", description: "Installation updated successfully" });
+      if (isSiteVisitFollowUp) {
+        handleSiteVisitEnquiry();
       } else {
-        throw new Error(result.error || "Update failed");
+        setShowApprovalDialog(false);
       }
+      fetchInstallations(); // Refresh data
     } catch (error) {
       console.error("Error updating installation:", error);
       toast({ title: "Error", description: error.message || "Failed to update record", variant: "destructive" });
@@ -1676,7 +1628,7 @@ const InstallationTable = ({ data, loading, getStatusBadge, onApprove, onEnquiry
     return (
       <Card className="border border-gray-100 shadow-xl p-12 flex flex-col items-center justify-center">
         <LoaderIcon className="h-10 w-10 animate-spin text-indigo-600" />
-        <p className="mt-4 text-gray-500 font-medium">Fetching data from Google Sheets...</p>
+        <p className="mt-4 text-gray-500 font-medium">Fetching data...</p>
       </Card>
     );
   }

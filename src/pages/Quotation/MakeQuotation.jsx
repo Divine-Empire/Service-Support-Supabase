@@ -67,7 +67,7 @@ function MakeQuotation() {
     const fetchExistingQuotations = async () => {
       try {
         const { data, error } = await supabase
-          .from("make_quotation")
+          .from("sss_make_quotation")
           .select("quotation_no")
           .order("created_at", { ascending: false });
 
@@ -146,7 +146,7 @@ function MakeQuotation() {
 
     try {
       const { data: header, error: headerError } = await supabase
-        .from("make_quotation")
+        .from("sss_make_quotation")
         .select("*")
         .eq("quotation_no", quotationNo)
         .single();
@@ -154,7 +154,7 @@ function MakeQuotation() {
       if (headerError) throw headerError;
 
       const { data: itemRows, error: itemsError } = await supabase
-        .from("quotation_items")
+        .from("sss_quotation_items")
         .select("*")
         .eq("quotation_no", quotationNo);
 
@@ -400,18 +400,17 @@ function MakeQuotation() {
     }
   };
 
+  // NOTE: This used to upload the PDF via a separate Apps Script deployment
+  // (VITE_QUOTATION_EMAIL_API) and send it by email from there. That's
+  // unlinked now — real email sending needs a Supabase Edge Function + email
+  // provider, a separate infra decision. This now just uploads the PDF to
+  // Supabase Storage (same "ticket_enquiry" bucket / make_quotation folder
+  // handleSaveQuotation already uses) and hands back a permanent link to
+  // share manually.
   const handleGenerateLink = async () => {
     setIsGenerating(true);
 
     try {
-      // First generate the PDF
-      // const base64Data = await generatePDFFromData(
-      //   quotationData,
-      //   selectedReferences,
-      //   specialDiscount,
-      //   hiddenColumns
-      // );
-
       const pdfDataUri = await generatePDFFromData(
         quotationData,
         selectedReferences,
@@ -425,90 +424,39 @@ function MakeQuotation() {
       for (let i = 0; i < byteCharacters.length; i++) {
         byteNumbers[i] = byteCharacters.charCodeAt(i);
       }
-      const byteArray = new Uint8Array(byteNumbers);
-      const blob = new Blob([byteArray], { type: "application/pdf" });
+      const pdfBlob = new Blob([new Uint8Array(byteNumbers)], { type: "application/pdf" });
 
-      // Upload PDF to Google Drive (this creates a permanent copy)
-      const scriptUrl =
-        import.meta.env.VITE_QUOTATION_EMAIL_API;
-      const pdfFileName = `Quotation_${quotationData.quotationNo}.pdf`;
+      const pdfFileName = `Quotation_${quotationData.quotationNo}_${Date.now()}.pdf`;
+      const storagePath = `make_quotation/${pdfFileName}`;
 
-      const pdfResponse = await fetch(scriptUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: new URLSearchParams({
-          sheetName: "Send",
-          action: "uploadPDF",
-          pdfData: base64Data,
-          fileName: pdfFileName,
-        }),
-      });
+      const { error: uploadError } = await supabase.storage
+        .from("ticket_enquiry")
+        .upload(storagePath, pdfBlob, { contentType: "application/pdf" });
 
-      const pdfResult = await pdfResponse.json();
-
-      if (!pdfResult.success) {
-        throw new Error("Failed to upload PDF");
+      if (uploadError) {
+        throw new Error("Failed to upload PDF: " + uploadError.message);
       }
 
-      const permanentPdfUrl = pdfResult.fileUrl;
-      const permanentFileId = pdfResult.fileId; // NEW: Get the file ID
-
-      // FIXED: Pass the permanent file ID instead of base64Data to avoid duplicate PDF creation
-      const sendResponse = await fetch(scriptUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: new URLSearchParams({
-          sheetName: "Send",
-          action: "insertAndEmail",
-          quotationNo: quotationData.quotationNo,
-          consigneeContactName: quotationData.consigneeContactName,
-          permanentFileId: permanentFileId, // FIXED: Pass file ID instead of pdfData
-          fileName: pdfFileName,
-          consigneeName:
-            quotationData.consigneeName || quotationData.consigneeContactName,
-        }),
-      });
-
-      const sendResult = await sendResponse.json();
-
-      if (!sendResult.success) {
-        throw new Error(
-          "Failed to save to Send sheet or send email: " + sendResult.error
-        );
-      }
+      const { data: pdfUrlData } = supabase.storage
+        .from("ticket_enquiry")
+        .getPublicUrl(storagePath);
+      const permanentPdfUrl = pdfUrlData.publicUrl;
 
       // Create local storage link (for your own reference)
       const quotationId = `quotation_${Date.now()}`;
       localStorage.setItem(quotationId, JSON.stringify(quotationData));
       const localLink = `${window.location.origin}${window.location.pathname}?view=${quotationId}`;
 
-      // Set the permanent URL for your reference (not sent in email)
       setQuotationLink(localLink);
       setPdfUrl(permanentPdfUrl);
       setIsGenerating(false);
 
-      if (sendResult.emailSent) {
-        alert(
-          `✅ Email sent successfully!\n\n` +
-          `📧 Email sent to: ${sendResult.emailAddress}\n` +
-          `📄 Temporary PDF URL sent (expires in 10 days)\n` +
-          `⏰ PDF expires at: ${sendResult.pdfExpiresAt}\n\n` +
-          `🔗 Your permanent reference link: ${localLink}\n` +
-          `📎 Permanent PDF: ${permanentPdfUrl}`
-        );
-      } else {
-        alert(
-          `⚠️ Quotation link generated but email could not be sent.\n\n` +
-          `Error: ${sendResult.emailError || "No email address provided"
-          }\n\n` +
-          `🔗 Your reference link: ${localLink}\n` +
-          `📎 Permanent PDF: ${permanentPdfUrl}`
-        );
-      }
+      alert(
+        `Quotation link generated.\n\n` +
+        `🔗 Your reference link: ${localLink}\n` +
+        `📎 PDF: ${permanentPdfUrl}\n\n` +
+        `Share these links manually — automated emailing isn't wired up yet.`
+      );
     } catch (error) {
       console.error("Error generating link:", error);
       alert("Failed to generate link: " + error.message);
@@ -599,7 +547,7 @@ function MakeQuotation() {
         .getPublicUrl(`make_quotation/${fileName}`);
       const pdfUrl = pdfUrlData.publicUrl;
 
-      const { error: headerError } = await supabase.from("make_quotation").insert({
+      const { error: headerError } = await supabase.from("sss_make_quotation").insert({
         quotation_no: finalQuotationNo,
         quotation_date: quotationData.date,
         prepared_by: quotationData.preparedBy,
@@ -661,7 +609,7 @@ function MakeQuotation() {
         is_freight: (item.name || "").trim().toLowerCase() === "freight",
       }));
 
-      const { error: itemsError } = await supabase.from("quotation_items").insert(itemRows);
+      const { error: itemsError } = await supabase.from("sss_quotation_items").insert(itemRows);
       if (itemsError) {
         throw new Error("Error saving quotation items: " + itemsError.message);
       }

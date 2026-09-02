@@ -58,7 +58,7 @@ export default function WarrantyCheck() {
     setFetchLoading(true);
     try {
       const { data: ticketsData, error: ticketsError } = await supabase
-        .from("tickets")
+        .from("sss_tickets")
         .select("*")
         .not("warranty_check_planned", "is", null)
         .order("created_at", { ascending: true });
@@ -66,7 +66,7 @@ export default function WarrantyCheck() {
       if (ticketsError) throw ticketsError;
 
       const { data: warrantyData, error: warrantyError } = await supabase
-        .from("warranty_check")
+        .from("sss_warranty_check")
         .select("*");
 
       if (warrantyError) throw warrantyError;
@@ -213,7 +213,7 @@ export default function WarrantyCheck() {
       const videoCallPlanned = await computeStagePlanned("videoCall", planningCtx);
       const quotationPlanned = await computeStagePlanned("quotationDirect", planningCtx);
 
-      const { error } = await supabase.from("warranty_check").insert({
+      const { error } = await supabase.from("sss_warranty_check").insert({
         ticket_id: selectedTicket.ticketId,
         ticket_uuid: selectedTicket.ticketUuid,
         warranty_check: formData.warrantyCheck,

@@ -24,7 +24,7 @@ export default function Cancle() {
     setFetchLoading(true);
     try {
       const { data: cancelRows, error: cancelError } = await supabase
-        .from("cancelled_tickets")
+        .from("sss_cancelled_tickets")
         .select("*")
         .order("created_at", { ascending: false });
 
@@ -38,7 +38,7 @@ export default function Cancle() {
       const ticketIds = [...new Set(cancelRows.map((c) => c.ticket_id))];
 
       const { data: ticketsData, error: ticketsError } = await supabase
-        .from("tickets")
+        .from("sss_tickets")
         .select("*")
         .in("ticket_id", ticketIds);
 
