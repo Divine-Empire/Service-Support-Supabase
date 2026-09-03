@@ -18,10 +18,7 @@ import { Modal } from "../components/ui/modal";
 import { useToast } from "../hooks/use-toast";
 import { Eye, Loader2Icon, LoaderIcon } from "lucide-react";
 import { Textarea } from "../components/ui/textarea";
-<<<<<<< HEAD
 import TimePicker12 from "../components/ui/time-picker-12";
-=======
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
 import { supabase } from "../lib/supabase/client";
 import { computeStagePlanned } from "../lib/supabase/stagePlanning";
 
@@ -267,7 +264,6 @@ export default function TADA() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-<<<<<<< HEAD
     // TimePicker12 isn't a native input, so it can't carry a `required`
     // attribute like the rest of this form's fields — validate manually.
     if (!formData.expectedCompletionTime) {
@@ -279,8 +275,6 @@ export default function TADA() {
       return;
     }
 
-=======
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
     setIsSubmitting(true); // Start loading
 
     try {
@@ -1381,7 +1375,6 @@ export default function TADA() {
                 <Label className="text-gray-600 font-medium">
                   Expected Completion Time *
                 </Label>
-<<<<<<< HEAD
                 {/* UI shows 12-hour AM/PM; underlying value stays 24-hour
                     "HH:MM" (same as the DB column) — see TimePicker12. */}
                 <TimePicker12
@@ -1389,17 +1382,6 @@ export default function TADA() {
                   onChange={(val) =>
                     handleInputChange("expectedCompletionTime", val)
                   }
-=======
-                <Input
-                  type="time"
-                  value={formData.expectedCompletionTime || ""}
-                  onChange={(e) =>
-                    handleInputChange("expectedCompletionTime", e.target.value)
-                  }
-                  required
-                  data-testid="input-expected-completion-time"
-                  className="border-gray-300 rounded-lg py-2 px-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
                 />
               </div>
 

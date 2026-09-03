@@ -22,11 +22,7 @@ export const useQuotationData = (initialSpecialDiscount = 0) => {
     consignorName: "",
     consignorAddress: "",
     consignorMobile: "",
-<<<<<<< HEAD
     consignorPhone: "0772-400515",
-=======
-    consignorPhone: "9630060004",
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
     consignorGSTIN: "",
     consignorStateCode: "",
     companyName: "",

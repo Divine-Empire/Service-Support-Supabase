@@ -101,11 +101,7 @@ const ConsignorDetails = ({
               type="text"
               // value={quotationData.consignorPhone}
               // onChange={(e) => handleInputChange("consignorPhone", e.target.value)}
-<<<<<<< HEAD
               value = "0772-400515"
-=======
-              value = "9630060004"
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
               className="w-full p-2 border border-gray-300 rounded-md"
             />
           </div>

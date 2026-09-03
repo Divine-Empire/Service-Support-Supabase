@@ -247,7 +247,6 @@ export const STAGE_PLANNING_RULES = {
     shouldPlan: () => true,
     baseTime: (ctx) => ctx.calibrationSubmittedAt,
   },
-<<<<<<< HEAD
 
   // sss_service_installation (installation_follow_up = 'Yes') -> the
   // Engineer-Dashboard's own "Service Installation" stage
@@ -273,8 +272,6 @@ export const STAGE_PLANNING_RULES = {
     shouldPlan: () => true,
     baseTime: (ctx) => ctx.warehouseSubmittedAt,
   },
-=======
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
 };
 
 /**

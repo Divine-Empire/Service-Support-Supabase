@@ -222,20 +222,12 @@ export default function Quotation() {
     fetchData();
   }, []);
 
-<<<<<<< HEAD
   // Get unique Basic Value (without tax) values for pending section only
-=======
-  // Get unique Total Quotation values for pending section only
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
   const uniquePendingTotalQuotations = [
     ...new Set(
       pendingData
         .map((item) => {
-<<<<<<< HEAD
           const val = item.basicAmount;
-=======
-          const val = item.totalQutation;
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
           // Convert to string and trim to handle various formats
           if (val === null || val === undefined) return null;
           const strVal = String(val).trim();
@@ -264,19 +256,11 @@ export default function Quotation() {
         String(item.phoneNumber || "").toLowerCase().includes(q) ||
         String(item.quotationNo || "").toLowerCase().includes(q);
 
-<<<<<<< HEAD
       // Handle basicAmount comparison - convert to string and trim
       // Include items where basicAmount is 0, "0", empty string, or any other value
       let itemTotalQuotation =
         item.basicAmount !== null && item.basicAmount !== undefined
           ? String(item.basicAmount).trim()
-=======
-      // Handle totalQutation comparison - convert to string and trim
-      // Include items where totalQutation is 0, "0", empty string, or any other value
-      let itemTotalQuotation =
-        item.totalQutation !== null && item.totalQutation !== undefined
-          ? String(item.totalQutation).trim()
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
           : "";
 
       // Convert empty string to "0" for comparison
@@ -646,11 +630,7 @@ export default function Quotation() {
                     className="flex h-10 w-full rounded-md border border-blue-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
                     data-testid="select-total-quotation-filter"
                   >
-<<<<<<< HEAD
                     <option value="all">All Quotation Basic Value</option>
-=======
-                    <option value="all">All Quotation Revice</option>
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
                     {uniquePendingTotalQuotations.map((quotation) => (
                       <option key={quotation} value={quotation}>
                         {quotation}
@@ -737,11 +717,7 @@ export default function Quotation() {
                           Quotation No.
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-<<<<<<< HEAD
                           Quotation Basic Value
-=======
-                          Quotation Revice
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                           Quotation PDF
@@ -846,15 +822,9 @@ export default function Quotation() {
                               {ticket.quotationNo || "-"}
                             </td>
                             <td className="px-4 py-3 text-blue-900">
-<<<<<<< HEAD
                               {ticket.basicAmount !== null &&
                               ticket.basicAmount !== undefined
                                 ? String(ticket.basicAmount).trim() || "0"
-=======
-                              {ticket.totalQutation !== null &&
-                              ticket.totalQutation !== undefined
-                                ? String(ticket.totalQutation).trim() || "0"
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
                                 : "N/A"}
                             </td>
                             <td className="px-4 py-3 text-blue-900">
@@ -1032,7 +1002,6 @@ export default function Quotation() {
                                </div>
                              </div>
 
-<<<<<<< HEAD
                              {/* Quotation Basic Value */}
                              <div className="grid grid-cols-2 gap-3 text-sm">
                                <div>
@@ -1043,18 +1012,6 @@ export default function Quotation() {
                                    {ticket.basicAmount !== null &&
                                      ticket.basicAmount !== undefined
                                      ? String(ticket.basicAmount).trim() || "0"
-=======
-                             {/* Quotation Revice */}
-                             <div className="grid grid-cols-2 gap-3 text-sm">
-                               <div>
-                                 <p className="text-gray-500 font-medium">
-                                   Quotation Revice
-                                 </p>
-                                 <p className="text-blue-900">
-                                   {ticket.totalQutation !== null &&
-                                     ticket.totalQutation !== undefined
-                                     ? String(ticket.totalQutation).trim() || "0"
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
                                      : "N/A"}
                                  </p>
                                </div>

@@ -8,7 +8,6 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import {
-<<<<<<< HEAD
   Select,
   SelectContent,
   SelectItem,
@@ -16,8 +15,6 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import {
-=======
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
   Tabs,
   TabsContent,
   TabsList,
@@ -27,10 +24,7 @@ import { Modal } from "../components/ui/modal";
 import { useToast } from "../hooks/use-toast";
 import { Loader2Icon, LoaderIcon } from "lucide-react";
 import { supabase } from "../lib/supabase/client";
-<<<<<<< HEAD
 import { fetchDropdownRows } from "../lib/supabase/dropdown";
-=======
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
 
 export default function SpareDispatchDetails() {
   const [activeTab, setActiveTab] = useState("pending");
@@ -38,10 +32,7 @@ export default function SpareDispatchDetails() {
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [formData, setFormData] = useState({});
   const [searchItem, setSearchItem] = useState("");
-<<<<<<< HEAD
   const [masterData, setMasterData] = useState({});
-=======
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
   const { toast } = useToast();
 
   const [pendingData, setPendingData] = useState([]);
@@ -145,7 +136,6 @@ export default function SpareDispatchDetails() {
     }
   };
 
-<<<<<<< HEAD
   const fetchMasterSheet = async () => {
     try {
       const data = await fetchDropdownRows(["courier_transport_details"]);
@@ -157,9 +147,6 @@ export default function SpareDispatchDetails() {
 
   useEffect(() => {
     fetchMasterSheet();
-=======
-  useEffect(() => {
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
     fetchData();
   }, []);
 
@@ -744,7 +731,6 @@ export default function SpareDispatchDetails() {
           </div>
           <div>
             <Label>Courier/Transport Details</Label>
-<<<<<<< HEAD
             <Select
               value={formData.courierTransportDetails || undefined}
               onValueChange={(value) => handleInputChange("courierTransportDetails", value)}
@@ -773,14 +759,6 @@ export default function SpareDispatchDetails() {
                 )}
               </SelectContent>
             </Select>
-=======
-            <Input
-              placeholder="Enter courier/transport details"
-              value={formData.courierTransportDetails || ""}
-              onChange={(e) => handleInputChange("courierTransportDetails", e.target.value)}
-              data-testid="input-courier-transport-details"
-            />
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
           </div>
           <div className="md:col-span-2">
             <Label>Bilty Copy Upload *</Label>

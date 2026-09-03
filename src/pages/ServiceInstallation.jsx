@@ -623,25 +623,18 @@ const ServiceInstallation = () => {
       };
 
       if (approvalData.clientStatus === "Yes") {
-<<<<<<< HEAD
         const submittedAt = new Date();
         updatePayload.actual = submittedAt.toISOString();
-=======
-        updatePayload.actual = new Date().toISOString();
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
         updatePayload.service_type = approvalData.serviceType;
         updatePayload.engineer_name = approvalData.engineerName;
         if (finalFileUrl) updatePayload.service_report_file = finalFileUrl;
         updatePayload.what_did_customer_say = approvalData.remarks;
-<<<<<<< HEAD
         // Readiness stamp for the Engineer-Dashboard's own "Service
         // Installation" stage (engg_dsb_service_installation, migration 0055).
         updatePayload.engg_dsb_service_installation_planned = await computeStagePlanned(
           "enggDsbServiceInstallation",
           { installationSubmittedAt: submittedAt }
         );
-=======
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
       } else if (approvalData.clientStatus === "No") {
         updatePayload.what_did_customer_say = approvalData.remarks;
       } else if (approvalData.clientStatus === "Next Date for Follow-Up") {

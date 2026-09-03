@@ -144,10 +144,7 @@ export default function OrderReceived() {
             paymentTerm: orderReceived.payment_term || "",
             acceptanceVia: orderReceived.acceptance_via || "",
             seniorApproval: orderReceived.senior_approval || "",
-<<<<<<< HEAD
             seniorApprovedBy: orderReceived.senior_approved_by || "",
-=======
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
             advancePaymentAttachment: orderReceived.advance_payment_attachment || "",
             paymentMode: orderReceived.payment_mode || "",
             delayMinutes: orderReceived.delay_minutes,
@@ -175,10 +172,7 @@ export default function OrderReceived() {
     payment_term: "Payment Terms",
     payment_mode: "Payment Mode",
     acceptance_via: "Acceptance Via",
-<<<<<<< HEAD
     senior_approved_by: "Senior Approved By",
-=======
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
   };
 
   const fetchMasterSheet = async () => {
@@ -273,10 +267,7 @@ export default function OrderReceived() {
       seniorApprovalUrl: "",
       advancePaymentAttachmentUrl: "",
       paymentMode: "",
-<<<<<<< HEAD
       seniorApprovedBy: "",
-=======
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
     });
     setShowOrderReceivedModal(true);
   };
@@ -379,13 +370,10 @@ export default function OrderReceived() {
         alert("Please add and upload Senior Approval");
         return;
       }
-<<<<<<< HEAD
       if (!formData.seniorApprovedBy) {
         alert("Please select Senior Approved By");
         return;
       }
-=======
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
     }
 
     setIsSubmitting(true);
@@ -406,10 +394,7 @@ export default function OrderReceived() {
         payment_term: formData.paymentTerm || null,
         acceptance_via: formData.acceptanceVia || null,
         senior_approval: isFOC ? null : formData.seniorApprovalUrl || null,
-<<<<<<< HEAD
         senior_approved_by: isFOC ? null : formData.seniorApprovedBy || null,
-=======
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
         advance_payment_attachment: isFOC ? null : formData.advancePaymentAttachmentUrl || null,
         payment_mode: formData.paymentMode || null,
         // Readiness stamp for the next stage (Invoice, not yet migrated) —
@@ -823,12 +808,9 @@ export default function OrderReceived() {
                             Senior Approval
                           </th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-<<<<<<< HEAD
                             Senior Approved By
                           </th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-=======
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
                             Payment Mode
                           </th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[130px] sticky top-0">
@@ -839,11 +821,7 @@ export default function OrderReceived() {
                       <tbody className="bg-white divide-y divide-blue-100">
                         {fetchLoading ? (
                           <tr>
-<<<<<<< HEAD
                             <td colSpan={13} className="text-center py-8 bg-white">
-=======
-                            <td colSpan={12} className="text-center py-8 bg-white">
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
                               <div className="flex justify-center items-center text-blue-700">
                                 <LoaderIcon className="animate-spin w-8 h-8 mr-2" />
                               </div>
@@ -852,11 +830,7 @@ export default function OrderReceived() {
                         ) : filteredHistoryData.length === 0 ? (
                           <tr>
                             <td
-<<<<<<< HEAD
                               colSpan={13}
-=======
-                              colSpan={12}
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
                               className="text-center py-8 bg-white"
                               data-testid="text-no-history"
                             >
@@ -926,12 +900,9 @@ export default function OrderReceived() {
                                 )}
                               </td>
                               <td className="px-4 py-3 text-blue-900">
-<<<<<<< HEAD
                                 {ticket.seniorApprovedBy || ""}
                               </td>
                               <td className="px-4 py-3 text-blue-900">
-=======
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
                                 {ticket.paymentMode || ""}
                               </td>
                               <td className="px-4 py-3">
@@ -1034,7 +1005,6 @@ export default function OrderReceived() {
 
                               <div>
                                 <p className="text-gray-500 font-medium">
-<<<<<<< HEAD
                                   Senior Approved By
                                 </p>
                                 <p className="text-blue-900">
@@ -1044,8 +1014,6 @@ export default function OrderReceived() {
 
                               <div>
                                 <p className="text-gray-500 font-medium">
-=======
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
                                   Advance Payment Attachment
                                 </p>
                                 {ticket.advancePaymentAttachment ? (
@@ -1296,7 +1264,6 @@ export default function OrderReceived() {
                     </p>
                   )}
                 </div>
-<<<<<<< HEAD
 
                 <div>
                   <Label>Senior Approved By *</Label>
@@ -1329,8 +1296,6 @@ export default function OrderReceived() {
                     </SelectContent>
                   </Select>
                 </div>
-=======
->>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
               </>
             )}
 
