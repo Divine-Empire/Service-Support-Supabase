@@ -72,7 +72,11 @@ export default function TicketAndEnquiry() {
     serviceLocation: "",
     challanCopy: "",
     machinePhoto: "",
+<<<<<<< HEAD
     videoCall: "",
+=======
+    videoCall: "Yes",
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
     subCategory: "",
     videoCallTime: "",
     engineerAssign: ""
@@ -390,10 +394,13 @@ export default function TicketAndEnquiry() {
       alert("Error: Sub-Category is required");
       return;
     }
+<<<<<<< HEAD
     if (!newEnquiryData.videoCall) {
       alert("Error: Video-Call is required");
       return;
     }
+=======
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
     if (newEnquiryData.videoCall === "Yes") {
       if (!newEnquiryData.videoCallTime) {
         alert("Error: Video-Call Time is required");
@@ -518,7 +525,11 @@ export default function TicketAndEnquiry() {
             serviceLocation: "",
             challanCopy: "",
             machinePhoto: "",
+<<<<<<< HEAD
             videoCall: "",
+=======
+            videoCall: "Yes",
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
             subCategory: "",
             videoCallTime: "",
             engineerAssign: ""
@@ -603,7 +614,11 @@ export default function TicketAndEnquiry() {
             serviceLocation: "",
             challanCopy: "",
             machinePhoto: "",
+<<<<<<< HEAD
             videoCall: "",
+=======
+            videoCall: "Yes",
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
             subCategory: "",
             videoCallTime: "",
             engineerAssign: ""
@@ -790,7 +805,11 @@ export default function TicketAndEnquiry() {
                   serviceLocation: "",
                   challanCopy: "",
                   machinePhoto: "",
+<<<<<<< HEAD
                   videoCall: "",
+=======
+                  videoCall: "Yes",
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
                   subCategory: "",
                   videoCallTime: "",
                   engineerAssign: "",
@@ -1299,6 +1318,7 @@ export default function TicketAndEnquiry() {
               <div className={`md:col-span-2 grid grid-cols-1 ${newEnquiryData.videoCall === "Yes" ? "md:grid-cols-3" : "md:grid-cols-2"} gap-4`}>
                 <div className="space-y-1">
                   <Label className="text-sm">Video-Call *</Label>
+<<<<<<< HEAD
                   <Select
                     value={newEnquiryData.videoCall || ""}
                     onValueChange={(value) => setNewEnquiryData(prev => ({ ...prev, videoCall: value }))}
@@ -1309,6 +1329,14 @@ export default function TicketAndEnquiry() {
                     <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
                       <SelectItem value="Yes">Yes</SelectItem>
                       <SelectItem value="No">No</SelectItem>
+=======
+                  <Select value="Yes" disabled>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Yes" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
+                      <SelectItem value="Yes">Yes</SelectItem>
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
                     </SelectContent>
                   </Select>
                 </div>

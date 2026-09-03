@@ -41,6 +41,11 @@ export default function FollowUp() {
 
   const { toast } = useToast();
 
+<<<<<<< HEAD
+=======
+  const [masterData, setMasterData] = useState({});
+
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
   // console.log("followUpData", followUpData);
 
   const [pendingData, setPendingData] = useState([]);
@@ -114,6 +119,7 @@ export default function FollowUp() {
           .map((f) => f.ticket_id)
       );
 
+<<<<<<< HEAD
       // Latest follow_up log per ticket (rows are fetched created_at
       // ascending above, so the last one seen per ticket_id is the newest) —
       // powers Pending's "Last Call Date / Last Remarks / Next Call Date /
@@ -124,6 +130,8 @@ export default function FollowUp() {
         latestFollowUpByTicket.set(f.ticket_id, f);
       });
 
+=======
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
       // Needed at submit time to decide whether an 'Order Received' log also
       // stamps site_visit_planned (only when the ticket's own video_call
       // attempt chose Service Type = 'Site Visit').
@@ -147,7 +155,10 @@ export default function FollowUp() {
 
       (ticketsData || []).forEach((t) => {
         const q = quotationByTicket.get(t.ticket_id);
+<<<<<<< HEAD
         const latestFollowUp = latestFollowUpByTicket.get(t.ticket_id);
+=======
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
         const base = {
           ticketId: t.ticket_id,
           ticketUuid: t.uuid,
@@ -180,6 +191,7 @@ export default function FollowUp() {
           videoCallServiceType: latestVideoCallByTicket.has(t.ticket_id)
             ? latestVideoCallByTicket.get(t.ticket_id)?.service_type || ""
             : t.service_location || "",
+<<<<<<< HEAD
           // Pending tab's "Last Call Date / Last Remarks / Next Call Date /
           // Next Action" — sourced from this ticket's own latest follow_up
           // log row (if any), not from the quotation.
@@ -187,6 +199,8 @@ export default function FollowUp() {
           lastRemarks: latestFollowUp?.what_did_customer_say || "",
           nextCallDate: latestFollowUp?.next_date_of_call || "",
           nextAction: latestFollowUp?.next_action || "",
+=======
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
         };
 
         ticketsMapObj[t.ticket_id] = base;
@@ -211,7 +225,37 @@ export default function FollowUp() {
     }
   };
 
+<<<<<<< HEAD
   useEffect(() => {
+=======
+  // Only 'Engineer Assign Name' is seeded/used on this page. 'Stage' isn't a
+  // dropdown at all — its two legal values ('Followup' / 'Order Received')
+  // drive different form branches in code, so it's a hardcoded select
+  // instead of an admin-editable dropdown category.
+  const fetchMasterSheet = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("sss_dropdown")
+        .select("value")
+        .eq("category", "engineer_assign_name")
+        .order("value", { ascending: true });
+
+      if (error) throw error;
+
+      setMasterData([{ "Engineer Assign Name": (data || []).map((d) => d.value) }]);
+    } catch (error) {
+      console.error("Error fetching master data:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load master data",
+        variant: "destructive",
+      });
+    }
+  };
+
+  useEffect(() => {
+    fetchMasterSheet();
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
     fetchData();
   }, []);
 
@@ -304,7 +348,11 @@ export default function FollowUp() {
         handleInputChange("clientAttachmentUrl", result.fileUrl);
         toast({
           title: "Success",
+<<<<<<< HEAD
           description: "Client Approval uploaded successfully",
+=======
+          description: "Client Attachment uploaded successfully",
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
         });
       } else {
         e.target.value = null;
@@ -538,7 +586,11 @@ export default function FollowUp() {
         <>
           <div>
             <Label className="flex items-center gap-2">
+<<<<<<< HEAD
               Client Approval *
+=======
+              Client Attachments *
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
               {isUploadingClientAttachment && (
                 <LoaderIcon className="animate-spin w-4 h-4 text-blue-600" />
               )}
@@ -802,9 +854,15 @@ export default function FollowUp() {
                     className="flex h-10 w-full rounded-md border border-blue-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
                     data-testid="select-client-attachment-filter"
                   >
+<<<<<<< HEAD
                     <option value="all">All Approvals</option>
                     <option value="hasAttachment">Client Approval Not Empty</option>
                     <option value="noAttachment">Client Approval Empty</option>
+=======
+                    <option value="all">All Attachments</option>
+                    <option value="hasAttachment">Client Attachment Not Empty</option>
+                    <option value="noAttachment">Client Attachment Empty</option>
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
                   </select>
                 </div>
               )}
@@ -880,7 +938,11 @@ export default function FollowUp() {
                           Quotation PDF
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
+<<<<<<< HEAD
                           Client Approval
+=======
+                          Client Attachment
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                           Shared By
@@ -888,6 +950,7 @@ export default function FollowUp() {
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                           Share Through
                         </th>
+<<<<<<< HEAD
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                           Last Call Date
                         </th>
@@ -896,17 +959,31 @@ export default function FollowUp() {
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                           Next Call Date
+=======
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
+                          Remarks
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
                           Next Action
                         </th>
+<<<<<<< HEAD
+=======
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
+                          Next Date Of Call
+                        </th>
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-blue-100">
                       {finalFilteredPendingData.length === 0 ? (
                         <tr>
                           <td
+<<<<<<< HEAD
                             colSpan={27}
+=======
+                            colSpan={26}
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
                             className="text-center py-8 bg-white"
                             data-testid="text-no-pending"
                           >
@@ -1034,6 +1111,7 @@ export default function FollowUp() {
                               {ticket.ShareThrough || ""}
                             </td>
                             <td className="px-4 py-3 text-blue-900">
+<<<<<<< HEAD
                               {formatDate(ticket.lastCallDate) || ""}
                             </td>
                             <td className="px-4 py-3 text-blue-900">
@@ -1041,10 +1119,19 @@ export default function FollowUp() {
                             </td>
                             <td className="px-4 py-3 text-blue-900">
                               {formatDate(ticket.nextCallDate) || ""}
+=======
+                              {ticket.quotationremarks || ""}
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
                             </td>
                             <td className="px-4 py-3 text-blue-900">
                               {ticket.nextAction || ""}
                             </td>
+<<<<<<< HEAD
+=======
+                            <td className="px-4 py-3 text-blue-900">
+                              {formatDate(ticket.nextDateOfCall) || ""}
+                            </td>
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
                           </tr>
                         ))
                       )}
@@ -1228,6 +1315,7 @@ export default function FollowUp() {
                             <div className="grid grid-cols-2 gap-3 text-sm">
                               <div>
                                 <p className="text-gray-500 font-medium">
+<<<<<<< HEAD
                                   Last Call Date
                                 </p>
                                 <p className="text-blue-900">
@@ -1255,12 +1343,35 @@ export default function FollowUp() {
                               </div>
                               <div>
                                 <p className="text-gray-500 font-medium">
+=======
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
                                   Next Action
                                 </p>
                                 <p className="text-blue-900">
                                   {ticket.nextAction || "N/A"}
                                 </p>
                               </div>
+<<<<<<< HEAD
+=======
+                              <div>
+                                <p className="text-gray-500 font-medium">
+                                  Next Call Date
+                                </p>
+                                <p className="text-blue-900">
+                                  {formatDate(ticket.nextDateOfCall) || "N/A"}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Remarks */}
+                            <div>
+                              <p className="text-gray-500 font-medium text-sm">
+                                Remarks
+                              </p>
+                              <p className="text-blue-900 line-clamp-2">
+                                {ticket.quotationremarks || "N/A"}
+                              </p>
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
                             </div>
                           </CardContent>
                         </Card>
@@ -1332,7 +1443,11 @@ export default function FollowUp() {
                           Engineer Assign
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
+<<<<<<< HEAD
                           Client Approval
+=======
+                          Client Attachment
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                           What Did The Customer Say
@@ -1514,10 +1629,17 @@ export default function FollowUp() {
                               </div>
                             </div>
 
+<<<<<<< HEAD
                             {/* Client Approval */}
                             <div>
                               <p className="text-gray-500 font-medium text-sm">
                                 Client Approval
+=======
+                            {/* Client Attachment */}
+                            <div>
+                              <p className="text-gray-500 font-medium text-sm">
+                                Client Attachment
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
                               </p>
                               {ticket["client-attachment"] ? (
                                 <a
@@ -1636,6 +1758,43 @@ export default function FollowUp() {
               className="bg-slate-50"
             />
           </div>
+<<<<<<< HEAD
+=======
+          <div>
+            <Label>Engineer Assign</Label>
+            <Select
+              value={formData.engineerAssign || undefined}
+              onValueChange={(value) =>
+                handleInputChange("engineerAssign", value)
+              }
+            >
+              <SelectTrigger
+                className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                data-testid="select-engineer-assign"
+              >
+                <SelectValue placeholder={formData.engineerAssign || "Select Engineer"} />
+              </SelectTrigger>
+              <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
+                {masterData.length > 0 &&
+                  masterData[0]["Engineer Assign Name"] ? (
+                  masterData[0]["Engineer Assign Name"].map((item, ind) => (
+                    <SelectItem
+                      key={ind}
+                      value={item}
+                      className="hover:bg-blue-50 focus:bg-blue-50"
+                    >
+                      {item}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="Loading" disabled>
+                    Loading options...
+                  </SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
 
           {!isCancelled && (
             <>

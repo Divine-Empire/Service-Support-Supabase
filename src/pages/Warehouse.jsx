@@ -35,7 +35,10 @@ import { useToast } from "../hooks/use-toast";
 import { LoaderIcon } from "lucide-react";
 import { supabase } from "../lib/supabase/client";
 import { fetchDropdownRows } from "../lib/supabase/dropdown";
+<<<<<<< HEAD
 import { computeStagePlanned } from "../lib/supabase/stagePlanning";
+=======
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
 
 export default function Warehouse() {
   const [activeTab, setActiveTab] = useState("pending");
@@ -204,6 +207,7 @@ export default function Warehouse() {
     setIsSubmitting(true);
 
     try {
+<<<<<<< HEAD
       const submittedAt = new Date();
       // Readiness stamp for the Engineer-Dashboard's own "Repair Status"
       // stage (engg_dsb_repair_status, migration 0055) — sss_warehouse has
@@ -213,6 +217,8 @@ export default function Warehouse() {
         warehouseSubmittedAt: submittedAt,
       });
 
+=======
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
       const { error } = await supabase.from("sss_warehouse").insert({
         ticket_id: selectedTicket.ticketId,
         ticket_uuid: selectedTicket.ticketUuid,
@@ -220,7 +226,10 @@ export default function Warehouse() {
         priority: formData.priority || null,
         date_of_repair: formData.dateOfRepair || null,
         remarks: formData.remarks || null,
+<<<<<<< HEAD
         engg_dsb_repair_status_planned: enggDsbRepairStatusPlanned,
+=======
+>>>>>>> 2fb6fc02d3513c41c6187e88e88fa6fb9cdd9a7c
       });
 
       if (error) throw error;
