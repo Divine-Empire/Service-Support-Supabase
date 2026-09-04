@@ -160,28 +160,6 @@ export const SCHEMA_MAPPING = {
     ],
   },
 
-  companyDetails: {
-    supabaseTable: "sss_company_details",
-    sourceSheet: "DROPDOWN",
-    primaryKey: "uuid",
-    description:
-      "RETIRED as of 2026-09-01 — this table still exists (and its data is untouched) but nothing in the app " +
-      "reads or writes it anymore. It used to back Ticket-and-Enquiry.jsx's 'Company Name' autofill and " +
-      "Master/Dropdown.jsx's 'Company Details' tab (a full CRUD admin screen); both were switched to fetch " +
-      "LIVE from the production Lead-To-Order-Supabase-New project's `lto_client_master` table instead, via " +
-      "the new `ltoSupabase` client (src/lib/supabase/ltoClient.js) — see [[servicesupport_migration_project]] " +
-      "memory. Reason: company_details.billing_address was always null in practice (see the fields note " +
-      "below), while lto_client_master is the real, actively-maintained source of company master data. " +
-      "Master/Dropdown.jsx's Company Details tab is now read-only (no Add/Edit/Delete) since editing belongs " +
-      "in the production project, not this testing one. Safe to drop this table entirely once confirmed " +
-      "nothing else references it.",
-    fields: [
-      { sheetColumn: null, sheetField: null, supabaseColumn: "company_name", type: "text", note: "Sheet header 'Company-Name'." },
-      { sheetColumn: null, sheetField: null, supabaseColumn: "billing_address", type: "text", note: "Sheet header is actually 'GST Address', not 'Billing Address' as the app code assumes (masterData[0][\"Billing Address\"] is always empty — a pre-existing bug, left as-is). Of 1594 companies, 0 had a real value here; the one non-blank cell found was placeholder text ('add data in DROPDOWN sheet'), normalized to null." },
-      { sheetColumn: null, sheetField: null, supabaseColumn: "gst_number", type: "text", note: "Sheet header 'GST-No.'." },
-    ],
-  },
-
   tatConfig: {
     supabaseTable: "sss_tat_config",
     sourceSheet: null,
