@@ -74,7 +74,7 @@ export default function SpareDispatchDetails() {
 
       const { data: invoiceFullRows } = await supabase
         .from("sss_invoice")
-        .select("ticket_id, invoice_no_spare, attachment_spear, invoice_no_service, attachment_service, invoice_no_nabl, attachment_nabl")
+        .select("ticket_id, invoice_no_spare, attachment_spare, invoice_no_service, attachment_service, invoice_no_nabl, attachment_nabl")
         .in("ticket_id", ticketIds);
 
       const { data: dispatchRows, error: dispatchError } = await supabase
@@ -103,7 +103,7 @@ export default function SpareDispatchDetails() {
           mentionIssue: t.mention_issue || "",
           CREName: t.cre_name || "",
           invoiceNoSpare: inv?.invoice_no_spare || inv?.invoice_no_service || inv?.invoice_no_nabl || "",
-          attachmentSpear: inv?.attachment_spear || inv?.attachment_service || inv?.attachment_nabl || "",
+          attachmentSpare: inv?.attachment_spare || inv?.attachment_service || inv?.attachment_nabl || "",
         };
 
         const d = dispatchByTicket.get(t.ticket_id);
@@ -399,9 +399,9 @@ export default function SpareDispatchDetails() {
                               <td className="px-4 py-3 text-blue-900 truncate max-w-xs hover:whitespace-normal">{ticket.mentionIssue || "-"}</td>
                               <td className="px-4 py-3 text-blue-900 font-medium">{ticket.invoiceNoSpare || "-"}</td>
                               <td className="px-4 py-3">
-                                {ticket.attachmentSpear ? (
+                                {ticket.attachmentSpare ? (
                                   <a
-                                    href={ticket.attachmentSpear}
+                                    href={ticket.attachmentSpare}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
@@ -466,10 +466,10 @@ export default function SpareDispatchDetails() {
                                 <p className="text-gray-500 font-medium text-sm">Issue</p>
                                 <p className="text-blue-900 line-clamp-2">{ticket.mentionIssue || "N/A"}</p>
                               </div>
-                              {ticket.attachmentSpear && (
+                              {ticket.attachmentSpare && (
                                 <div className="text-sm">
                                   <p className="text-gray-500 font-medium">Spare Invoice Copy</p>
-                                  <a href={ticket.attachmentSpear} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">View</a>
+                                  <a href={ticket.attachmentSpare} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">View</a>
                                 </div>
                               )}
                             </CardContent>
@@ -527,9 +527,9 @@ export default function SpareDispatchDetails() {
                               <td className="px-4 py-3 text-blue-900 truncate max-w-xs hover:whitespace-normal">{ticket.mentionIssue || "-"}</td>
                               <td className="px-4 py-3 text-blue-900 font-medium">{ticket.invoiceNoSpare || "-"}</td>
                               <td className="px-4 py-3">
-                                {ticket.attachmentSpear ? (
+                                {ticket.attachmentSpare ? (
                                   <a
-                                    href={ticket.attachmentSpear}
+                                    href={ticket.attachmentSpare}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
@@ -613,10 +613,10 @@ export default function SpareDispatchDetails() {
                                 <p className="text-gray-500 font-medium text-sm">Issue</p>
                                 <p className="text-blue-900 line-clamp-2">{ticket.mentionIssue || "N/A"}</p>
                               </div>
-                              {ticket.attachmentSpear && (
+                              {ticket.attachmentSpare && (
                                 <div className="text-sm">
                                   <p className="text-gray-500 font-medium">Spare Invoice Copy</p>
-                                  <a href={ticket.attachmentSpear} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">View</a>
+                                  <a href={ticket.attachmentSpare} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">View</a>
                                 </div>
                               )}
                               <div className="grid grid-cols-2 gap-3 text-sm">

@@ -77,7 +77,7 @@ export default function CalibrationCertificate() {
 
       const { data: invoiceFullRows } = await supabase
         .from("sss_invoice")
-        .select("ticket_id, invoice_no_nabl, invoice_no_service, invoice_no_spare, attachment_nabl, attachment_service, attachment_spear")
+        .select("ticket_id, invoice_no_nabl, invoice_no_service, invoice_no_spare, attachment_nabl, attachment_service, attachment_spare")
         .in("ticket_id", ticketIds);
 
       const certificateByTicket = new Map((certificateRows || []).map((c) => [c.ticket_id, c]));
@@ -102,7 +102,7 @@ export default function CalibrationCertificate() {
           quotationNo: q?.quotation_no || "",
           quotationPdfLink: q?.quotation_pdf_link || "",
           invoiceNo: inv?.invoice_no_nabl || inv?.invoice_no_service || inv?.invoice_no_spare || "",
-          invoiceCopy: inv?.attachment_nabl || inv?.attachment_service || inv?.attachment_spear || "",
+          invoiceCopy: inv?.attachment_nabl || inv?.attachment_service || inv?.attachment_spare || "",
         };
 
         const cert = certificateByTicket.get(t.ticket_id);

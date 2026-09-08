@@ -197,6 +197,11 @@ function MakeQuotation() {
           pan: header.pan || "",
           specialOffers: header.special_offers || "",
           specialDiscount: header.special_discount || 0,
+          // Carry the original quotation's ticket link forward into the
+          // revision — without this, every revision saves with
+          // ticket_uuid = null and never shows up in Quotation.jsx's
+          // Quotation No. dropdown (which filters by ticket_uuid).
+          linkedTicketUuid: header.ticket_uuid || "",
           items: (itemRows || []).map((item) => ({
             code: item.code || "",
             name: item.name || "",
@@ -512,6 +517,14 @@ function MakeQuotation() {
       const base64Data = pdfDataUri.split(",")[1];
 
       let finalQuotationNo = quotationData.quotationNo;
+      // Re-read straight from the root row being revised, rather than
+      // trusting quotationData.linkedTicketUuid — that's only as fresh as
+      // whatever handleQuotationSelect populated it with when "Revise" was
+      // first clicked, and nothing re-syncs it afterward if the user edits
+      // fields in between. selectedQuotation (the original quotation_no)
+      // is untouched by those edits, so re-fetching from it guarantees the
+      // new revision row always carries the SAME ticket_uuid as its root.
+      let revisionTicketUuid = null;
       if (isRevising && selectedQuotation) {
         if (!finalQuotationNo.match(/-\d{2}$/)) {
           finalQuotationNo = `${finalQuotationNo}-01`;
@@ -523,6 +536,17 @@ function MakeQuotation() {
           parts[parts.length - 1] = newRevision;
           finalQuotationNo = parts.join("-");
         }
+
+        const { data: rootRow, error: rootRowError } = await supabase
+          .from("sss_make_quotation")
+          .select("ticket_uuid")
+          .eq("quotation_no", selectedQuotation)
+          .single();
+
+        if (rootRowError) {
+          console.error("Error re-fetching root quotation's ticket_uuid:", rootRowError);
+        }
+        revisionTicketUuid = rootRow?.ticket_uuid || null;
       }
 
       const fileName = `Quotation_${finalQuotationNo}.pdf`;
@@ -587,7 +611,12 @@ function MakeQuotation() {
         special_discount: Number(specialDiscount) || 0,
         pdf_url: pdfUrl,
         grand_total: Number(finalGrandTotal),
-        ticket_uuid: quotationData.linkedTicketUuid || null,
+        // Revisions always inherit their root's ticket_uuid (re-fetched
+        // above, not trusted from form state); a brand-new quotation uses
+        // whatever linkedTicketUuid the Lead No./ticket prop flow set.
+        ticket_uuid: (isRevising && selectedQuotation)
+          ? revisionTicketUuid
+          : (quotationData.linkedTicketUuid || null),
       });
 
       if (headerError) {

@@ -46,7 +46,7 @@ export default function Invoice() {
   // switching tickets never leaves an orphaned upload behind, and nothing
   // hits Storage until Submit is actually clicked.
   const [attachmentServiceFile, setAttachmentServiceFile] = useState(null);
-  const [attachmentSpearFile, setAttachmentSpearFile] = useState(null);
+  const [attachmentSpareFile, setAttachmentSpareFile] = useState(null);
   const [attachmentNABLFile, setAttachmentNABLFile] = useState(null);
   // "Advance Details" eye icon on the Pending tab — shows Payment Mode +
   // Advance Payment Attachment + Senior Approval together for one ticket.
@@ -177,7 +177,7 @@ export default function Invoice() {
             spareAmountBasic: inv.spare_amount_basic,
             spareAmountGst: inv.spare_amount_gst,
             attachmentService: inv.attachment_service || "",
-            attachmentSpear: inv.attachment_spear || "",
+            attachmentSpare: inv.attachment_spare || "",
             attachmentNABL: inv.attachment_nabl || "",
             delayMinutes: inv.delay_minutes,
           });
@@ -258,7 +258,7 @@ export default function Invoice() {
       spareAmountGst: "",
     });
     setAttachmentServiceFile(null);
-    setAttachmentSpearFile(null);
+    setAttachmentSpareFile(null);
     setAttachmentNABLFile(null);
     setShowInvoiceModal(true);
   };
@@ -295,9 +295,9 @@ export default function Invoice() {
     try {
       // All three uploads happen here, in parallel, only now that Submit was
       // actually clicked — nothing was uploaded on file selection.
-      const [attachmentServiceUrl, attachmentSpearUrl, attachmentNABLUrl] = await Promise.all([
+      const [attachmentServiceUrl, attachmentSpareUrl, attachmentNABLUrl] = await Promise.all([
         attachmentServiceFile ? uploadToStorage(attachmentServiceFile, "service") : Promise.resolve(null),
-        attachmentSpearFile ? uploadToStorage(attachmentSpearFile, "spear") : Promise.resolve(null),
+        attachmentSpareFile ? uploadToStorage(attachmentSpareFile, "spare") : Promise.resolve(null),
         attachmentNABLFile ? uploadToStorage(attachmentNABLFile, "nabl") : Promise.resolve(null),
       ]);
 
@@ -324,7 +324,7 @@ export default function Invoice() {
         spare_amount_basic: formData.spareAmountBasic || null,
         spare_amount_gst: formData.spareAmountGst || null,
         attachment_service: attachmentServiceUrl,
-        attachment_spear: attachmentSpearUrl,
+        attachment_spare: attachmentSpareUrl,
         attachment_nabl: attachmentNABLUrl,
         otp: generateSixDigitNumber(),
         // Readiness stamp for Calibration.jsx — only set when tickets.enquiry_type = 'NABL'.
@@ -853,7 +853,7 @@ export default function Invoice() {
                           Attachment Service
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Attachment Spear
+                          Attachment Spare
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                           Attachment NABL
@@ -953,9 +953,9 @@ export default function Invoice() {
                               )}
                             </td>
                             <td className="px-4 py-3">
-                              {ticket.attachmentSpear ? (
+                              {ticket.attachmentSpare ? (
                                 <a
-                                  href={ticket.attachmentSpear}
+                                  href={ticket.attachmentSpare}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
@@ -1097,8 +1097,8 @@ export default function Invoice() {
                                   {ticket.attachmentService && (
                                     <a href={ticket.attachmentService} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">Service</a>
                                   )}
-                                  {ticket.attachmentSpear && (
-                                    <a href={ticket.attachmentSpear} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">Spear</a>
+                                  {ticket.attachmentSpare && (
+                                    <a href={ticket.attachmentSpare} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">Spare</a>
                                   )}
                                   {ticket.attachmentNABL && (
                                     <a href={ticket.attachmentNABL} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">NABL</a>
@@ -1303,14 +1303,14 @@ export default function Invoice() {
               )}
             </div>
             <div>
-              <Label>Attachment (Spear)</Label>
+              <Label>Attachment (Spare)</Label>
               <Input
                 type="file"
-                onChange={(e) => setAttachmentSpearFile(e.target.files[0] || null)}
+                onChange={(e) => setAttachmentSpareFile(e.target.files[0] || null)}
                 disabled={isSubmitting}
               />
-              {attachmentSpearFile && (
-                <p className="text-xs text-emerald-700 mt-1 truncate">Selected: {attachmentSpearFile.name}</p>
+              {attachmentSpareFile && (
+                <p className="text-xs text-emerald-700 mt-1 truncate">Selected: {attachmentSpareFile.name}</p>
               )}
             </div>
             <div>

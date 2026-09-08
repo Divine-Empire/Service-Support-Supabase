@@ -78,7 +78,7 @@ export default function Calibration() {
 
       const { data: invoiceFullRows } = await supabase
         .from("sss_invoice")
-        .select("ticket_id, invoice_no_nabl, invoice_no_service, invoice_no_spare, attachment_nabl, attachment_service, attachment_spear")
+        .select("ticket_id, invoice_no_nabl, invoice_no_service, invoice_no_spare, attachment_nabl, attachment_service, attachment_spare")
         .in("ticket_id", ticketIds);
 
       const calibrationByTicket = new Map((calibrationRows || []).map((c) => [c.ticket_id, c]));
@@ -103,7 +103,14 @@ export default function Calibration() {
           quotationNo: q?.quotation_no || "",
           quotationPdfLink: q?.quotation_pdf_link || "",
           invoiceNo: inv?.invoice_no_nabl || inv?.invoice_no_service || inv?.invoice_no_spare || "",
-          invoiceCopy: inv?.attachment_nabl || inv?.attachment_service || inv?.attachment_spear || "",
+          invoiceCopy: inv?.attachment_nabl || inv?.attachment_service || inv?.attachment_spare || "",
+          // Shown as separate columns on the Pending tab (NABL/Service only —
+          // Calibration is gated by enquiry_type='NABL', so Spare never
+          // applies here, unlike the combined fallback chain above).
+          invoiceNoService: inv?.invoice_no_service || "",
+          invoiceNoNabl: inv?.invoice_no_nabl || "",
+          attachmentService: inv?.attachment_service || "",
+          attachmentNabl: inv?.attachment_nabl || "",
         };
 
         const cal = calibrationByTicket.get(t.ticket_id);
@@ -362,14 +369,16 @@ export default function Calibration() {
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Phone Number</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Quotation Number</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Quotation Copy</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Invoice Number</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Invoice Copy</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Invoice No. (Service)</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Invoice No. (NABL)</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Attachment (Service)</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Attachment (NABL)</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-blue-100">
                         {filteredPendingData.length === 0 ? (
                           <tr>
-                            <td colSpan={10} className="text-center py-8 bg-white" data-testid="text-no-pending">
+                            <td colSpan={12} className="text-center py-8 bg-white" data-testid="text-no-pending">
                               {fetchLoading ? (
                                 <div className="flex justify-center items-center text-blue-700">
                                   <LoaderIcon className="animate-spin w-8 h-8" />
@@ -413,11 +422,26 @@ export default function Calibration() {
                                   "-"
                                 )}
                               </td>
-                              <td className="px-4 py-3 text-blue-900 font-medium">{ticket.invoiceNo || "-"}</td>
+                              <td className="px-4 py-3 text-blue-900 font-medium">{ticket.invoiceNoService || "-"}</td>
+                              <td className="px-4 py-3 text-blue-900 font-medium">{ticket.invoiceNoNabl || "-"}</td>
                               <td className="px-4 py-3">
-                                {ticket.invoiceCopy ? (
+                                {ticket.attachmentService ? (
                                   <a
-                                    href={ticket.invoiceCopy}
+                                    href={ticket.attachmentService}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
+                                  >
+                                    View
+                                  </a>
+                                ) : (
+                                  "-"
+                                )}
+                              </td>
+                              <td className="px-4 py-3">
+                                {ticket.attachmentNabl ? (
+                                  <a
+                                    href={ticket.attachmentNabl}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
@@ -480,22 +504,36 @@ export default function Calibration() {
                               </div>
                               <div className="grid grid-cols-2 gap-3 text-sm">
                                 <div>
-                                  <p className="text-gray-500 font-medium">Invoice No.</p>
-                                  <p className="text-blue-900">{ticket.invoiceNo || "N/A"}</p>
-                                </div>
-                                <div>
                                   <p className="text-gray-500 font-medium">Quotation Copy</p>
                                   {ticket.quotationPdfLink ? (
                                     <a href={ticket.quotationPdfLink} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">View</a>
                                   ) : "N/A"}
                                 </div>
                               </div>
-                              {ticket.invoiceCopy && (
-                                <div className="text-sm">
-                                  <p className="text-gray-500 font-medium">Invoice Copy</p>
-                                  <a href={ticket.invoiceCopy} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">View</a>
+                              <div className="grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                  <p className="text-gray-500 font-medium">Invoice No. (Service)</p>
+                                  <p className="text-blue-900">{ticket.invoiceNoService || "N/A"}</p>
                                 </div>
-                              )}
+                                <div>
+                                  <p className="text-gray-500 font-medium">Invoice No. (NABL)</p>
+                                  <p className="text-blue-900">{ticket.invoiceNoNabl || "N/A"}</p>
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                  <p className="text-gray-500 font-medium">Attachment (Service)</p>
+                                  {ticket.attachmentService ? (
+                                    <a href={ticket.attachmentService} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">View</a>
+                                  ) : "N/A"}
+                                </div>
+                                <div>
+                                  <p className="text-gray-500 font-medium">Attachment (NABL)</p>
+                                  {ticket.attachmentNabl ? (
+                                    <a href={ticket.attachmentNabl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">View</a>
+                                  ) : "N/A"}
+                                </div>
+                              </div>
                             </CardContent>
                           </Card>
                         ))
