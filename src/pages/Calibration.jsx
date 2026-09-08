@@ -121,6 +121,8 @@ export default function Calibration() {
             calibrationPeriodMonth: cal.calibration_period_month ?? "",
             calibrationDueDate: cal.calibration_due_date || "",
             calibrationUploadFile: cal.calibration_upload_file || "",
+            softCopySharedPersonName: cal.soft_copy_shared_person_name || "",
+            softCopySharedPersonNumber: cal.soft_copy_shared_person_number || "",
             delayMinutes: cal.delay_minutes,
           });
         } else {
@@ -155,6 +157,8 @@ export default function Calibration() {
       companyName: ticket.companyName || "",
       calibrationDate: "",
       calibrationPeriodMonth: "",
+      softCopySharedPersonName: "",
+      softCopySharedPersonNumber: "",
     });
     setCalibrationUploadFile(null);
     setShowCalibrationModal(true);
@@ -231,6 +235,8 @@ export default function Calibration() {
         calibration_period_month: formData.calibrationPeriodMonth || null,
         calibration_due_date: calibrationDueDate || null,
         calibration_upload_file: calibrationUploadUrl,
+        soft_copy_shared_person_name: formData.softCopySharedPersonName || null,
+        soft_copy_shared_person_number: formData.softCopySharedPersonNumber || null,
         // Readiness stamp for the next stage (Calibration Certificate) —
         // every Calibration submission gets this. See stagePlanning.js.
         calibration_certificate_planned: calibrationCertificatePlanned,
@@ -562,13 +568,15 @@ export default function Calibration() {
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Calibration Period (Month)</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Calibration Due Date</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Upload</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Soft Copy Shared - Person Name</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Soft Copy Shared - Person Number</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Delay</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-blue-100">
                         {filteredHistoryData.length === 0 ? (
                           <tr>
-                            <td colSpan={14} className="text-center py-8 bg-white" data-testid="text-no-history">
+                            <td colSpan={16} className="text-center py-8 bg-white" data-testid="text-no-history">
                               {fetchLoading ? (
                                 <div className="flex justify-center items-center text-blue-700">
                                   <LoaderIcon className="animate-spin w-8 h-8" />
@@ -633,6 +641,8 @@ export default function Calibration() {
                                   ""
                                 )}
                               </td>
+                              <td className="px-4 py-3 text-blue-900">{ticket.softCopySharedPersonName || ""}</td>
+                              <td className="px-4 py-3 text-blue-900">{ticket.softCopySharedPersonNumber || ""}</td>
                               <td className="px-4 py-3">
                                 <span
                                   className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
@@ -737,6 +747,16 @@ export default function Calibration() {
                                   </a>
                                 </div>
                               )}
+                              <div className="grid grid-cols-2 gap-3 text-sm border-t border-gray-100 pt-3">
+                                <div>
+                                  <p className="text-gray-500 font-medium">Soft Copy Shared - Person Name</p>
+                                  <p className="text-blue-900">{ticket.softCopySharedPersonName || "N/A"}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-500 font-medium">Soft Copy Shared - Person Number</p>
+                                  <p className="text-blue-900">{ticket.softCopySharedPersonNumber || "N/A"}</p>
+                                </div>
+                              </div>
                             </CardContent>
                           </Card>
                         ))
@@ -810,6 +830,29 @@ export default function Calibration() {
             {calibrationUploadFile && (
               <p className="text-xs text-emerald-700 mt-1 truncate">Selected: {calibrationUploadFile.name}</p>
             )}
+          </div>
+
+          <div className="md:col-span-2 pt-2 border-t border-gray-200">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Soft Copy Shared</h3>
+          </div>
+          <div>
+            <Label>Person Name</Label>
+            <Input
+              placeholder="Enter person name"
+              value={formData.softCopySharedPersonName || ""}
+              onChange={(e) => handleInputChange("softCopySharedPersonName", e.target.value)}
+              data-testid="input-soft-copy-person-name"
+            />
+          </div>
+          <div>
+            <Label>Person Number</Label>
+            <Input
+              type="tel"
+              placeholder="Enter phone number"
+              value={formData.softCopySharedPersonNumber || ""}
+              onChange={(e) => handleInputChange("softCopySharedPersonNumber", e.target.value)}
+              data-testid="input-soft-copy-person-number"
+            />
           </div>
 
           <div className="md:col-span-2 flex space-x-4 pt-4">

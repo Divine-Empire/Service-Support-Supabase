@@ -387,7 +387,7 @@ const QuotationPDFComponent = ({
               <p style={{ margin: "2px 0" }}>
                 Mobile: {quotationData.consignorMobile || " "}
               </p>
-              <p style={{ margin: "2px 0" }}>Phone: 0772-400515</p>
+              <p style={{ margin: "2px 0" }}>Phone: 0771-4900515</p>
               <p style={{ margin: "2px 0" }}>
                 GSTIN: {quotationData.consignorGSTIN || " "}
               </p>
