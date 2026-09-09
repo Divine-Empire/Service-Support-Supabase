@@ -39,6 +39,7 @@ import { supabase } from "../lib/supabase/client";
 import { ltoSupabase } from "../lib/supabase/ltoClient";
 import { fetchDropdownRows } from "../lib/supabase/dropdown";
 import { computeStagePlanned } from "../lib/supabase/stagePlanning";
+import { sendServiceRequestRegisteredNotification } from "../lib/notifications/whatsapp";
 
 export default function TicketAndEnquiry() {
   const [pendingData, setPendingData] = useState([]);
@@ -584,6 +585,26 @@ export default function TicketAndEnquiry() {
             title: "Success",
             description: `Enquiry created successfully with Ticket ID: ${result.ticketId}`,
           });
+
+          // Fire-and-forget: a WhatsApp failure should never block ticket
+          // creation, which has already succeeded at this point.
+          sendServiceRequestRegisteredNotification({
+            phoneNumber: newEnquiryData.phoneNumber,
+            clientName: newEnquiryData.clientName,
+            companyName: newEnquiryData.companyName || newEnquiryData.clientName,
+            ticketId: result.ticketId,
+            category: newFormSelectedCategories.join(", "),
+            issue: newEnquiryData.mentionIssue,
+          }).then(({ success, error }) => {
+            if (!success) {
+              toast({
+                title: "WhatsApp notification not sent",
+                description: error || "Ticket was created, but the WhatsApp message could not be sent.",
+                variant: "destructive",
+              });
+            }
+          });
+
           setShowNewEnquiryForm(false);
           setNewEnquiryData({
             clientType: "New",
