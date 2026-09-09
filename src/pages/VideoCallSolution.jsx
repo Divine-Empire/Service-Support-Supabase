@@ -35,6 +35,7 @@ import { Loader2Icon, LoaderIcon, Plus, Trash2 } from "lucide-react";
 import { Textarea } from "../components/ui/textarea";
 import { supabase } from "../lib/supabase/client";
 import { fetchDropdownRows } from "../lib/supabase/dropdown";
+import { sendVideoCallRescheduledNotifications } from "../lib/notifications/whatsapp";
 
 export default function VideoCallSolution() {
   const [activeTab, setActiveTab] = useState("pending");
@@ -422,6 +423,37 @@ export default function VideoCallSolution() {
         title: "Success",
         description: "Submitted successfully",
       });
+
+      // Fire-and-forget: notify the client + newly-assigned Alternate
+      // Engineer over WhatsApp on a reschedule. A notification failure
+      // should never block this submission, which has already succeeded.
+      if (formData.videoCallServicesSolve === "rescheduled") {
+        sendVideoCallRescheduledNotifications({
+          clientPhoneNumber: selectedTicket.phoneNumber,
+          clientName: selectedTicket.clientName,
+          ticketId: selectedTicket.ticketId,
+          issue: selectedTicket.mentionIssue,
+          engineerName: formData.alternateEngineer,
+          dateStr: formatDate(formData.rescheduledDateTime),
+          timeStr: formatTime12hr(formData.rescheduledDateTime),
+          otp: selectedTicket.otp,
+        }).then(({ success, error, engineerNotified, engineerError }) => {
+          if (!success) {
+            toast({
+              title: "Reschedule WhatsApp notification not sent",
+              description: error || "Ticket was updated, but the client could not be notified over WhatsApp.",
+              variant: "destructive",
+            });
+          }
+          if (!engineerNotified) {
+            toast({
+              title: "Engineer not notified over WhatsApp",
+              description: engineerError || `No WhatsApp number on file for ${formData.alternateEngineer}.`,
+              variant: "destructive",
+            });
+          }
+        });
+      }
       setShowSolutionModal(false);
       setIsVideoCallSolved(false);
       setAudioFile(null);
@@ -575,6 +607,20 @@ export default function VideoCallSolution() {
       setLastOtpGenerations(JSON.parse(storedGenerations));
     }
   }, []);
+
+  // "YYYY-MM-DDTHH:MM" (as produced by the <input type="datetime-local">
+  // Rescheduled Date & Time field) -> "hh:mm AM/PM" for WhatsApp messages
+  const formatTime12hr = (dateTimeLocalStr) => {
+    if (!dateTimeLocalStr) return "";
+    const d = new Date(dateTimeLocalStr);
+    if (isNaN(d.getTime())) return "";
+    let h = d.getHours();
+    const m = d.getMinutes();
+    const period = h >= 12 ? "PM" : "AM";
+    h = h % 12;
+    if (h === 0) h = 12;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")} ${period}`;
+  };
 
   const formatDateTime = (date) => {
     const d = new Date(date);

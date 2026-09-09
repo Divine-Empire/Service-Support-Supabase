@@ -12,6 +12,13 @@ import {
   TabsList,
   TabsTrigger,
 } from "../../components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../components/ui/select";
 import { Modal } from "../../components/ui/modal";
 import { useToast } from "../../hooks/use-toast";
 import { Loader2Icon, LoaderIcon, Plus, Pencil, Trash2 } from "lucide-react";
@@ -98,9 +105,42 @@ export default function Master() {
     }
   };
 
+  // ── Engineer Contacts tab state ─────────────────────────────────────
+  // WhatsApp numbers for the video-call-scheduled notifications
+  // (send-video-call-notifications Edge Function looks this table up by
+  // engineer name — see [[whatsapp_meta_integration]]).
+  const [engineerContacts, setEngineerContacts] = useState([]);
+  const [engineerContactsLoading, setEngineerContactsLoading] = useState(false);
+  const [newEngineerName, setNewEngineerName] = useState("");
+  const [newEngineerPhone, setNewEngineerPhone] = useState("");
+  const [isAddingEngineerContact, setIsAddingEngineerContact] = useState(false);
+  const [editingEngineerContact, setEditingEngineerContact] = useState(null);
+  const [editingEngineerPhone, setEditingEngineerPhone] = useState("");
+  const [isSavingEngineerEdit, setIsSavingEngineerEdit] = useState(false);
+  const [deleteEngineerTarget, setDeleteEngineerTarget] = useState(null);
+  const [isDeletingEngineerContact, setIsDeletingEngineerContact] = useState(false);
+
+  const fetchEngineerContacts = async () => {
+    setEngineerContactsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("sss_engineer_contacts")
+        .select("*")
+        .order("engineer_name", { ascending: true });
+      if (error) throw error;
+      setEngineerContacts(data || []);
+    } catch (error) {
+      console.error("Error fetching engineer contacts:", error);
+      toast({ title: "Error", description: "Failed to load engineer contacts", variant: "destructive" });
+    } finally {
+      setEngineerContactsLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchDropdown();
     fetchCompanies();
+    fetchEngineerContacts();
   }, []);
 
   // ── Dropdown tab handlers ───────────────────────────────────────────
@@ -186,6 +226,100 @@ export default function Master() {
     }
   };
 
+  // ── Engineer Contacts tab handlers ──────────────────────────────────
+  // Names are sourced from the 'engineer_assign_name' dropdown category so
+  // they always exactly match what Ticket-and-Enquiry.jsx's "Engineer-
+  // Assigned" field saves — a mismatched name would silently skip the
+  // engineer's WhatsApp notification at send time.
+  const engineerAssignNames = dropdownRows
+    .filter((r) => r.category === "engineer_assign_name")
+    .map((r) => r.value);
+  const engineerNamesWithoutContact = engineerAssignNames.filter(
+    (name) => !engineerContacts.some((c) => c.engineer_name === name)
+  );
+
+  const handleAddEngineerContact = async (e) => {
+    e.preventDefault();
+    const name = newEngineerName.trim();
+    const phone = newEngineerPhone.trim();
+    if (!name) {
+      alert("Please select an engineer");
+      return;
+    }
+    if (!phone) {
+      alert("Please enter a WhatsApp number");
+      return;
+    }
+
+    setIsAddingEngineerContact(true);
+    try {
+      const { error } = await supabase
+        .from("sss_engineer_contacts")
+        .upsert({ engineer_name: name, phone_number: phone, updated_at: new Date().toISOString() });
+      if (error) throw error;
+      toast({ title: "Success", description: "Engineer contact saved successfully" });
+      setNewEngineerName("");
+      setNewEngineerPhone("");
+      fetchEngineerContacts();
+    } catch (error) {
+      console.error("Error saving engineer contact:", error);
+      toast({ title: "Error", description: "Failed to save engineer contact", variant: "destructive" });
+    } finally {
+      setIsAddingEngineerContact(false);
+    }
+  };
+
+  const startEditEngineerContact = (contact) => {
+    setEditingEngineerContact(contact);
+    setEditingEngineerPhone(contact.phone_number);
+  };
+
+  const handleSaveEngineerEdit = async () => {
+    if (!editingEngineerContact) return;
+    const phone = editingEngineerPhone.trim();
+    if (!phone) {
+      alert("WhatsApp number cannot be empty");
+      return;
+    }
+    setIsSavingEngineerEdit(true);
+    try {
+      const { error } = await supabase
+        .from("sss_engineer_contacts")
+        .update({ phone_number: phone, updated_at: new Date().toISOString() })
+        .eq("engineer_name", editingEngineerContact.engineer_name);
+      if (error) throw error;
+      toast({ title: "Success", description: "Engineer contact updated successfully" });
+      setEditingEngineerContact(null);
+      setEditingEngineerPhone("");
+      fetchEngineerContacts();
+    } catch (error) {
+      console.error("Error updating engineer contact:", error);
+      toast({ title: "Error", description: "Failed to update engineer contact", variant: "destructive" });
+    } finally {
+      setIsSavingEngineerEdit(false);
+    }
+  };
+
+  const handleDeleteEngineerContact = async () => {
+    if (!deleteEngineerTarget) return;
+    setIsDeletingEngineerContact(true);
+    try {
+      const { error } = await supabase
+        .from("sss_engineer_contacts")
+        .delete()
+        .eq("engineer_name", deleteEngineerTarget.engineer_name);
+      if (error) throw error;
+      toast({ title: "Success", description: "Engineer contact deleted successfully" });
+      setDeleteEngineerTarget(null);
+      fetchEngineerContacts();
+    } catch (error) {
+      console.error("Error deleting engineer contact:", error);
+      toast({ title: "Error", description: "Failed to delete engineer contact", variant: "destructive" });
+    } finally {
+      setIsDeletingEngineerContact(false);
+    }
+  };
+
   // ── Company Details tab handlers ────────────────────────────────────
   const filteredCompanies = companies.filter((c) => {
     const q = companySearch.toLowerCase();
@@ -212,6 +346,12 @@ export default function Master() {
                 className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
               >
                 Company Details
+              </TabsTrigger>
+              <TabsTrigger
+                value="engineerContacts"
+                className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+              >
+                Engineer Contacts
               </TabsTrigger>
             </TabsList>
           </CardHeader>
@@ -399,6 +539,110 @@ export default function Master() {
                 </div>
               </div>
             </TabsContent>
+
+            {/* ── Engineer Contacts Tab ────────────────────────────── */}
+            {/* WhatsApp numbers used by send-video-call-notifications to
+                notify the engineer assigned on a video-call ticket. Names
+                are picked from the 'engineer_assign_name' dropdown so they
+                always match exactly. */}
+            <TabsContent value="engineerContacts" className="mt-0">
+              <div className="border border-gray-200 rounded-lg p-4">
+                <form onSubmit={handleAddEngineerContact} className="flex flex-col sm:flex-row gap-2 mb-4">
+                  <Select value={newEngineerName} onValueChange={setNewEngineerName}>
+                    <SelectTrigger className="sm:w-64">
+                      <SelectValue placeholder="Select engineer" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
+                      {engineerNamesWithoutContact.length === 0 ? (
+                        <div className="px-3 py-2 text-sm text-gray-500">
+                          All engineers already have a number
+                        </div>
+                      ) : (
+                        engineerNamesWithoutContact.map((name) => (
+                          <SelectItem key={name} value={name}>
+                            {name}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    placeholder="Enter WhatsApp number"
+                    value={newEngineerPhone}
+                    onChange={(e) => setNewEngineerPhone(e.target.value)}
+                    className="flex-1"
+                  />
+                  <Button
+                    type="submit"
+                    disabled={isAddingEngineerContact}
+                    className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shrink-0"
+                  >
+                    {isAddingEngineerContact && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
+                    Add
+                  </Button>
+                </form>
+
+                <div className="max-h-[55vh] overflow-y-auto">
+                  {engineerContactsLoading ? (
+                    <div className="flex justify-center items-center text-blue-700 py-8">
+                      <LoaderIcon className="animate-spin w-8 h-8" />
+                    </div>
+                  ) : engineerContacts.length === 0 ? (
+                    <p className="text-gray-500 text-center py-8">No engineer contacts yet.</p>
+                  ) : (
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50 text-gray-600">
+                          <th className="px-3 py-2 text-left font-semibold">Engineer Name</th>
+                          <th className="px-3 py-2 text-left font-semibold">WhatsApp Number</th>
+                          <th className="px-3 py-2 text-right font-semibold w-28">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {engineerContacts.map((contact, ind) => (
+                          <tr key={contact.engineer_name} className={ind % 2 === 0 ? "bg-white" : "bg-gray-50/50"}>
+                            <td className="px-3 py-2">{contact.engineer_name}</td>
+                            <td className="px-3 py-2">
+                              {editingEngineerContact?.engineer_name === contact.engineer_name ? (
+                                <Input
+                                  value={editingEngineerPhone}
+                                  onChange={(e) => setEditingEngineerPhone(e.target.value)}
+                                  className="h-8"
+                                  autoFocus
+                                />
+                              ) : (
+                                contact.phone_number
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {editingEngineerContact?.engineer_name === contact.engineer_name ? (
+                                <div className="flex justify-end gap-1">
+                                  <Button size="sm" onClick={handleSaveEngineerEdit} disabled={isSavingEngineerEdit} className="h-7 px-2 bg-blue-600 hover:bg-blue-700 text-white">
+                                    {isSavingEngineerEdit ? <Loader2Icon className="animate-spin w-3 h-3" /> : "Save"}
+                                  </Button>
+                                  <Button size="sm" variant="outline" onClick={() => setEditingEngineerContact(null)} className="h-7 px-2">
+                                    Cancel
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div className="flex justify-end gap-1">
+                                  <Button variant="outline" size="sm" onClick={() => startEditEngineerContact(contact)} className="h-7 px-2 border-blue-200 text-blue-700 hover:bg-blue-50">
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </Button>
+                                  <Button variant="outline" size="sm" onClick={() => setDeleteEngineerTarget(contact)} className="h-7 px-2 border-red-200 text-red-600 hover:bg-red-50">
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </Button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            </TabsContent>
           </CardContent>
         </Card>
       </Tabs>
@@ -419,6 +663,28 @@ export default function Master() {
             <Button type="button" variant="outline" onClick={() => setDeleteDropdownTarget(null)}>Cancel</Button>
             <Button type="button" onClick={handleDeleteDropdownValue} disabled={isDeletingDropdown} className="bg-red-600 hover:bg-red-700 text-white">
               {isDeletingDropdown && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
+              Delete
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Engineer contact delete confirmation */}
+      <Modal
+        isOpen={!!deleteEngineerTarget}
+        onClose={() => setDeleteEngineerTarget(null)}
+        title="Delete Engineer Contact"
+        size="sm"
+      >
+        <div className="p-2 space-y-4">
+          <p className="text-gray-700">
+            Delete the WhatsApp number for{" "}
+            <span className="font-semibold">{deleteEngineerTarget?.engineer_name}</span>?
+          </p>
+          <div className="flex justify-end space-x-4">
+            <Button type="button" variant="outline" onClick={() => setDeleteEngineerTarget(null)}>Cancel</Button>
+            <Button type="button" onClick={handleDeleteEngineerContact} disabled={isDeletingEngineerContact} className="bg-red-600 hover:bg-red-700 text-white">
+              {isDeletingEngineerContact && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
               Delete
             </Button>
           </div>

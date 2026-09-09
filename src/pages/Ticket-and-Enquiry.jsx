@@ -39,7 +39,10 @@ import { supabase } from "../lib/supabase/client";
 import { ltoSupabase } from "../lib/supabase/ltoClient";
 import { fetchDropdownRows } from "../lib/supabase/dropdown";
 import { computeStagePlanned } from "../lib/supabase/stagePlanning";
-import { sendServiceRequestRegisteredNotification } from "../lib/notifications/whatsapp";
+import {
+  sendServiceRequestRegisteredNotification,
+  sendVideoCallScheduledNotifications,
+} from "../lib/notifications/whatsapp";
 
 export default function TicketAndEnquiry() {
   const [pendingData, setPendingData] = useState([]);
@@ -328,6 +331,19 @@ export default function TicketAndEnquiry() {
     return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
   };
 
+  // "HH:MM" (24h, as stored by TimePicker12) -> "hh:mm AM/PM" for WhatsApp messages
+  const formatTime12hr = (timeStr) => {
+    if (!timeStr || !timeStr.includes(":")) return timeStr || "";
+    const [hStr, mStr] = timeStr.split(":");
+    let h = parseInt(hStr, 10);
+    const m = parseInt(mStr, 10);
+    if (isNaN(h) || isNaN(m)) return timeStr;
+    const period = h >= 12 ? "PM" : "AM";
+    h = h % 12;
+    if (h === 0) h = 12;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")} ${period}`;
+  };
+
   const generateSixDigitOTP = () => {
     let result = "";
     for (let i = 0; i < 6; i++) {
@@ -538,6 +554,10 @@ export default function TicketAndEnquiry() {
         const warrantyCheckPlanned = await computeStagePlanned("warrantyCheck", {
           ticketSubmittedAt: submittedAt,
         });
+        // Only generate an OTP when Video-Call is "Yes" — also doubles as
+        // the "Service Reference" sent to the client in the video-call
+        // WhatsApp notification below.
+        const videoCallOtp = newEnquiryData.videoCall === "Yes" ? generateSixDigitOTP() : "";
 
         const insertPayload = {
           source_of_enquiry: newEnquiryData.sourceOfEnquiry || "",
@@ -561,8 +581,7 @@ export default function TicketAndEnquiry() {
           sub_category: newFormSelectedCategories.join(", "),
           video_call_time: newEnquiryData.videoCallTime || "",
           engineer_assign: newEnquiryData.engineerAssign || "",
-          // Only generate an OTP when Video-Call is "Yes"
-          otp: newEnquiryData.videoCall === "Yes" ? generateSixDigitOTP() : "",
+          otp: videoCallOtp,
           cre_name: userName || "",
           // Stamps this ticket ready for the next stage (Warranty-Check):
           // this row's own submit-time timestamp + tat_config['Warranty-Check'].
@@ -604,6 +623,36 @@ export default function TicketAndEnquiry() {
               });
             }
           });
+
+          // Additionally notify the client + assigned engineer over WhatsApp
+          // when a video call was scheduled on this ticket.
+          if (newEnquiryData.videoCall === "Yes") {
+            sendVideoCallScheduledNotifications({
+              clientPhoneNumber: newEnquiryData.phoneNumber,
+              clientName: newEnquiryData.clientName,
+              ticketId: result.ticketId,
+              issue: newEnquiryData.mentionIssue,
+              engineerName: newEnquiryData.engineerAssign,
+              dateStr: formatDate(submittedAt),
+              timeStr: formatTime12hr(newEnquiryData.videoCallTime),
+              otp: videoCallOtp,
+            }).then(({ success, error, engineerNotified, engineerError }) => {
+              if (!success) {
+                toast({
+                  title: "Video-call WhatsApp notification not sent",
+                  description: error || "Ticket was created, but the client could not be notified over WhatsApp.",
+                  variant: "destructive",
+                });
+              }
+              if (!engineerNotified) {
+                toast({
+                  title: "Engineer not notified over WhatsApp",
+                  description: engineerError || `No WhatsApp number on file for ${newEnquiryData.engineerAssign}.`,
+                  variant: "destructive",
+                });
+              }
+            });
+          }
 
           setShowNewEnquiryForm(false);
           setNewEnquiryData({
