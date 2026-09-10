@@ -43,25 +43,36 @@ export async function sendServiceRequestRegisteredNotification({
   }
 }
 
-// Sends the video-call-scheduled WhatsApp templates — one to the client
-// ("video_call_has_been_scheduled"), one to the assigned engineer
-// ("video_call_scheduled_for_engineers", looked up server-side from
-// sss_engineer_contacts by name). Called only when a new ticket is created
-// with Video-Call = "Yes". Never throws; the engineer leg is best-effort
-// server-side (see the Edge Function), so a missing engineer contact never
-// blocks the client's message.
+// Sends the video-call-scheduled WhatsApp templates for a new ticket with
+// Video-Call = "Yes" — THREE messages, sent in this order:
+//   1. "service_request_registered" to the client (immediately) — only
+//      when companyName + category are passed; omit them to skip this and
+//      only send the video-call template (e.g. if the caller already sent
+//      the "registered" message itself).
+//   2. "video_call_has_been_scheduled" to the client, after a fixed delay
+//   3. "video_call_scheduled_for_engineers" to the assigned engineer
+//      (looked up server-side from sss_engineer_contacts by name)
+// The 1-then-2 ordering and delay both happen server-side in the Edge
+// Function — NOT via a browser-side timer — so it holds even if this tab
+// closes right after the request is sent. Never throws; the registered and
+// engineer legs are best-effort, so neither blocks the video-call message.
 //
-// Client template body:
+// service_request_registered body:
+//   {{1}} Client Name  {{2}} Company Name  {{3}} Ticket ID
+//   {{4}} Category     {{5}} Issue         {{6}}/{{7}} Coordinator name/phone
+// video_call_has_been_scheduled body:
 //   {{1}} Client Name  {{2}} Ticket ID   {{3}} Issue        {{4}} Engineer
 //   {{5}} Date         {{6}} Time        {{7}} Service Reference (OTP)
 //   {{8}}/{{9}} Service Coordinator name/phone — static, filled in by the
 //   Edge Function (WHATSAPP_COORDINATOR_NAME / _PHONE secrets).
-// Engineer template body (video_call_scheduled_for_engineers):
+// video_call_scheduled_for_engineers body:
 //   {{1}} Engineer Name  {{2}} Ticket ID  {{3}} Issue
 //   {{4}} Date           {{5}} Time       {{6}}/{{7}} Coordinator name/phone
 export async function sendVideoCallScheduledNotifications({
   clientPhoneNumber,
   clientName,
+  companyName,
+  category,
   ticketId,
   issue,
   engineerName,
@@ -71,7 +82,7 @@ export async function sendVideoCallScheduledNotifications({
 }) {
   try {
     const { data, error } = await supabase.functions.invoke("send-video-call-notifications", {
-      body: { clientPhoneNumber, clientName, ticketId, issue, engineerName, dateStr, timeStr, otp },
+      body: { clientPhoneNumber, clientName, companyName, category, ticketId, issue, engineerName, dateStr, timeStr, otp },
     });
 
     if (error) {
@@ -79,6 +90,9 @@ export async function sendVideoCallScheduledNotifications({
       return { success: false, error: error.message || "Failed to send video-call WhatsApp notifications" };
     }
 
+    if (data?.registered && !data.registered.success) {
+      console.error("Video-call WhatsApp notification (registered leg) failed:", data.registered.error);
+    }
     if (!data?.success) {
       console.error("Video-call WhatsApp notification (client leg) failed:", data?.client?.error);
     }

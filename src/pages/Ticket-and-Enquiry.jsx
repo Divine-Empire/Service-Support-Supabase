@@ -607,22 +607,31 @@ export default function TicketAndEnquiry() {
 
           // Fire-and-forget: a WhatsApp failure should never block ticket
           // creation, which has already succeeded at this point.
-          sendServiceRequestRegisteredNotification({
-            phoneNumber: newEnquiryData.phoneNumber,
-            clientName: newEnquiryData.clientName,
-            companyName: newEnquiryData.companyName || newEnquiryData.clientName,
-            ticketId: result.ticketId,
-            category: newFormSelectedCategories.join(", "),
-            issue: newEnquiryData.mentionIssue,
-          }).then(({ success, error }) => {
-            if (!success) {
-              toast({
-                title: "WhatsApp notification not sent",
-                description: error || "Ticket was created, but the WhatsApp message could not be sent.",
-                variant: "destructive",
-              });
-            }
-          });
+          //
+          // When Video-Call = "Yes", the "registered" + "video-call-
+          // scheduled" client messages must land in that order — a race
+          // between two separate requests here previously let Meta deliver
+          // them out of order. So in that case skip the standalone
+          // "registered" call entirely and let the video-call notification
+          // below send both, in order, itself (see the Edge Function).
+          if (newEnquiryData.videoCall !== "Yes") {
+            sendServiceRequestRegisteredNotification({
+              phoneNumber: newEnquiryData.phoneNumber,
+              clientName: newEnquiryData.clientName,
+              companyName: newEnquiryData.companyName || newEnquiryData.clientName,
+              ticketId: result.ticketId,
+              category: newFormSelectedCategories.join(", "),
+              issue: newEnquiryData.mentionIssue,
+            }).then(({ success, error }) => {
+              if (!success) {
+                toast({
+                  title: "WhatsApp notification not sent",
+                  description: error || "Ticket was created, but the WhatsApp message could not be sent.",
+                  variant: "destructive",
+                });
+              }
+            });
+          }
 
           // Additionally notify the client + assigned engineer over WhatsApp
           // when a video call was scheduled on this ticket.
@@ -630,6 +639,8 @@ export default function TicketAndEnquiry() {
             sendVideoCallScheduledNotifications({
               clientPhoneNumber: newEnquiryData.phoneNumber,
               clientName: newEnquiryData.clientName,
+              companyName: newEnquiryData.companyName || newEnquiryData.clientName,
+              category: newFormSelectedCategories.join(", "),
               ticketId: result.ticketId,
               issue: newEnquiryData.mentionIssue,
               engineerName: newEnquiryData.engineerAssign,
