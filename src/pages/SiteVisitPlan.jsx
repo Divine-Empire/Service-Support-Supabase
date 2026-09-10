@@ -38,6 +38,7 @@ import VisitCalendarModal from "../components/VisitCalendarModal";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
 import { supabase } from "../lib/supabase/client";
 import { fetchDropdownRows } from "../lib/supabase/dropdown";
+import { sendSiteVisitAssignedNotifications } from "../lib/notifications/whatsapp";
 
 const PREMIUM_COLORS = [
   { bg: "bg-emerald-50 text-emerald-700 border-emerald-200", badge: "bg-emerald-100 text-emerald-800" },
@@ -416,6 +417,37 @@ export default function SiteVisitPlan() {
         title: "Success",
         description: "Ticket details saved successfully",
       });
+
+      // Fire-and-forget: a WhatsApp failure should never block this
+      // submission, which has already succeeded at this point.
+      const assignedEngineer = formData.engineerAssign || selectedTicket.engineerAssign;
+      if (assignedEngineer) {
+        sendSiteVisitAssignedNotifications({
+          clientPhoneNumber: selectedTicket.phoneNumber,
+          clientName: selectedTicket.clientName,
+          companyName: selectedTicket.companyName,
+          ticketId: selectedTicket.ticketId,
+          engineerName: assignedEngineer,
+          visitDateStr: formatDate(formData.dateOfVisit),
+          siteAddress: formData.siteName || selectedTicket.siteAddress,
+        }).then(({ success, error, engineerNotified, engineerError }) => {
+          if (!success) {
+            toast({
+              title: "WhatsApp notification not sent",
+              description: error || "Ticket was updated, but the client could not be notified over WhatsApp.",
+              variant: "destructive",
+            });
+          }
+          if (!engineerNotified) {
+            toast({
+              title: "Engineer not notified over WhatsApp",
+              description: engineerError || `No WhatsApp number on file for ${assignedEngineer}.`,
+              variant: "destructive",
+            });
+          }
+        });
+      }
+
       setShowPlanModal(false);
       fetchData();
     } catch (error) {

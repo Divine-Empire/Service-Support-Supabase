@@ -24,9 +24,9 @@ import { Modal } from "../components/ui/modal";
 import { useToast } from "../hooks/use-toast";
 import { Loader2Icon, LoaderIcon } from "lucide-react";
 import { supabase } from "../lib/supabase/client";
+import { sendSiteVisitOtpNotification } from "../lib/notifications/whatsapp";
 
 export default function SiteVisitOTPVerification() {
-  const [lastOtpGenerations, setLastOtpGenerations] = useState({});
   const [activeTab, setActiveTab] = useState("pending");
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
@@ -232,7 +232,7 @@ export default function SiteVisitOTPVerification() {
     // could otherwise match an accidentally-empty comparison; this makes
     // "no OTP sent yet" its own explicit, unambiguous error instead.
     if (!liveOtp) {
-      alert("No OTP has been sent for this ticket yet. Please click Resend OTP first.");
+      alert("No OTP has been sent for this ticket yet. Please click Send OTP first.");
       return;
     }
 
@@ -304,87 +304,65 @@ export default function SiteVisitOTPVerification() {
     return result;
   }
 
-  const [isResending, setIsResending] = useState(false);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
 
-  const canGenerateOtp = (ticketId) => {
-    if (!lastOtpGenerations[ticketId]) return true;
-
-    const lastGenDate = new Date(lastOtpGenerations[ticketId]);
-    const today = new Date();
-
-    return (
-      lastGenDate.getDate() !== today.getDate() ||
-      lastGenDate.getMonth() !== today.getMonth() ||
-      lastGenDate.getFullYear() !== today.getFullYear()
-    );
-  };
-
-  const ResendOTP = async () => {
-    const ticketId = selectedTicket?.ticketId;
-
-    if (!canGenerateOtp(ticketId)) {
-      toast({
-        title: "Error",
-        description: "You can only generate one OTP per day for this ticket",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsResending(true);
-    const sixDigitNumber1 = generateSixDigitNumber();
+  // Sent exactly once per ticket — no resend. Saves the OTP to
+  // sss_tickets.site_visit_otp (the source of truth that both gates the
+  // OTP Verification field and is checked against at Submit), then
+  // notifies the client over WhatsApp. A WhatsApp failure is reported but
+  // never rolled back — the OTP already exists in the DB, so the field
+  // still unlocks; the coordinator can share it manually if needed.
+  const handleSendOtp = async () => {
+    setIsSendingOtp(true);
+    const sixDigitNumber = generateSixDigitNumber();
 
     try {
       const { error } = await supabase
         .from("sss_tickets")
-        .update({ site_visit_otp: sixDigitNumber1 })
+        .update({ site_visit_otp: sixDigitNumber })
         .eq("uuid", selectedTicket.ticketUuid);
 
       if (error) throw error;
 
-      setLastOtpGenerations((prev) => ({
-        ...prev,
-        [ticketId]: new Date().toISOString(),
-      }));
-
-      const storedGenerations = JSON.parse(
-        localStorage.getItem("lastOtpVerificationGenerations") || "{}"
-      );
-      storedGenerations[ticketId] = new Date().toISOString();
-      localStorage.setItem(
-        "lastOtpVerificationGenerations",
-        JSON.stringify(storedGenerations)
-      );
-
       setSelectedTicket((prev) => ({
         ...prev,
-        siteVisitOtp: sixDigitNumber1,
+        siteVisitOtp: sixDigitNumber,
       }));
 
       toast({
         title: "Success",
-        description: "OTP sent successfully",
+        description: "OTP saved. Sending WhatsApp notification...",
       });
+
+      const { success, error: sendError } = await sendSiteVisitOtpNotification({
+        clientPhoneNumber: selectedTicket.phoneNumber,
+        clientName: selectedTicket.clientName,
+        otp: sixDigitNumber,
+      });
+
+      if (!success) {
+        toast({
+          title: "WhatsApp notification not sent",
+          description: sendError || "OTP was saved, but the WhatsApp message could not be sent. Please share it manually.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Success",
+          description: "OTP sent to the client over WhatsApp",
+        });
+      }
     } catch (error) {
-      console.error("Error generating OTP:", error);
+      console.error("Error sending OTP:", error);
       toast({
         title: "Error",
-        description: "Failed to send OTP",
+        description: "Failed to save/send OTP",
         variant: "destructive",
       });
     } finally {
-      setIsResending(false);
+      setIsSendingOtp(false);
     }
   };
-
-  useEffect(() => {
-    const storedGenerations = localStorage.getItem(
-      "lastOtpVerificationGenerations"
-    );
-    if (storedGenerations) {
-      setLastOtpGenerations(JSON.parse(storedGenerations));
-    }
-  }, []);
 
   const formatDate = (dateString) => {
     if (!dateString) return "";
@@ -1081,43 +1059,35 @@ export default function SiteVisitOTPVerification() {
             <Input
               required
               maxLength={6}
-              placeholder="Enter 6-digit OTP"
+              placeholder={selectedTicket?.siteVisitOtp ? "Enter 6-digit OTP" : "Send OTP to the client first"}
               value={formData.otpVerification || ""}
               onChange={(e) =>
                 handleInputChange("otpVerification", e.target.value)
               }
+              disabled={!selectedTicket?.siteVisitOtp}
               data-testid="input-otp"
             />
 
-            <div className="w-full flex justify-center items-center flex-col">
-              <div
-                onClick={
-                  canGenerateOtp(selectedTicket?.ticketId)
-                    ? ResendOTP
-                    : null
-                }
-                data-testid="button-resend-otp"
-                className={`px-2 py-1 ${canGenerateOtp(selectedTicket?.ticketId)
-                  ? "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 cursor-pointer"
-                  : "bg-gray-400 cursor-not-allowed"
-                  } text-white rounded-lg transition-all duration-300 shadow-lg text-center w-full flex justify-center items-center`}
-              >
-                {isResending ? (
-                  <span className="flex items-center">
-                    <LoaderIcon className="animate-spin mr-2" />
-                    Resend OTPing...
-                  </span>
-                ) : (
-                  "Resend OTP"
-                )}
+            {!selectedTicket?.siteVisitOtp && (
+              <div className="w-full flex justify-center items-center flex-col mt-2">
+                <Button
+                  type="button"
+                  onClick={handleSendOtp}
+                  disabled={isSendingOtp}
+                  data-testid="button-send-otp"
+                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg"
+                >
+                  {isSendingOtp ? (
+                    <span className="flex items-center">
+                      <LoaderIcon className="animate-spin mr-2 w-4 h-4" />
+                      Sending OTP...
+                    </span>
+                  ) : (
+                    "Send OTP"
+                  )}
+                </Button>
               </div>
-
-              {!canGenerateOtp(selectedTicket?.ticketId) && (
-                <p className="text-xs text-gray-500 mt-1">
-                  Next OTP available tomorrow
-                </p>
-              )}
-            </div>
+            )}
           </div>
 
           <div>

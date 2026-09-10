@@ -35,7 +35,10 @@ import { Loader2Icon, LoaderIcon, Plus, Trash2 } from "lucide-react";
 import { Textarea } from "../components/ui/textarea";
 import { supabase } from "../lib/supabase/client";
 import { fetchDropdownRows } from "../lib/supabase/dropdown";
-import { sendVideoCallRescheduledNotifications } from "../lib/notifications/whatsapp";
+import {
+  sendVideoCallRescheduledNotifications,
+  sendVideoCallOtpResendNotification,
+} from "../lib/notifications/whatsapp";
 
 export default function VideoCallSolution() {
   const [activeTab, setActiveTab] = useState("pending");
@@ -202,6 +205,7 @@ export default function VideoCallSolution() {
           CREName: t.cre_name || "",
           engineerAssign: t.engineer_assign || "",
           otp: t.otp || "",
+          videoCallTime: t.video_call_time || "",
         };
 
         // Latest attempt still 'rescheduled' (or no attempt yet) => still
@@ -588,6 +592,28 @@ export default function VideoCallSolution() {
         title: "Success",
         description: "OTP sent successfully",
       });
+
+      // Fire-and-forget: re-send the same "video_call_has_been_scheduled"
+      // template to the client with the freshly-regenerated OTP. A
+      // WhatsApp failure here should never undo the OTP already saved above.
+      sendVideoCallOtpResendNotification({
+        clientPhoneNumber: selectedTicket.phoneNumber,
+        clientName: selectedTicket.clientName,
+        ticketId: selectedTicket.ticketId,
+        issue: selectedTicket.mentionIssue,
+        engineerName: selectedTicket.engineerAssign,
+        dateStr: formatDate(selectedTicket.timeStemp),
+        timeStr: formatTime12hrFromHHMM(selectedTicket.videoCallTime),
+        otp: sixDigitNumber1,
+      }).then(({ success, error }) => {
+        if (!success) {
+          toast({
+            title: "WhatsApp notification not sent",
+            description: error || "OTP was saved, but the WhatsApp message could not be sent. Please share it manually.",
+            variant: "destructive",
+          });
+        }
+      });
     } catch (error) {
       console.error("Error submitting ticket:", error);
       toast({
@@ -607,6 +633,20 @@ export default function VideoCallSolution() {
       setLastOtpGenerations(JSON.parse(storedGenerations));
     }
   }, []);
+
+  // "HH:MM" (24h, as stored in sss_tickets.video_call_time) -> "hh:mm AM/PM"
+  // for the OTP-resend WhatsApp message
+  const formatTime12hrFromHHMM = (timeStr) => {
+    if (!timeStr || !timeStr.includes(":")) return timeStr || "";
+    const [hStr, mStr] = timeStr.split(":");
+    let h = parseInt(hStr, 10);
+    const m = parseInt(mStr, 10);
+    if (isNaN(h) || isNaN(m)) return timeStr;
+    const period = h >= 12 ? "PM" : "AM";
+    h = h % 12;
+    if (h === 0) h = 12;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")} ${period}`;
+  };
 
   // "YYYY-MM-DDTHH:MM" (as produced by the <input type="datetime-local">
   // Rescheduled Date & Time field) -> "hh:mm AM/PM" for WhatsApp messages
