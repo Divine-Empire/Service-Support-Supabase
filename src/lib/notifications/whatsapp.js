@@ -5,8 +5,8 @@ import { supabase } from "../supabase/client";
 // caller's point of view: this never throws — it always resolves with a
 // { success, error? } shape so a WhatsApp failure never blocks ticket
 // creation. All Meta credentials stay server-side in the
-// send-whatsapp-notification Edge Function; nothing sensitive is sent from
-// or held in the browser.
+// sss-send-whatsapp-notification Edge Function; nothing sensitive is sent
+// from or held in the browser.
 //
 // Template body (Meta > WhatsApp Manager > Manage templates):
 //   {{1}} Client Name   {{2}} Company Name   {{3}} Ticket ID
@@ -22,7 +22,7 @@ export async function sendServiceRequestRegisteredNotification({
   issue,
 }) {
   try {
-    const { data, error } = await supabase.functions.invoke("send-whatsapp-notification", {
+    const { data, error } = await supabase.functions.invoke("sss-send-whatsapp-notification", {
       body: { phoneNumber, clientName, companyName, ticketId, category, issue },
     });
 
@@ -81,7 +81,7 @@ export async function sendVideoCallScheduledNotifications({
   otp,
 }) {
   try {
-    const { data, error } = await supabase.functions.invoke("send-video-call-notifications", {
+    const { data, error } = await supabase.functions.invoke("sss-send-video-call-notifications", {
       body: { clientPhoneNumber, clientName, companyName, category, ticketId, issue, engineerName, dateStr, timeStr, otp },
     });
 
@@ -139,7 +139,7 @@ export async function sendVideoCallRescheduledNotifications({
   otp,
 }) {
   try {
-    const { data, error } = await supabase.functions.invoke("send-video-call-rescheduled-notifications", {
+    const { data, error } = await supabase.functions.invoke("sss-send-video-call-rescheduled-notifications", {
       body: { clientPhoneNumber, clientName, ticketId, issue, engineerName, dateStr, timeStr, otp },
     });
 
@@ -164,5 +164,46 @@ export async function sendVideoCallRescheduledNotifications({
   } catch (error) {
     console.error("Video-call rescheduled WhatsApp notification failed:", error);
     return { success: false, error: error.message || "Failed to send video-call rescheduled WhatsApp notifications" };
+  }
+}
+
+// Sends the "shared_quotation_for_received_enquiry" WhatsApp template to the
+// client, with the quotation PDF attached as the template's Document
+// header. Called only from Quotation.jsx's handleSubmit, when "Quotation
+// Share" = "Yes". Never throws — a WhatsApp failure never blocks that
+// submission, which has already succeeded by the time this is called.
+//
+// Template body:
+//   {{1}} Client Name  {{2}} Company Name  {{3}} Ticket ID  {{4}} Quotation No
+//   {{5}}/{{6}} Service Coordinator name/phone — static, filled in by the
+//   Edge Function (WHATSAPP_COORDINATOR_NAME / _PHONE secrets).
+export async function sendQuotationSharedNotification({
+  clientPhoneNumber,
+  clientName,
+  companyName,
+  ticketId,
+  quotationNo,
+  pdfUrl,
+  pdfFileName,
+}) {
+  try {
+    const { data, error } = await supabase.functions.invoke("sss-send-quotation-shared-notification", {
+      body: { clientPhoneNumber, clientName, companyName, ticketId, quotationNo, pdfUrl, pdfFileName },
+    });
+
+    if (error) {
+      console.error("Quotation-shared WhatsApp notification failed:", error);
+      return { success: false, error: error.message || "Failed to send quotation-shared WhatsApp notification" };
+    }
+
+    if (!data?.success) {
+      console.error("Quotation-shared WhatsApp notification failed:", data?.error);
+      return { success: false, error: data?.error || "Failed to send quotation-shared WhatsApp notification" };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error("Quotation-shared WhatsApp notification failed:", error);
+    return { success: false, error: error.message || "Failed to send quotation-shared WhatsApp notification" };
   }
 }

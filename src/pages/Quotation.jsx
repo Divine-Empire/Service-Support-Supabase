@@ -21,6 +21,7 @@ import { Loader2Icon, LoaderIcon } from "lucide-react";
 import MakeQuotation from "./Quotation/MakeQuotation";
 import { supabase } from "../lib/supabase/client";
 import { fetchDropdownRows } from "../lib/supabase/dropdown";
+import { sendQuotationSharedNotification } from "../lib/notifications/whatsapp";
 
 export default function Quotation() {
   const [activeTab, setActiveTab] = useState("pending");
@@ -486,6 +487,30 @@ export default function Quotation() {
         title: "Success",
         description: "Ticket details saved successfully",
       });
+
+      // Fire-and-forget: a WhatsApp failure should never block this
+      // submission, which has already succeeded at this point. Only sent
+      // when the user explicitly chose to share the quotation.
+      if (formData.quotationShare === "Yes") {
+        sendQuotationSharedNotification({
+          clientPhoneNumber: selectedTicket.phoneNumber,
+          clientName: selectedTicket.clientName,
+          companyName: selectedTicket.companyName,
+          ticketId: selectedTicket.ticketId,
+          quotationNo: formData.quotationNo,
+          pdfUrl: fileUrl,
+          pdfFileName: `Quotation_${formData.quotationNo}.pdf`,
+        }).then(({ success, error }) => {
+          if (!success) {
+            toast({
+              title: "WhatsApp notification not sent",
+              description: error || "Quotation was saved, but the WhatsApp message could not be sent.",
+              variant: "destructive",
+            });
+          }
+        });
+      }
+
       setShowQuotationModal(false);
       setQuotationPdfFile(null);
       fetchData();
