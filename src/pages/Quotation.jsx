@@ -91,7 +91,7 @@ export default function Quotation() {
       // outcome, or by skipping Video-Call entirely).
       const { data: videoCallRows, error: videoCallError } = await supabase
         .from("sss_video_call")
-        .select("ticket_id, regeneration_status, item_qty, created_at")
+        .select("ticket_id, regeneration_status, item_qty, remarks, created_at")
         .in("ticket_id", ticketIds)
         .order("created_at", { ascending: false });
 
@@ -160,6 +160,7 @@ export default function Quotation() {
           engineerAssign: t.engineer_assign || "",
           otpVarificationStatus: latestVideoCall?.regeneration_status || "",
           itemQty: latestVideoCall?.item_qty ? JSON.stringify(latestVideoCall.item_qty) : "",
+          videoCallRemarks: latestVideoCall?.remarks || "",
           hasQuotation: !!q,
           quotationNo: q?.quotation_no || "",
           basicAmount: q?.basic_amount ?? "",
@@ -747,6 +748,9 @@ export default function Quotation() {
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                           Quotation PDF
                         </th>
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
+                          Video Call Remarks
+                        </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                           Item List
                         </th>
@@ -756,7 +760,7 @@ export default function Quotation() {
                       {fetchLoading ? (
                         <tr>
                           <td
-                            colSpan={20}
+                            colSpan={21}
                             className="text-center py-8 bg-white"
                           >
                             <div className="flex justify-center items-center text-blue-700">
@@ -767,7 +771,7 @@ export default function Quotation() {
                       ) : filteredPendingData.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={20}
+                            colSpan={21}
                             className="text-center py-8 bg-white"
                             data-testid="text-no-pending"
                           >
@@ -865,6 +869,9 @@ export default function Quotation() {
                               ) : (
                                 ""
                               )}
+                            </td>
+                            <td className="px-4 py-3 text-blue-900">
+                              {ticket.videoCallRemarks || ""}
                             </td>
                             <td className="px-4 py-3">
                               <Button
@@ -1059,6 +1066,16 @@ export default function Quotation() {
                               ) : (
                                 <p className="text-blue-900">N/A</p>
                               )}
+                            </div>
+
+                            {/* Video Call Remarks */}
+                            <div className="text-sm">
+                              <p className="text-gray-500 font-medium">
+                                Video Call Remarks
+                              </p>
+                              <p className="text-blue-900">
+                                {ticket.videoCallRemarks || "N/A"}
+                              </p>
                             </div>
                           </CardContent>
                         </Card>
