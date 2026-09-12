@@ -489,6 +489,10 @@ export default function TicketAndEnquiry() {
       alert("Error: GST Address is required");
       return;
     }
+    if (!newEnquiryData.siteAddress || !newEnquiryData.siteAddress.trim()) {
+      alert("Error: Site Address is required");
+      return;
+    }
     if (newFormSelectedMachines.length === 0) {
       alert("Error: Machine Name is required");
       return;
@@ -1512,11 +1516,12 @@ export default function TicketAndEnquiry() {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-sm">Site Address</Label>
+                <Label className="text-sm">Site Address *</Label>
                 <Input
                   value={newEnquiryData.siteAddress || ""}
                   onChange={(e) => setNewEnquiryData(prev => ({ ...prev, siteAddress: e.target.value }))}
                   placeholder="Enter Site Address"
+                  required
                 />
               </div>
 

@@ -161,6 +161,7 @@ export default function Quotation() {
           serviceLocation: t.service_location || "",
           CREName: t.cre_name || "",
           engineerAssign: t.engineer_assign || "",
+          enquiryItemList: t.enquiry_item_list || "",
           otpVarificationStatus: latestVideoCall?.regeneration_status || "",
           itemQty: latestVideoCall?.item_qty ? JSON.stringify(latestVideoCall.item_qty) : "",
           videoCallRemarks: latestVideoCall?.remarks || "",
@@ -748,6 +749,9 @@ export default function Quotation() {
                           Service Location
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
+                          Enquiry-Item-List
+                        </th>
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                           OTP Status
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
@@ -771,7 +775,7 @@ export default function Quotation() {
                       {fetchLoading ? (
                         <tr>
                           <td
-                            colSpan={21}
+                            colSpan={22}
                             className="text-center py-8 bg-white"
                           >
                             <div className="flex justify-center items-center text-blue-700">
@@ -782,7 +786,7 @@ export default function Quotation() {
                       ) : filteredPendingData.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={21}
+                            colSpan={22}
                             className="text-center py-8 bg-white"
                             data-testid="text-no-pending"
                           >
@@ -854,6 +858,20 @@ export default function Quotation() {
                             </td>
                             <td className="px-4 py-3 text-blue-900">
                               {ticket.serviceLocation || ""}
+                            </td>
+                            <td className="px-4 py-3 text-blue-900">
+                              {ticket.enquiryItemList ? (
+                                <a
+                                  href={ticket.enquiryItemList}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:text-blue-800 hover:underline"
+                                >
+                                  View
+                                </a>
+                              ) : (
+                                ""
+                              )}
                             </td>
                             <td className="px-4 py-3 text-blue-900">
                               {ticket.otpVarificationStatus || ""}
@@ -1087,6 +1105,25 @@ export default function Quotation() {
                               <p className="text-blue-900">
                                 {ticket.videoCallRemarks || "N/A"}
                               </p>
+                            </div>
+
+                            {/* Enquiry-Item-List */}
+                            <div className="text-sm">
+                              <p className="text-gray-500 font-medium">
+                                Enquiry-Item-List
+                              </p>
+                              {ticket.enquiryItemList ? (
+                                <a
+                                  href={ticket.enquiryItemList}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:text-blue-800 text-sm"
+                                >
+                                  View
+                                </a>
+                              ) : (
+                                <p className="text-blue-900">N/A</p>
+                              )}
                             </div>
                           </CardContent>
                         </Card>
