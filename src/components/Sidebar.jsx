@@ -20,6 +20,7 @@ import {
   Database,
   Timer,
   Truck,
+  Mail,
 } from "lucide-react";
 import useAuthStore from "../store/authStore";
 
@@ -34,6 +35,7 @@ export const navigation = [
   { name: "Follow-Up", href: "/followup", icon: Phone },
   { name: "Site Visit Plan", href: "/siteplan", icon: MapPin },
   { name: "TADA", href: "/tada", icon: Plane },
+  { name: "TADA Approval", href: "/tada-approval", icon: Mail },
   {
     name: "Site Visit (Verification OTP)",
     href: "/approval",

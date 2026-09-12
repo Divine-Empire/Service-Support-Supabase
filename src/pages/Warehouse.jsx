@@ -34,7 +34,7 @@ import { Modal } from "../components/ui/modal";
 import { useToast } from "../hooks/use-toast";
 import { LoaderIcon } from "lucide-react";
 import { supabase } from "../lib/supabase/client";
-import { fetchDropdownRows } from "../lib/supabase/dropdown";
+import { fetchEngineerNames } from "../lib/supabase/engineers";
 import { computeStagePlanned } from "../lib/supabase/stagePlanning";
 
 export default function Warehouse() {
@@ -75,10 +75,12 @@ export default function Warehouse() {
     return `${minutes} min early`;
   };
 
+  // Engineer names now come from Master > Engineer Contacts, not the old
+  // 'engineer_assign_name' dropdown category — see engineers.js.
   const fetchEngineers = async () => {
     try {
-      const data = await fetchDropdownRows(["engineer_assign_name"]);
-      setEngineers([...new Set((data || []).map((r) => r.value))].filter(Boolean).sort());
+      const names = await fetchEngineerNames();
+      setEngineers(names);
     } catch (e) {
       console.error("Error fetching engineers:", e);
     }

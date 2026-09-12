@@ -38,6 +38,7 @@ import {
 import { supabase } from "../lib/supabase/client";
 import { ltoSupabase } from "../lib/supabase/ltoClient";
 import { fetchDropdownRows } from "../lib/supabase/dropdown";
+import { fetchEngineerNames } from "../lib/supabase/engineers";
 import { computeStagePlanned } from "../lib/supabase/stagePlanning";
 import {
   sendServiceRequestRegisteredNotification,
@@ -237,13 +238,15 @@ export default function TicketAndEnquiry() {
     sub_category: "Sub-Category",
     enquiry_type: "Enquiry Type",
     service_location: "Service Location",
-    engineer_assign_name: "Engineer Assign Name",
     machine_name: "Machine Name",
   };
 
   const fetchDropdown = async () => {
     try {
-      const data = await fetchDropdownRows(Object.keys(DROPDOWN_CATEGORY_TO_KEY));
+      const [data, engineerNames] = await Promise.all([
+        fetchDropdownRows(Object.keys(DROPDOWN_CATEGORY_TO_KEY)),
+        fetchEngineerNames(),
+      ]);
 
       const structuredData = {};
       (data || []).forEach(({ category, value }) => {
@@ -256,6 +259,10 @@ export default function TicketAndEnquiry() {
       if (!structuredData["Call type"] || structuredData["Call type"].filter(Boolean).length === 0) {
         structuredData["Call type"] = ["Incoming", "Outgoing"];
       }
+
+      // Engineer names now come from Master > Engineer Contacts, not the
+      // old 'engineer_assign_name' dropdown category — see engineers.js.
+      structuredData["Engineer Assign Name"] = engineerNames;
 
       setMasterData([structuredData]);
     } catch (error) {

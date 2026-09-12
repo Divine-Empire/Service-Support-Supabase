@@ -35,6 +35,7 @@ import { Loader2Icon, LoaderIcon, Plus, Trash2 } from "lucide-react";
 import { Textarea } from "../components/ui/textarea";
 import { supabase } from "../lib/supabase/client";
 import { fetchDropdownRows } from "../lib/supabase/dropdown";
+import { fetchEngineerNames } from "../lib/supabase/engineers";
 import {
   sendVideoCallRescheduledNotifications,
   sendVideoCallOtpResendNotification,
@@ -249,19 +250,22 @@ export default function VideoCallSolution() {
   const [alternateEngineerOptions, setAlternateEngineerOptions] = useState([]);
 
   // Categories this page uses: 'Service Location' (reused for the "Service
-  // Type" select, matching the legacy sheet's own reuse), 'Engineer Assign
-  // Name' (reused for "Alternate Engineer" — same engineer pool), and
-  // 'Item-Name' (the Item & Quantity Details table's item datalist, seeded
-  // in migration 0025 from the DROPDOWN sheet's own 'Item-Name' column).
+  // Type" select, matching the legacy sheet's own reuse), and 'Item-Name'
+  // (the Item & Quantity Details table's item datalist, seeded in migration
+  // 0025 from the DROPDOWN sheet's own 'Item-Name' column). Engineer names
+  // ('Alternate Engineer') now come from Master > Engineer Contacts, not a
+  // dropdown category — see engineers.js.
   const DROPDOWN_CATEGORY_TO_KEY = {
     service_location: "Service Location",
-    engineer_assign_name: "Engineer Assign Name",
     item_name: "Item-Name",
   };
 
   const fetchMasterSheet = async () => {
     try {
-      const data = await fetchDropdownRows(Object.keys(DROPDOWN_CATEGORY_TO_KEY));
+      const [data, engineerNames] = await Promise.all([
+        fetchDropdownRows(Object.keys(DROPDOWN_CATEGORY_TO_KEY)),
+        fetchEngineerNames(),
+      ]);
 
       const structuredData = {};
       (data || []).forEach(({ category, value }) => {
@@ -271,8 +275,10 @@ export default function VideoCallSolution() {
         structuredData[key].push(value);
       });
 
+      structuredData["Engineer Assign Name"] = engineerNames;
+
       setMasterData([structuredData]);
-      setAlternateEngineerOptions(structuredData["Engineer Assign Name"] || []);
+      setAlternateEngineerOptions(engineerNames);
     } catch (error) {
       console.error("Error fetching master data:", error);
       toast({

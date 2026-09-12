@@ -41,7 +41,6 @@ const CATEGORY_LABELS = {
   sub_category: "Sub-Category (Machine Group)",
   enquiry_type: "Enquiry Type",
   service_location: "Service Location",
-  engineer_assign_name: "Engineer Assign Name",
   machine_name: "Machine Name",
   item_name: "Item Name",
 };
@@ -114,11 +113,48 @@ export default function Master() {
   const [newEngineerName, setNewEngineerName] = useState("");
   const [newEngineerPhone, setNewEngineerPhone] = useState("");
   const [isAddingEngineerContact, setIsAddingEngineerContact] = useState(false);
-  const [editingEngineerContact, setEditingEngineerContact] = useState(null);
-  const [editingEngineerPhone, setEditingEngineerPhone] = useState("");
-  const [isSavingEngineerEdit, setIsSavingEngineerEdit] = useState(false);
   const [deleteEngineerTarget, setDeleteEngineerTarget] = useState(null);
   const [isDeletingEngineerContact, setIsDeletingEngineerContact] = useState(false);
+
+  // Single "Edit" modal per engineer — everything except the name (phone,
+  // email, bank details) is editable here. Also feeds the TADA Senior
+  // Approval email (sss-send-tada-approval-email Edge Function): email
+  // joins the CC list, bank fields fill "Bank Details for Transfer".
+  const [detailsTarget, setDetailsTarget] = useState(null);
+  const [detailsForm, setDetailsForm] = useState({});
+  const [isSavingDetails, setIsSavingDetails] = useState(false);
+
+  // ── TADA Approval Recipients tab state ──────────────────────────────
+  // The Senior Approval email's To/CC list — read live by
+  // sss-send-tada-approval-email at send time (see migration 0062).
+  const [approvalRecipients, setApprovalRecipients] = useState([]);
+  const [recipientsLoading, setRecipientsLoading] = useState(false);
+  const [newRecipientEmail, setNewRecipientEmail] = useState("");
+  const [newRecipientType, setNewRecipientType] = useState("cc");
+  const [isAddingRecipient, setIsAddingRecipient] = useState(false);
+  const [editingRecipient, setEditingRecipient] = useState(null);
+  const [editingRecipientType, setEditingRecipientType] = useState("cc");
+  const [isSavingRecipientEdit, setIsSavingRecipientEdit] = useState(false);
+  const [deleteRecipientTarget, setDeleteRecipientTarget] = useState(null);
+  const [isDeletingRecipient, setIsDeletingRecipient] = useState(false);
+
+  const fetchApprovalRecipients = async () => {
+    setRecipientsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("sss_tada_approval_recipients")
+        .select("*")
+        .order("recipient_type", { ascending: true })
+        .order("email", { ascending: true });
+      if (error) throw error;
+      setApprovalRecipients(data || []);
+    } catch (error) {
+      console.error("Error fetching approval recipients:", error);
+      toast({ title: "Error", description: "Failed to load approval recipients", variant: "destructive" });
+    } finally {
+      setRecipientsLoading(false);
+    }
+  };
 
   const fetchEngineerContacts = async () => {
     setEngineerContactsLoading(true);
@@ -141,6 +177,7 @@ export default function Master() {
     fetchDropdown();
     fetchCompanies();
     fetchEngineerContacts();
+    fetchApprovalRecipients();
   }, []);
 
   // ── Dropdown tab handlers ───────────────────────────────────────────
@@ -227,27 +264,24 @@ export default function Master() {
   };
 
   // ── Engineer Contacts tab handlers ──────────────────────────────────
-  // Names are sourced from the 'engineer_assign_name' dropdown category so
-  // they always exactly match what Ticket-and-Enquiry.jsx's "Engineer-
-  // Assigned" field saves — a mismatched name would silently skip the
-  // engineer's WhatsApp notification at send time.
-  const engineerAssignNames = dropdownRows
-    .filter((r) => r.category === "engineer_assign_name")
-    .map((r) => r.value);
-  const engineerNamesWithoutContact = engineerAssignNames.filter(
-    (name) => !engineerContacts.some((c) => c.engineer_name === name)
-  );
-
+  // This tab IS the engineer source of truth now — engineers are added and
+  // removed only here (no more separate 'engineer_assign_name' dropdown
+  // category). Every page that assigns an engineer reads from
+  // sss_engineer_contacts via fetchEngineerNames() (see engineers.js).
   const handleAddEngineerContact = async (e) => {
     e.preventDefault();
     const name = newEngineerName.trim();
     const phone = newEngineerPhone.trim();
     if (!name) {
-      alert("Please select an engineer");
+      alert("Please enter the engineer's name");
       return;
     }
     if (!phone) {
       alert("Please enter a WhatsApp number");
+      return;
+    }
+    if (engineerContacts.some((c) => c.engineer_name.toLowerCase() === name.toLowerCase())) {
+      alert("An engineer with this name already exists");
       return;
     }
 
@@ -255,48 +289,17 @@ export default function Master() {
     try {
       const { error } = await supabase
         .from("sss_engineer_contacts")
-        .upsert({ engineer_name: name, phone_number: phone, updated_at: new Date().toISOString() });
+        .insert({ engineer_name: name, phone_number: phone });
       if (error) throw error;
-      toast({ title: "Success", description: "Engineer contact saved successfully" });
+      toast({ title: "Success", description: "Engineer added successfully" });
       setNewEngineerName("");
       setNewEngineerPhone("");
       fetchEngineerContacts();
     } catch (error) {
-      console.error("Error saving engineer contact:", error);
-      toast({ title: "Error", description: "Failed to save engineer contact", variant: "destructive" });
+      console.error("Error adding engineer:", error);
+      toast({ title: "Error", description: "Failed to add engineer", variant: "destructive" });
     } finally {
       setIsAddingEngineerContact(false);
-    }
-  };
-
-  const startEditEngineerContact = (contact) => {
-    setEditingEngineerContact(contact);
-    setEditingEngineerPhone(contact.phone_number);
-  };
-
-  const handleSaveEngineerEdit = async () => {
-    if (!editingEngineerContact) return;
-    const phone = editingEngineerPhone.trim();
-    if (!phone) {
-      alert("WhatsApp number cannot be empty");
-      return;
-    }
-    setIsSavingEngineerEdit(true);
-    try {
-      const { error } = await supabase
-        .from("sss_engineer_contacts")
-        .update({ phone_number: phone, updated_at: new Date().toISOString() })
-        .eq("engineer_name", editingEngineerContact.engineer_name);
-      if (error) throw error;
-      toast({ title: "Success", description: "Engineer contact updated successfully" });
-      setEditingEngineerContact(null);
-      setEditingEngineerPhone("");
-      fetchEngineerContacts();
-    } catch (error) {
-      console.error("Error updating engineer contact:", error);
-      toast({ title: "Error", description: "Failed to update engineer contact", variant: "destructive" });
-    } finally {
-      setIsSavingEngineerEdit(false);
     }
   };
 
@@ -317,6 +320,128 @@ export default function Master() {
       toast({ title: "Error", description: "Failed to delete engineer contact", variant: "destructive" });
     } finally {
       setIsDeletingEngineerContact(false);
+    }
+  };
+
+  const openDetailsModal = (contact) => {
+    setDetailsTarget(contact);
+    setDetailsForm({
+      phoneNumber: contact.phone_number || "",
+      email: contact.email || "",
+      bankName: contact.bank_name || "",
+      accountHolderName: contact.account_holder_name || "",
+      accountNumber: contact.account_number || "",
+      ifscCode: contact.ifsc_code || "",
+      branch: contact.branch || "",
+    });
+  };
+
+  const handleDetailsFormChange = (field, value) => {
+    setDetailsForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveDetails = async () => {
+    if (!detailsTarget) return;
+    if (!detailsForm.phoneNumber?.trim()) {
+      alert("WhatsApp number cannot be empty");
+      return;
+    }
+    setIsSavingDetails(true);
+    try {
+      const { error } = await supabase
+        .from("sss_engineer_contacts")
+        .update({
+          phone_number: detailsForm.phoneNumber.trim(),
+          email: detailsForm.email || null,
+          bank_name: detailsForm.bankName || null,
+          account_holder_name: detailsForm.accountHolderName || null,
+          account_number: detailsForm.accountNumber || null,
+          ifsc_code: detailsForm.ifscCode || null,
+          branch: detailsForm.branch || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("engineer_name", detailsTarget.engineer_name);
+      if (error) throw error;
+      toast({ title: "Success", description: "Engineer details saved successfully" });
+      setDetailsTarget(null);
+      fetchEngineerContacts();
+    } catch (error) {
+      console.error("Error saving engineer details:", error);
+      toast({ title: "Error", description: "Failed to save engineer details", variant: "destructive" });
+    } finally {
+      setIsSavingDetails(false);
+    }
+  };
+
+  // ── TADA Approval Recipients tab handlers ───────────────────────────
+  const handleAddRecipient = async (e) => {
+    e.preventDefault();
+    const email = newRecipientEmail.trim().toLowerCase();
+    if (!email) {
+      alert("Please enter an email address");
+      return;
+    }
+
+    setIsAddingRecipient(true);
+    try {
+      const { error } = await supabase
+        .from("sss_tada_approval_recipients")
+        .upsert({ email, recipient_type: newRecipientType });
+      if (error) throw error;
+      toast({ title: "Success", description: "Recipient saved successfully" });
+      setNewRecipientEmail("");
+      setNewRecipientType("cc");
+      fetchApprovalRecipients();
+    } catch (error) {
+      console.error("Error saving recipient:", error);
+      toast({ title: "Error", description: "Failed to save recipient", variant: "destructive" });
+    } finally {
+      setIsAddingRecipient(false);
+    }
+  };
+
+  const startEditRecipient = (recipient) => {
+    setEditingRecipient(recipient);
+    setEditingRecipientType(recipient.recipient_type);
+  };
+
+  const handleSaveRecipientEdit = async () => {
+    if (!editingRecipient) return;
+    setIsSavingRecipientEdit(true);
+    try {
+      const { error } = await supabase
+        .from("sss_tada_approval_recipients")
+        .update({ recipient_type: editingRecipientType })
+        .eq("email", editingRecipient.email);
+      if (error) throw error;
+      toast({ title: "Success", description: "Recipient updated successfully" });
+      setEditingRecipient(null);
+      fetchApprovalRecipients();
+    } catch (error) {
+      console.error("Error updating recipient:", error);
+      toast({ title: "Error", description: "Failed to update recipient", variant: "destructive" });
+    } finally {
+      setIsSavingRecipientEdit(false);
+    }
+  };
+
+  const handleDeleteRecipient = async () => {
+    if (!deleteRecipientTarget) return;
+    setIsDeletingRecipient(true);
+    try {
+      const { error } = await supabase
+        .from("sss_tada_approval_recipients")
+        .delete()
+        .eq("email", deleteRecipientTarget.email);
+      if (error) throw error;
+      toast({ title: "Success", description: "Recipient deleted successfully" });
+      setDeleteRecipientTarget(null);
+      fetchApprovalRecipients();
+    } catch (error) {
+      console.error("Error deleting recipient:", error);
+      toast({ title: "Error", description: "Failed to delete recipient", variant: "destructive" });
+    } finally {
+      setIsDeletingRecipient(false);
     }
   };
 
@@ -352,6 +477,12 @@ export default function Master() {
                 className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
               >
                 Engineer Contacts
+              </TabsTrigger>
+              <TabsTrigger
+                value="approvalRecipients"
+                className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+              >
+                Approval Recipients
               </TabsTrigger>
             </TabsList>
           </CardHeader>
@@ -541,31 +672,18 @@ export default function Master() {
             </TabsContent>
 
             {/* ── Engineer Contacts Tab ────────────────────────────── */}
-            {/* WhatsApp numbers used by send-video-call-notifications to
-                notify the engineer assigned on a video-call ticket. Names
-                are picked from the 'engineer_assign_name' dropdown so they
-                always match exactly. */}
+            {/* Single source of truth for engineers app-wide — every page's
+                "Engineer Assign" field reads from this table (see
+                engineers.js). Add/remove an engineer here, nowhere else. */}
             <TabsContent value="engineerContacts" className="mt-0">
               <div className="border border-gray-200 rounded-lg p-4">
                 <form onSubmit={handleAddEngineerContact} className="flex flex-col sm:flex-row gap-2 mb-4">
-                  <Select value={newEngineerName} onValueChange={setNewEngineerName}>
-                    <SelectTrigger className="sm:w-64">
-                      <SelectValue placeholder="Select engineer" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
-                      {engineerNamesWithoutContact.length === 0 ? (
-                        <div className="px-3 py-2 text-sm text-gray-500">
-                          All engineers already have a number
-                        </div>
-                      ) : (
-                        engineerNamesWithoutContact.map((name) => (
-                          <SelectItem key={name} value={name}>
-                            {name}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
+                  <Input
+                    placeholder="Engineer name"
+                    value={newEngineerName}
+                    onChange={(e) => setNewEngineerName(e.target.value)}
+                    className="sm:w-64"
+                  />
                   <Input
                     placeholder="Enter WhatsApp number"
                     value={newEngineerPhone}
@@ -582,7 +700,7 @@ export default function Master() {
                   </Button>
                 </form>
 
-                <div className="max-h-[55vh] overflow-y-auto">
+                <div className="max-h-[55vh] overflow-auto">
                   {engineerContactsLoading ? (
                     <div className="flex justify-center items-center text-blue-700 py-8">
                       <LoaderIcon className="animate-spin w-8 h-8" />
@@ -593,43 +711,141 @@ export default function Master() {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="bg-gray-50 text-gray-600">
-                          <th className="px-3 py-2 text-left font-semibold">Engineer Name</th>
-                          <th className="px-3 py-2 text-left font-semibold">WhatsApp Number</th>
-                          <th className="px-3 py-2 text-right font-semibold w-28">Actions</th>
+                          <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Engineer Name</th>
+                          <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">WhatsApp Number</th>
+                          <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Email</th>
+                          <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Bank Name</th>
+                          <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Account Holder</th>
+                          <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Account Number</th>
+                          <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">IFSC Code</th>
+                          <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Branch</th>
+                          <th className="px-3 py-2 text-right font-semibold w-24 whitespace-nowrap">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
                         {engineerContacts.map((contact, ind) => (
                           <tr key={contact.engineer_name} className={ind % 2 === 0 ? "bg-white" : "bg-gray-50/50"}>
-                            <td className="px-3 py-2">{contact.engineer_name}</td>
+                            <td className="px-3 py-2 whitespace-nowrap">{contact.engineer_name}</td>
+                            <td className="px-3 py-2 whitespace-nowrap">{contact.phone_number}</td>
+                            <td className="px-3 py-2 whitespace-nowrap text-gray-700">{contact.email || "-"}</td>
+                            <td className="px-3 py-2 whitespace-nowrap text-gray-700">{contact.bank_name || "-"}</td>
+                            <td className="px-3 py-2 whitespace-nowrap text-gray-700">{contact.account_holder_name || "-"}</td>
+                            <td className="px-3 py-2 whitespace-nowrap text-gray-700">{contact.account_number || "-"}</td>
+                            <td className="px-3 py-2 whitespace-nowrap text-gray-700">{contact.ifsc_code || "-"}</td>
+                            <td className="px-3 py-2 whitespace-nowrap text-gray-700">{contact.branch || "-"}</td>
+                            <td className="px-3 py-2 text-right">
+                              <div className="flex justify-end gap-1">
+                                <Button variant="outline" size="sm" onClick={() => openDetailsModal(contact)} className="h-7 px-2 border-blue-200 text-blue-700 hover:bg-blue-50" title="Edit">
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </Button>
+                                <Button variant="outline" size="sm" onClick={() => setDeleteEngineerTarget(contact)} className="h-7 px-2 border-red-200 text-red-600 hover:bg-red-50">
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* ── TADA Approval Recipients Tab ─────────────────────── */}
+            {/* To/CC list for the Senior Approval email (sss-send-tada-
+                approval-email), read live at send time — no code change
+                needed to add/remove a recipient. The assigned engineer's
+                own email (Engineer Contacts tab) is added to CC on top of
+                whatever's listed here automatically. */}
+            <TabsContent value="approvalRecipients" className="mt-0">
+              <div className="border border-gray-200 rounded-lg p-4">
+                <form onSubmit={handleAddRecipient} className="flex flex-col sm:flex-row gap-2 mb-4">
+                  <Input
+                    type="email"
+                    placeholder="Enter email address"
+                    value={newRecipientEmail}
+                    onChange={(e) => setNewRecipientEmail(e.target.value)}
+                    className="flex-1"
+                  />
+                  <Select value={newRecipientType} onValueChange={setNewRecipientType}>
+                    <SelectTrigger className="sm:w-32">
+                      <SelectValue placeholder="Type" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
+                      <SelectItem value="to">To</SelectItem>
+                      <SelectItem value="cc">Cc</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    type="submit"
+                    disabled={isAddingRecipient}
+                    className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shrink-0"
+                  >
+                    {isAddingRecipient && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
+                    Add
+                  </Button>
+                </form>
+
+                <div className="max-h-[55vh] overflow-y-auto">
+                  {recipientsLoading ? (
+                    <div className="flex justify-center items-center text-blue-700 py-8">
+                      <LoaderIcon className="animate-spin w-8 h-8" />
+                    </div>
+                  ) : approvalRecipients.length === 0 ? (
+                    <p className="text-gray-500 text-center py-8">No recipients configured yet.</p>
+                  ) : (
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50 text-gray-600">
+                          <th className="px-3 py-2 text-left font-semibold">Email</th>
+                          <th className="px-3 py-2 text-left font-semibold w-24">Type</th>
+                          <th className="px-3 py-2 text-right font-semibold w-28">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {approvalRecipients.map((recipient, ind) => (
+                          <tr key={recipient.email} className={ind % 2 === 0 ? "bg-white" : "bg-gray-50/50"}>
+                            <td className="px-3 py-2">{recipient.email}</td>
                             <td className="px-3 py-2">
-                              {editingEngineerContact?.engineer_name === contact.engineer_name ? (
-                                <Input
-                                  value={editingEngineerPhone}
-                                  onChange={(e) => setEditingEngineerPhone(e.target.value)}
-                                  className="h-8"
-                                  autoFocus
-                                />
+                              {editingRecipient?.email === recipient.email ? (
+                                <Select value={editingRecipientType} onValueChange={setEditingRecipientType}>
+                                  <SelectTrigger className="h-8">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
+                                    <SelectItem value="to">To</SelectItem>
+                                    <SelectItem value="cc">Cc</SelectItem>
+                                  </SelectContent>
+                                </Select>
                               ) : (
-                                contact.phone_number
+                                <span
+                                  className={`px-2 py-0.5 text-xs font-semibold rounded-full ${
+                                    recipient.recipient_type === "to"
+                                      ? "bg-indigo-100 text-indigo-800"
+                                      : "bg-slate-100 text-slate-700"
+                                  }`}
+                                >
+                                  {recipient.recipient_type === "to" ? "To" : "Cc"}
+                                </span>
                               )}
                             </td>
                             <td className="px-3 py-2 text-right">
-                              {editingEngineerContact?.engineer_name === contact.engineer_name ? (
+                              {editingRecipient?.email === recipient.email ? (
                                 <div className="flex justify-end gap-1">
-                                  <Button size="sm" onClick={handleSaveEngineerEdit} disabled={isSavingEngineerEdit} className="h-7 px-2 bg-blue-600 hover:bg-blue-700 text-white">
-                                    {isSavingEngineerEdit ? <Loader2Icon className="animate-spin w-3 h-3" /> : "Save"}
+                                  <Button size="sm" onClick={handleSaveRecipientEdit} disabled={isSavingRecipientEdit} className="h-7 px-2 bg-blue-600 hover:bg-blue-700 text-white">
+                                    {isSavingRecipientEdit ? <Loader2Icon className="animate-spin w-3 h-3" /> : "Save"}
                                   </Button>
-                                  <Button size="sm" variant="outline" onClick={() => setEditingEngineerContact(null)} className="h-7 px-2">
+                                  <Button size="sm" variant="outline" onClick={() => setEditingRecipient(null)} className="h-7 px-2">
                                     Cancel
                                   </Button>
                                 </div>
                               ) : (
                                 <div className="flex justify-end gap-1">
-                                  <Button variant="outline" size="sm" onClick={() => startEditEngineerContact(contact)} className="h-7 px-2 border-blue-200 text-blue-700 hover:bg-blue-50">
+                                  <Button variant="outline" size="sm" onClick={() => startEditRecipient(recipient)} className="h-7 px-2 border-blue-200 text-blue-700 hover:bg-blue-50">
                                     <Pencil className="w-3.5 h-3.5" />
                                   </Button>
-                                  <Button variant="outline" size="sm" onClick={() => setDeleteEngineerTarget(contact)} className="h-7 px-2 border-red-200 text-red-600 hover:bg-red-50">
+                                  <Button variant="outline" size="sm" onClick={() => setDeleteRecipientTarget(recipient)} className="h-7 px-2 border-red-200 text-red-600 hover:bg-red-50">
                                     <Trash2 className="w-3.5 h-3.5" />
                                   </Button>
                                 </div>
@@ -685,6 +901,108 @@ export default function Master() {
             <Button type="button" variant="outline" onClick={() => setDeleteEngineerTarget(null)}>Cancel</Button>
             <Button type="button" onClick={handleDeleteEngineerContact} disabled={isDeletingEngineerContact} className="bg-red-600 hover:bg-red-700 text-white">
               {isDeletingEngineerContact && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
+              Delete
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Email & Bank Details modal — feeds the TADA Senior Approval email */}
+      <Modal
+        isOpen={!!detailsTarget}
+        onClose={() => setDetailsTarget(null)}
+        title={`Details — ${detailsTarget?.engineer_name || ""}`}
+        size="lg"
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-2">
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-gray-700">WhatsApp Number</label>
+            <Input
+              value={detailsForm.phoneNumber || ""}
+              onChange={(e) => handleDetailsFormChange("phoneNumber", e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-gray-700">Email</label>
+            <Input
+              type="email"
+              placeholder="engineer@example.com"
+              value={detailsForm.email || ""}
+              onChange={(e) => handleDetailsFormChange("email", e.target.value)}
+            />
+          </div>
+          <div className="md:col-span-2 pt-2">
+            <p className="text-xs font-semibold text-gray-500 uppercase">Bank Details for Transfer</p>
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-gray-700">Bank Name</label>
+            <Input
+              value={detailsForm.bankName || ""}
+              onChange={(e) => handleDetailsFormChange("bankName", e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-gray-700">Account Holder Name</label>
+            <Input
+              value={detailsForm.accountHolderName || ""}
+              onChange={(e) => handleDetailsFormChange("accountHolderName", e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-gray-700">Account Number</label>
+            <Input
+              value={detailsForm.accountNumber || ""}
+              onChange={(e) => handleDetailsFormChange("accountNumber", e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-gray-700">IFSC Code</label>
+            <Input
+              value={detailsForm.ifscCode || ""}
+              onChange={(e) => handleDetailsFormChange("ifscCode", e.target.value)}
+            />
+          </div>
+          <div className="md:col-span-2 space-y-1">
+            <label className="text-sm font-medium text-gray-700">Branch</label>
+            <Input
+              value={detailsForm.branch || ""}
+              onChange={(e) => handleDetailsFormChange("branch", e.target.value)}
+            />
+          </div>
+
+          <div className="md:col-span-2 flex justify-end gap-3 pt-4 border-t border-gray-100">
+            <Button type="button" variant="outline" onClick={() => setDetailsTarget(null)} disabled={isSavingDetails}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSaveDetails}
+              disabled={isSavingDetails}
+              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
+            >
+              {isSavingDetails && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
+              Save
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Approval recipient delete confirmation */}
+      <Modal
+        isOpen={!!deleteRecipientTarget}
+        onClose={() => setDeleteRecipientTarget(null)}
+        title="Delete Recipient"
+        size="sm"
+      >
+        <div className="p-2 space-y-4">
+          <p className="text-gray-700">
+            Remove <span className="font-semibold">{deleteRecipientTarget?.email}</span> from the TADA approval email's{" "}
+            {deleteRecipientTarget?.recipient_type === "to" ? "To" : "Cc"} list?
+          </p>
+          <div className="flex justify-end space-x-4">
+            <Button type="button" variant="outline" onClick={() => setDeleteRecipientTarget(null)}>Cancel</Button>
+            <Button type="button" onClick={handleDeleteRecipient} disabled={isDeletingRecipient} className="bg-red-600 hover:bg-red-700 text-white">
+              {isDeletingRecipient && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
               Delete
             </Button>
           </div>

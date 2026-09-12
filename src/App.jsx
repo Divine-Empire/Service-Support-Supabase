@@ -14,6 +14,8 @@ import OrderReceived from "./pages/OrderReceived";
 import Warehouse from "./pages/Warehouse";
 import SiteVisitPlan from "./pages/SiteVisitPlan";
 import TADA from "./pages/TADA";
+import TadaApproval from "./pages/TadaApproval";
+import TadaDecision from "./pages/TadaDecision";
 import EngineerApproval from "./pages/SiteVisitOTPVerification";
 import Invoice from "./pages/Invoice";
 import Calibration from "./pages/Calibration";
@@ -37,7 +39,10 @@ function App() {
         <Routes>
 
           <Route path="/login" element={<Login />} />
-        
+          {/* Public — no login. Reached only via the token link in the
+              Senior Approval email (sss-send-tada-approval-email). */}
+          <Route path="/tada-decision" element={<TadaDecision />} />
+
         <Route path="/" element={
           <ProtectedRoute>
             <Layout />
@@ -53,6 +58,7 @@ function App() {
           <Route path="/warehouse" element={<Warehouse />} />
           <Route path="/siteplan" element={<SiteVisitPlan />} />
           <Route path="/tada" element={<TADA />} />
+          <Route path="/tada-approval" element={<TadaApproval />} />
           <Route path="/approval" element={<EngineerApproval />} />
           <Route path="/orderreceived" element={<OrderReceived />} />
           <Route path="/invoice" element={<Invoice />} />

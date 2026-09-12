@@ -30,6 +30,7 @@ import { Modal } from "../components/ui/modal";
 import { supabase } from "../lib/supabase/client";
 import { ltoSupabase } from "../lib/supabase/ltoClient";
 import { fetchDropdownRows } from "../lib/supabase/dropdown";
+import { fetchEngineerNames } from "../lib/supabase/engineers";
 import { computeStagePlanned } from "../lib/supabase/stagePlanning";
 
 
@@ -229,19 +230,19 @@ const ServiceInstallation = () => {
     category: "Requirement Service Category",
     sub_category: "Category",
     service_location: "Service Location",
-    engineer_assign_name: "Engineer Assign Name",
     machine_name: "Machine Name",
     installation_service_type: "__service_type__",
   };
 
   const fetchDropdownData = async () => {
     try {
-      const [dropdownRows, { data: companies, error: companyError }] = await Promise.all([
+      const [dropdownRows, { data: companies, error: companyError }, engineerNames] = await Promise.all([
         fetchDropdownRows(Object.keys(DROPDOWN_CATEGORY_TO_KEY)),
         ltoSupabase
           .from("lto_client_master")
           .select("company_name, billing_address, gst_number")
           .order("company_name", { ascending: true }),
+        fetchEngineerNames(),
       ]);
 
       if (companyError) throw companyError;
@@ -263,8 +264,12 @@ const ServiceInstallation = () => {
       structuredData["BILLING ADDRESS"] = (companies || []).map((c) => c.billing_address || "");
       structuredData["GST No."] = (companies || []).map((c) => c.gst_number || "");
 
+      // Engineer names now come from Master > Engineer Contacts, not the
+      // old 'engineer_assign_name' dropdown category — see engineers.js.
+      structuredData["Engineer Assign Name"] = engineerNames;
+
       setMasterData([structuredData]);
-      setEmployeeNames([...new Set(structuredData["Engineer Assign Name"] || [])]);
+      setEmployeeNames(engineerNames);
       setServiceTypes(
         serviceTypeValues.filter(Boolean).length > 0
           ? [...new Set(serviceTypeValues.filter(Boolean))]
