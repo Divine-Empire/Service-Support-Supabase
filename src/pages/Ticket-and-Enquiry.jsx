@@ -80,7 +80,9 @@ export default function TicketAndEnquiry() {
     videoCall: "",
     subCategory: "",
     videoCallTime: "",
-    engineerAssign: ""
+    engineerAssign: "",
+    enquiryItemList: "",
+    remarks: "",
   });
   const [newFormSelectedMachines, setNewFormSelectedMachines] = useState([]);
   const [showMachineDropdown, setShowMachineDropdown] = useState(false);
@@ -97,6 +99,8 @@ export default function TicketAndEnquiry() {
     challanCopy: null,
     machinePhoto: null,
   });
+  // Same held-until-submit pattern as warehouseFiles above.
+  const [enquiryItemListFile, setEnquiryItemListFile] = useState(null);
 
   const [companyDetails, setCompanyDetails] = useState([]);
 
@@ -126,7 +130,9 @@ export default function TicketAndEnquiry() {
       videoCall: ticket.videoCall || "",
       subCategory: ticket.subCategory || "",
       videoCallTime: ticket.videoCallTime || "",
-      engineerAssign: ticket.engineerAssign || ""
+      engineerAssign: ticket.engineerAssign || "",
+      enquiryItemList: ticket.enquiryItemList || "",
+      remarks: ticket.remarks || "",
     });
 
     const machines = ticket.machineName
@@ -139,6 +145,7 @@ export default function TicketAndEnquiry() {
       : [];
     setNewFormSelectedCategories(categories);
     setWarehouseFiles({ challanCopy: null, machinePhoto: null });
+    setEnquiryItemListFile(null);
 
     setShowNewEnquiryForm(true);
   };
@@ -156,6 +163,30 @@ export default function TicketAndEnquiry() {
 
   const uploadWarehouseFile = async (file, field) => {
     const path = `warehouse/${field}_${Date.now()}_${file.name}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("ticket_enquiry")
+      .upload(path, file, { contentType: file.type });
+
+    if (uploadError) throw uploadError;
+
+    const { data } = supabase.storage.from("ticket_enquiry").getPublicUrl(path);
+    return data.publicUrl;
+  };
+
+  // Same held-until-submit pattern as the warehouse attachments above —
+  // optional, applies to every ticket regardless of service location.
+  const handleEnquiryItemListFileSelect = (file) => {
+    setEnquiryItemListFile(file);
+  };
+
+  const removeEnquiryItemListFile = () => {
+    setEnquiryItemListFile(null);
+    setNewEnquiryData((prev) => ({ ...prev, enquiryItemList: "" }));
+  };
+
+  const uploadEnquiryItemListFile = async (file) => {
+    const path = `enquiry_item_list/${Date.now()}_${file.name}`;
 
     const { error: uploadError } = await supabase.storage
       .from("ticket_enquiry")
@@ -204,6 +235,8 @@ export default function TicketAndEnquiry() {
         otp: row.otp || "",
         CREName: row.cre_name || "",
         currentStage: row.current_stage || "",
+        enquiryItemList: row.enquiry_item_list || "",
+        remarks: row.remarks || "",
       }));
 
       // Show all tickets in the system
@@ -448,8 +481,8 @@ export default function TicketAndEnquiry() {
       alert("Error: Service Location is required");
       return;
     }
-    if (newEnquiryData.clientType === "Existing" && !newEnquiryData.companyName) {
-      alert("Error: Company Name is required for existing clients");
+    if (!newEnquiryData.companyName || !newEnquiryData.companyName.trim()) {
+      alert("Error: Company Name is required");
       return;
     }
     if (!newEnquiryData.gstAddress || !newEnquiryData.gstAddress.trim()) {
@@ -485,6 +518,13 @@ export default function TicketAndEnquiry() {
         machinePhotoUrl = "";
       }
 
+      // Optional, regardless of service location — unlike the warehouse
+      // attachments above.
+      let enquiryItemListUrl = newEnquiryData.enquiryItemList || "";
+      if (enquiryItemListFile) {
+        enquiryItemListUrl = await uploadEnquiryItemListFile(enquiryItemListFile);
+      }
+
       if (isEditMode && editingTicket) {
         const updatePayload = {
           source_of_enquiry: newEnquiryData.sourceOfEnquiry || "",
@@ -508,6 +548,8 @@ export default function TicketAndEnquiry() {
           sub_category: newFormSelectedCategories.join(", "),
           video_call_time: newEnquiryData.videoCallTime || "",
           engineer_assign: newEnquiryData.engineerAssign || "",
+          enquiry_item_list: enquiryItemListUrl,
+          remarks: newEnquiryData.remarks || "",
           updated_at: new Date().toISOString(),
         };
 
@@ -545,11 +587,14 @@ export default function TicketAndEnquiry() {
             videoCall: "",
             subCategory: "",
             videoCallTime: "",
-            engineerAssign: ""
+            engineerAssign: "",
+            enquiryItemList: "",
+            remarks: "",
           });
           setNewFormSelectedMachines([]);
           setNewFormSelectedCategories([]);
           setWarehouseFiles({ challanCopy: null, machinePhoto: null });
+          setEnquiryItemListFile(null);
           setIsEditMode(false);
           setEditingTicket(null);
           fetchData();
@@ -588,6 +633,8 @@ export default function TicketAndEnquiry() {
           sub_category: newFormSelectedCategories.join(", "),
           video_call_time: newEnquiryData.videoCallTime || "",
           engineer_assign: newEnquiryData.engineerAssign || "",
+          enquiry_item_list: enquiryItemListUrl,
+          remarks: newEnquiryData.remarks || "",
           otp: videoCallOtp,
           cre_name: userName || "",
           // Stamps this ticket ready for the next stage (Warranty-Check):
@@ -694,11 +741,14 @@ export default function TicketAndEnquiry() {
             videoCall: "",
             subCategory: "",
             videoCallTime: "",
-            engineerAssign: ""
+            engineerAssign: "",
+            enquiryItemList: "",
+            remarks: "",
           });
           setNewFormSelectedMachines([]);
           setNewFormSelectedCategories([]);
           setWarehouseFiles({ challanCopy: null, machinePhoto: null });
+          setEnquiryItemListFile(null);
           fetchData();
         } else {
           throw new Error(result.error || "Failed to create enquiry");
@@ -882,11 +932,14 @@ export default function TicketAndEnquiry() {
                   subCategory: "",
                   videoCallTime: "",
                   engineerAssign: "",
-                  serialNumOfMachines: ""
+                  serialNumOfMachines: "",
+                  enquiryItemList: "",
+                  remarks: "",
                 });
                 setNewFormSelectedMachines([]);
                 setNewFormSelectedCategories([]);
                 setWarehouseFiles({ challanCopy: null, machinePhoto: null });
+                setEnquiryItemListFile(null);
                 setShowNewEnquiryForm(true);
               }}
               className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-medium shadow-sm transition-all duration-300 rounded-lg px-4 py-2 flex items-center gap-1.5 group shrink-0 h-9"
@@ -1135,6 +1188,7 @@ export default function TicketAndEnquiry() {
                       onChange={(e) => handleNewEnquiryCompanyChange(e.target.value)}
                       placeholder="Type to search or select company name"
                       list="new-company-suggestions"
+                      required
                     />
                     <datalist id="new-company-suggestions">
                       {companyDetails.map((c) => (
@@ -1147,6 +1201,7 @@ export default function TicketAndEnquiry() {
                     value={newEnquiryData.companyName || ""}
                     onChange={(e) => setNewEnquiryData(prev => ({ ...prev, companyName: e.target.value }))}
                     placeholder="Enter company name"
+                    required
                   />
                 )}
               </div>
@@ -1686,6 +1741,57 @@ export default function TicketAndEnquiry() {
                   onChange={(e) => setNewEnquiryData(prev => ({ ...prev, mentionIssue: e.target.value }))}
                   placeholder="Describe the issue"
                   rows={3}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-sm">Enquiry-Item-List</Label>
+                {enquiryItemListFile ? (
+                  <div className="flex items-center justify-between border border-blue-200 rounded-md p-2 bg-blue-50 text-blue-800 text-sm">
+                    <span className="truncate max-w-[200px]" title={enquiryItemListFile.name}>
+                      {enquiryItemListFile.name}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={removeEnquiryItemListFile}
+                      className="text-red-500 hover:text-red-700 h-8 px-2 py-1 text-xs font-semibold hover:bg-red-50"
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ) : newEnquiryData.enquiryItemList ? (
+                  <div className="flex items-center justify-between border border-emerald-200 rounded-md p-2 bg-emerald-50 text-emerald-800 text-sm">
+                    <a href={newEnquiryData.enquiryItemList} target="_blank" rel="noopener noreferrer" className="font-semibold underline truncate max-w-[200px]">
+                      View Attachment
+                    </a>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={removeEnquiryItemListFile}
+                      className="text-red-500 hover:text-red-700 h-8 px-2 py-1 text-xs font-semibold hover:bg-red-50"
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ) : (
+                  <Input
+                    type="file"
+                    onChange={(e) => {
+                      if (e.target.files?.[0]) {
+                        handleEnquiryItemListFileSelect(e.target.files[0]);
+                      }
+                    }}
+                  />
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-sm">Remarks</Label>
+                <Input
+                  value={newEnquiryData.remarks || ""}
+                  onChange={(e) => setNewEnquiryData(prev => ({ ...prev, remarks: e.target.value }))}
+                  placeholder="Enter remarks"
                 />
               </div>
             </CardContent>

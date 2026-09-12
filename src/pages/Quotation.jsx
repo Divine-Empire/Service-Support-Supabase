@@ -39,6 +39,9 @@ export default function Quotation() {
   const [searchItem, setSearchItem] = useState("");
   const [filterTotalQuotation, setFilterTotalQuotation] = useState("all");
   const [isCancelled, setIsCancelled] = useState(false);
+  // Whether the Create/Revise modal was opened from History's admin-only
+  // "Edit" action — hides the "Cancel Ticket" option in that mode.
+  const [isHistoryEditMode, setIsHistoryEditMode] = useState(false);
   const [showMakeQuotationModal, setShowMakeQuotationModal] = useState(false);
   const [showItemListModal, setShowItemListModal] = useState(false);
   const [selectedItemList, setSelectedItemList] = useState([]);
@@ -304,8 +307,16 @@ export default function Quotation() {
     setShowItemListModal(true);
   };
 
-  const handleQuotationClick = (ticket) => {
+  // isHistoryEdit: opened from the History tab's admin-only "Edit" action —
+  // lets a later sss_make_quotation revision be pulled in for a ticket
+  // that's already moved past this stage (Order Received, Invoice, ...).
+  // The "Cancel Ticket" option is hidden in this mode — cancelling a ticket
+  // that's already progressed doesn't make sense from here. See migration
+  // 0063 for the current_stage-regression fix this relies on.
+  const handleQuotationClick = (ticket, { isHistoryEdit = false } = {}) => {
     setSelectedTicket(ticket);
+    setIsHistoryEditMode(isHistoryEdit);
+    setIsCancelled(false);
     setFormData({
       ticketId: ticket.ticketId,
       clientName: ticket.clientName,
@@ -1092,6 +1103,11 @@ export default function Quotation() {
                   <table className="hidden sm:block w-full">
                     <thead className="sticky top-0 z-10">
                       <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
+                        {role === "admin" && (
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[100px] sticky top-0">
+                            Action
+                          </th>
+                        )}
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
                           Date
                         </th>
@@ -1167,7 +1183,7 @@ export default function Quotation() {
                       {fetchLoading ? (
                         <tr>
                           <td
-                            colSpan={22}
+                            colSpan={role === "admin" ? 23 : 22}
                             className="text-center py-8 bg-white"
                           >
                             <div className="flex justify-center items-center text-blue-700">
@@ -1179,7 +1195,7 @@ export default function Quotation() {
                       ) : filteredHistoryData.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={22}
+                            colSpan={role === "admin" ? 23 : 22}
                             className="text-center py-8 bg-white"
                             data-testid="text-no-history"
                           >
@@ -1197,6 +1213,19 @@ export default function Quotation() {
                                 ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"
                               }
                             >
+                              {role === "admin" && (
+                                <td className="px-4 py-3">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="bg-gradient-to-br from-amber-50 to-orange-50 text-amber-700 hover:from-amber-100 hover:to-orange-100 border border-amber-200 rounded-lg px-3 py-1.5 shadow-sm"
+                                    onClick={() => handleQuotationClick(ticket, { isHistoryEdit: true })}
+                                    title="Edit this ticket's quotation — e.g. to pull in a revised Make Quotation PDF"
+                                  >
+                                    <span className="font-medium">Edit</span>
+                                  </Button>
+                                </td>
+                              )}
                               <td className="px-4 py-3 font-medium text-blue-800">
                                 {formatDate(ticket.timeStemp)}
                               </td>
@@ -1317,13 +1346,25 @@ export default function Quotation() {
                         >
                           <CardContent className="p-4 space-y-3">
                             {/* Header */}
-                            <div>
-                              <h3 className="font-bold text-blue-800 text-lg">
-                                {ticket.ticketId}
-                              </h3>
-                              <p className="text-sm text-gray-600">
-                                {ticket.clientName}
-                              </p>
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <h3 className="font-bold text-blue-800 text-lg">
+                                  {ticket.ticketId}
+                                </h3>
+                                <p className="text-sm text-gray-600">
+                                  {ticket.clientName}
+                                </p>
+                              </div>
+                              {role === "admin" && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="bg-gradient-to-br from-amber-50 to-orange-50 text-amber-700 hover:from-amber-100 hover:to-orange-100 border border-amber-200"
+                                  onClick={() => handleQuotationClick(ticket, { isHistoryEdit: true })}
+                                >
+                                  Edit
+                                </Button>
+                              )}
                             </div>
 
                             {/* Company & Contact */}
@@ -1449,21 +1490,23 @@ export default function Quotation() {
             onSubmit={handleSubmit}
             className="grid grid-cols-1 md:grid-cols-2 gap-6"
           >
-            <div className="flex items-center space-x-2 mb-10">
-              <input
-                type="checkbox"
-                id="cancelTicket"
-                checked={isCancelled}
-                onChange={(e) => setIsCancelled(e.target.checked)}
-                className="h-4 w-4 text-red-600 focus:ring-red-500 border-gray-300 rounded"
-              />
-              <Label
-                htmlFor="cancelTicket"
-                className="text-red-600 font-medium"
-              >
-                Cancel Ticket
-              </Label>
-            </div>
+            {!isHistoryEditMode && (
+              <div className="flex items-center space-x-2 mb-10">
+                <input
+                  type="checkbox"
+                  id="cancelTicket"
+                  checked={isCancelled}
+                  onChange={(e) => setIsCancelled(e.target.checked)}
+                  className="h-4 w-4 text-red-600 focus:ring-red-500 border-gray-300 rounded"
+                />
+                <Label
+                  htmlFor="cancelTicket"
+                  className="text-red-600 font-medium"
+                >
+                  Cancel Ticket
+                </Label>
+              </div>
+            )}
 
             <div></div>
 
