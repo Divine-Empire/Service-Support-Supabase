@@ -488,16 +488,9 @@ export default function TADA() {
   const parsedData = JSON.parse(roleStorage);
   const role = parsedData.state.user.role;
 
-  const filteredPendingData = role === "user" ? filteredPendingDataa.filter(
-    (item) => item["CREName"] === userName
-  )
-    : role === "engineer" ? filteredPendingDataa.filter((item) => item["engineerAssign"] === userName)
-      : filteredPendingDataa;
+  const filteredPendingData = filteredPendingDataa;
 
-
-  const filteredHistoryData = role === "user" ? filteredHistoryDataa.filter(
-    (item) => item["CREName"] === userName
-  ) : role === "engineer" ? filteredHistoryDataa.filter((item) => item["engineerAssign"] === userName) : filteredHistoryDataa;
+  const filteredHistoryData = filteredHistoryDataa;
 
   // Minutes late, always >= 0 (or blank when no delay was computed). See
   // tada.delay_minutes / migration 0031 — unlike prior stages, this is never

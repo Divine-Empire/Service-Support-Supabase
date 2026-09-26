@@ -780,11 +780,7 @@ export default function TicketAndEnquiry() {
   const EDIT_EXCLUDED_STAGES = ["Invoice", "Calibration", "Calibration Certificate", "Spare Dispatch Details"];
   const editableData = pendingData.filter((item) => !EDIT_EXCLUDED_STAGES.includes(item.currentStage));
 
-  const roleFilteredData = role === "user"
-    ? editableData.filter((item) => item["CREName"] === userName)
-    : role === "engineer"
-      ? editableData.filter((item) => item["engineerAssign"] === userName)
-      : editableData;
+  const roleFilteredData = editableData;
 
   const filteredPendingData = roleFilteredData
     .filter((item) => {

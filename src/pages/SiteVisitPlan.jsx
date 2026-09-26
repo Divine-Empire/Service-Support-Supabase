@@ -566,13 +566,9 @@ export default function SiteVisitPlan() {
   const parsedData = JSON.parse(roleStorage);
   const role = parsedData.state.user.role;
 
-  const filteredPendingData = role === "user" ? filteredPendingDataa.filter(
-    (item) => item["CREName"] === userName
-  ) : filteredPendingDataa;
+  const filteredPendingData = filteredPendingDataa;
 
-  const filteredHistoryData = role === "user" ? filteredHistoryDataa.filter(
-    (item) => item["CREName"] === userName
-  ) : filteredHistoryDataa;
+  const filteredHistoryData = filteredHistoryDataa;
 
   const engineersList = useMemo(() => {
     const masterEngs = masterData[0]?.["Engineer Assign Name"] || [];
@@ -1629,7 +1625,7 @@ export default function SiteVisitPlan() {
       <VisitCalendarModal
         isOpen={isCalendarModalOpen}
         onClose={() => setIsCalendarModalOpen(false)}
-        allData={role === "user" ? calendarHistoryData.filter((item) => !item["CREName"] || item["CREName"] === userName) : calendarHistoryData}
+        allData={calendarHistoryData}
         masterData={masterData}
       />
 

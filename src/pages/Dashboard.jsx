@@ -80,11 +80,10 @@ function getRoleAndUser() {
   return { userName, role };
 }
 
-function filterByRole(rows, role, userName) {
-  if (role === "user") return rows.filter((r) => r.cre_name === userName);
-  if (role === "engineer") return rows.filter((r) => r.engineer_assign === userName);
+function filterByRole(rows) {
   return rows;
 }
+
 
 const CATS = ["SPARE", "SERVICE", "NABL", "NON NABL", "OTHER"];
 

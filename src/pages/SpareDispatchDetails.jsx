@@ -300,13 +300,9 @@ export default function SpareDispatchDetails() {
   const parsedData = roleStorage ? JSON.parse(roleStorage) : null;
   const role = parsedData?.state?.user?.role;
 
-  const filteredPendingData = role === "user"
-    ? filteredPendingDataa.filter((item) => item.CREName === userName)
-    : filteredPendingDataa;
+  const filteredPendingData = filteredPendingDataa;
 
-  const filteredHistoryData = role === "user"
-    ? filteredHistoryDataa.filter((item) => item.CREName === userName)
-    : filteredHistoryDataa;
+  const filteredHistoryData = filteredHistoryDataa;
 
   return (
     <div className="space-y-2">

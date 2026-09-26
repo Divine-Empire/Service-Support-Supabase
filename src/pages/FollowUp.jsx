@@ -679,17 +679,9 @@ export default function FollowUp() {
   const parsedData = JSON.parse(roleStorage);
   const role = parsedData.state.user.role;
 
-  const finalFilteredPendingData = role === "user" ? finalFilteredPendingDataa.filter(
-    (item) => item["CREName"] === userName
-  ) : role === "engineer" ? finalFilteredPendingDataa.filter(
-    (item) => item["engineerAssign"] === userName
-  ) : finalFilteredPendingDataa;
+  const finalFilteredPendingData = finalFilteredPendingDataa;
 
-  const finalFilteredHistoryData = role === "user" ? finalFilteredHistoryDataa.filter(
-    (item) => item["cre_name"] === userName
-  ) : role === "engineer" ? finalFilteredHistoryDataa.filter(
-    (item) => item["engineer_assign"] === userName
-  ) : finalFilteredHistoryDataa;
+  const finalFilteredHistoryData = finalFilteredHistoryDataa;
 
   // console.log("finalFilteredPendingDataa", finalFilteredPendingDataa);
   // console.log("finalFilteredHistoryDataa", finalFilteredHistoryDataa);

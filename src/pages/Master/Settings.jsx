@@ -14,9 +14,40 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../components/ui/select";
-import { Modal } from "../../components/ui/modal";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "../../components/ui/dialog";
+import { Badge } from "../../components/ui/badge";
+import { Checkbox } from "../../components/ui/checkbox";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../../components/ui/table";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "../../components/ui/tabs";
 import { useToast } from "../../hooks/use-toast";
-import { Loader2Icon, LoaderIcon, Plus, Pencil, Trash2 } from "lucide-react";
+import {
+  Plus,
+  Edit,
+  Trash2,
+  RefreshCw,
+  Users as UsersIcon,
+  Eye,
+  EyeOff,
+  Lock,
+} from "lucide-react";
 import { supabase } from "../../lib/supabase/client";
 import { navigation } from "../../components/Sidebar";
 
@@ -41,11 +72,13 @@ export default function Settings() {
   const [users, setUsers] = useState([]);
   const [fetchLoading, setFetchLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showModal, setShowModal] = useState(false);
+  const [isUserDialogOpen, setIsUserDialogOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [formData, setFormData] = useState(emptyForm);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [visiblePasswords, setVisiblePasswords] = useState(new Set());
   const { toast } = useToast();
 
   const fetchUsers = async () => {
@@ -70,6 +103,15 @@ export default function Settings() {
     fetchUsers();
   }, []);
 
+  const togglePasswordVisibility = (userId) => {
+    setVisiblePasswords((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  };
+
   const handleInputChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
@@ -83,10 +125,19 @@ export default function Settings() {
     }));
   };
 
+  const handleRoleChange = (value) => {
+    setFormData((prev) => ({
+      ...prev,
+      role: value,
+      page: value === "admin" ? [...ASSIGNABLE_PAGES] : prev.page,
+    }));
+  };
+
   const openCreateModal = () => {
     setIsEditMode(false);
     setFormData(emptyForm);
-    setShowModal(true);
+    setShowPassword(false);
+    setIsUserDialogOpen(true);
   };
 
   const openEditModal = (user) => {
@@ -95,26 +146,25 @@ export default function Settings() {
       uuid: user.uuid,
       fullName: user.full_name || "",
       username: user.username || "",
-      password: "",
+      password: user.password || "",
       role: user.role || "user",
       page: Array.isArray(user.page) ? user.page.map((p) => p.trim()) : [],
     });
-    setShowModal(true);
+    setShowPassword(true);
+    setIsUserDialogOpen(true);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
+  const handleSubmit = async () => {
     if (!formData.fullName.trim()) {
-      alert("Full name is required");
+      toast({ title: "Missing information", description: "Full name is required.", variant: "destructive" });
       return;
     }
     if (!formData.username.trim()) {
-      alert("Username is required");
+      toast({ title: "Missing information", description: "Username is required.", variant: "destructive" });
       return;
     }
     if (!isEditMode && !formData.password.trim()) {
-      alert("Password is required");
+      toast({ title: "Missing information", description: "Password is required.", variant: "destructive" });
       return;
     }
 
@@ -130,7 +180,7 @@ export default function Settings() {
           p_password: formData.password.trim() || null,
         });
         if (error) throw error;
-        toast({ title: "Success", description: "User updated successfully" });
+        toast({ title: "User updated", description: `${formData.username} has been updated successfully.` });
       } else {
         const { error } = await supabase.rpc("sss_admin_create_user", {
           p_full_name: formData.fullName.trim(),
@@ -140,9 +190,9 @@ export default function Settings() {
           p_page: formData.page,
         });
         if (error) throw error;
-        toast({ title: "Success", description: "User created successfully" });
+        toast({ title: "User created", description: `${formData.username} has been created successfully.` });
       }
-      setShowModal(false);
+      setIsUserDialogOpen(false);
       fetchUsers();
     } catch (error) {
       console.error("Error saving user:", error);
@@ -166,7 +216,7 @@ export default function Settings() {
         p_uuid: deleteTarget.uuid,
       });
       if (error) throw error;
-      toast({ title: "Success", description: "User deleted successfully" });
+      toast({ title: "User deleted", description: `${deleteTarget.full_name} has been removed successfully.` });
       setDeleteTarget(null);
       fetchUsers();
     } catch (error) {
@@ -183,276 +233,357 @@ export default function Settings() {
 
   return (
     <div className="space-y-2">
-      <Card className="border-0 shadow-lg bg-gradient-to-br from-blue-50 to-indigo-50">
-        <CardHeader className="bg-gradient-to-r from-blue-50/50 to-indigo-50/50 rounded-t-lg border-b border-blue-100 px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
-          <h2 className="text-blue-900 text-xl font-bold flex items-center gap-2">
-            User Management
-            <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded-full">
-              {users.length}
-            </span>
-          </h2>
+      <Tabs defaultValue="users">
+        <Card>
+          <CardHeader className="border-b py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <TabsList>
+                <TabsTrigger value="users" className="gap-2 font-medium">
+                  <UsersIcon className="h-4 w-4" />
+                  User Management
+                </TabsTrigger>
+              </TabsList>
 
-          <Button
-            onClick={openCreateModal}
-            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-medium shadow-sm transition-all duration-300 rounded-lg px-4 py-2 flex items-center gap-1.5 group shrink-0 h-9"
-          >
-            <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
-            New User
-          </Button>
-        </CardHeader>
-
-        <CardContent>
-          <div className="relative overflow-x-auto">
-            <div className="max-h-[calc(104vh-200px)] overflow-y-auto">
-              <table className="hidden sm:block w-full">
-                <thead className="sticky top-0 z-10">
-                  <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                    <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[100px] sticky top-0">Actions</th>
-                    <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[180px] sticky top-0">Full Name</th>
-                    <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Username</th>
-                    <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Role</th>
-                    <th className="text-white border-b border-blue-500 px-4 py-3 text-left sticky top-0">Page Access</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-blue-100">
-                  {fetchLoading ? (
-                    <tr>
-                      <td colSpan={5} className="text-center py-8 bg-white">
-                        <div className="flex justify-center items-center text-blue-700">
-                          <LoaderIcon className="animate-spin w-8 h-8" />
-                        </div>
-                      </td>
-                    </tr>
-                  ) : users.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="text-center py-8 bg-white">
-                        <h1 className="text-blue-700">No users found.</h1>
-                      </td>
-                    </tr>
-                  ) : (
-                    users.map((user, ind) => (
-                      <tr key={user.uuid} className={ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"}>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openEditModal(user)}
-                              className="border-blue-200 text-blue-700 hover:bg-blue-50 h-8 px-2 shadow-sm"
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setDeleteTarget(user)}
-                              className="border-red-200 text-red-600 hover:bg-red-50 h-8 px-2 shadow-sm"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-blue-900 font-semibold">{user.full_name}</td>
-                        <td className="px-4 py-3 text-blue-900">{user.username}</td>
-                        <td className="px-4 py-3">
-                          <span className="px-2 py-0.5 inline-flex text-xs leading-5 font-semibold rounded-full bg-indigo-100 text-indigo-800 capitalize">
-                            {user.role}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-blue-900">
-                          <div className="flex flex-wrap gap-1 max-w-2xl">
-                            {(user.page || []).map((p) => (
-                              <span key={p} className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded">
-                                {p.trim()}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-
-              {/* Mobile Card View */}
-              <div className="sm:hidden space-y-4">
-                {fetchLoading ? (
-                  <div className="text-center py-8 bg-white">
-                    <div className="flex justify-center items-center text-blue-700">
-                      <LoaderIcon className="animate-spin w-8 h-8" />
-                    </div>
-                  </div>
-                ) : users.length === 0 ? (
-                  <div className="text-center py-8 bg-white">
-                    <h1 className="text-blue-700">No users found.</h1>
-                  </div>
-                ) : (
-                  users.map((user, ind) => (
-                    <Card key={user.uuid} className={`border-l-4 border-l-blue-500 ${ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"}`}>
-                      <CardContent className="p-4 space-y-3">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h3 className="font-bold text-blue-800 text-lg">{user.full_name}</h3>
-                            <p className="text-sm text-gray-600">{user.username}</p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openEditModal(user)}
-                              className="border-blue-200 text-blue-700 hover:bg-blue-50 h-8 px-2 shadow-sm"
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setDeleteTarget(user)}
-                              className="border-red-200 text-red-600 hover:bg-red-50 h-8 px-2 shadow-sm"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </div>
-                        <div>
-                          <span className="px-2 py-0.5 inline-flex text-xs leading-5 font-semibold rounded-full bg-indigo-100 text-indigo-800 capitalize">
-                            {user.role}
-                          </span>
-                        </div>
-                        <div>
-                          <p className="text-gray-500 font-medium text-sm mb-1">Page Access</p>
-                          <div className="flex flex-wrap gap-1">
-                            {(user.page || []).map((p) => (
-                              <span key={p} className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded">
-                                {p.trim()}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))
-                )}
+              <div className="flex items-center gap-2">
+                <Button onClick={fetchUsers} variant="outline" size="sm">
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Refresh
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={openCreateModal}
+                  className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:from-violet-700 hover:to-indigo-700"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add User
+                </Button>
               </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardHeader>
 
-      {/* Create / Edit Modal */}
-      <Modal
-        isOpen={showModal}
-        onClose={() => setShowModal(false)}
-        title={isEditMode ? "Edit User" : "New User"}
-        size="2xl"
-      >
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4 p-2">
-          <div>
-            <Label>Full Name *</Label>
-            <Input
-              value={formData.fullName}
-              onChange={(e) => handleInputChange("fullName", e.target.value)}
-              placeholder="Enter full name"
-            />
-          </div>
-          <div>
-            <Label>Username *</Label>
-            <Input
-              value={formData.username}
-              onChange={(e) => handleInputChange("username", e.target.value)}
-              placeholder="Enter login username"
-            />
-          </div>
-          <div>
-            <Label>{isEditMode ? "Password (leave blank to keep unchanged)" : "Password *"}</Label>
-            <Input
-              type="text"
-              value={formData.password}
-              onChange={(e) => handleInputChange("password", e.target.value)}
-              placeholder={isEditMode ? "Enter new password" : "Enter password"}
-            />
-          </div>
-          <div>
-            <Label>Role *</Label>
-            <Select value={formData.role} onValueChange={(value) => handleInputChange("role", value)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select role" />
-              </SelectTrigger>
-              <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
-                {ROLES.map((role) => (
-                  <SelectItem key={role} value={role} className="capitalize">
-                    {role}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <CardContent className="p-0">
+            <TabsContent value="users" className="mt-0">
+              {/* Sub-header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b bg-slate-50/50">
+                <p className="text-sm text-muted-foreground">
+                  Manage application accounts, credentials, and stage access permissions
+                </p>
+                <Badge variant="outline" className="font-mono shrink-0">
+                  {users.length} Active Users
+                </Badge>
+              </div>
 
-          <div className="md:col-span-2">
-            <Label>Page Access</Label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2 max-h-56 overflow-y-auto border border-gray-200 rounded-md p-3">
-              {ASSIGNABLE_PAGES.map((pageName) => (
-                <label key={pageName} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={formData.page.includes(pageName)}
-                    onChange={() => togglePage(pageName)}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              {fetchLoading ? (
+                <div className="flex items-center justify-center h-48">
+                  <RefreshCw className="h-6 w-6 animate-spin text-indigo-600" />
+                  <span className="ml-2 text-muted-foreground">Loading users...</span>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader className="bg-slate-50">
+                      <TableRow>
+                        <TableHead className="w-[100px]">Actions</TableHead>
+                        <TableHead className="w-[180px]">Full Name</TableHead>
+                        <TableHead className="w-[150px]">Username</TableHead>
+                        <TableHead className="w-[160px]">Password</TableHead>
+                        <TableHead className="w-[120px]">Role</TableHead>
+                        <TableHead>Page Access</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {users.map((user) => (
+                        <TableRow key={user.uuid} className="hover:bg-slate-50/70 transition-colors">
+                          <TableCell>
+                            <div className="flex gap-1">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 w-8 p-0"
+                                onClick={() => openEditModal(user)}
+                              >
+                                <Edit className="h-4 w-4 text-slate-600 hover:text-indigo-600" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 w-8 p-0 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                                onClick={() => setDeleteTarget(user)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-semibold text-slate-800">
+                            {user.full_name}
+                          </TableCell>
+                          <TableCell className="text-slate-700">
+                            {user.username}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1.5 font-mono text-sm">
+                              <span>
+                                {visiblePasswords.has(user.uuid)
+                                  ? user.password || "—"
+                                  : "••••••••"}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => togglePasswordVisibility(user.uuid)}
+                                className="text-gray-400 hover:text-gray-600"
+                                tabIndex={-1}
+                              >
+                                {visiblePasswords.has(user.uuid) ? (
+                                  <EyeOff className="h-3.5 w-3.5" />
+                                ) : (
+                                  <Eye className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={user.role === "admin" ? "default" : "secondary"}
+                              className="capitalize text-xs font-semibold"
+                            >
+                              {user.role}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1">
+                              {user.role === "admin" ||
+                              (Array.isArray(user.page) && user.page.length >= ASSIGNABLE_PAGES.length) ? (
+                                <Badge
+                                  variant="outline"
+                                  className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs"
+                                >
+                                  All Steps (Full Access)
+                                </Badge>
+                              ) : !Array.isArray(user.page) || user.page.length === 0 ? (
+                                <span className="text-xs text-muted-foreground italic">
+                                  No pages assigned
+                                </span>
+                              ) : (
+                                user.page.map((p) => (
+                                  <Badge
+                                    key={p}
+                                    variant="outline"
+                                    className="text-xs bg-slate-50 text-slate-700 border-slate-200"
+                                  >
+                                    {p.trim()}
+                                  </Badge>
+                                ))
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {users.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
+                            No users found in database
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </TabsContent>
+          </CardContent>
+        </Card>
+      </Tabs>
+
+      {/* DIALOG: User Create / Edit */}
+      <Dialog open={isUserDialogOpen} onOpenChange={setIsUserDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto bg-white">
+          <DialogHeader>
+            <DialogTitle>
+              {isEditMode ? "Edit User Account" : "Add New User"}
+            </DialogTitle>
+            <DialogDescription>
+              {isEditMode
+                ? "Update credentials, role, and assigned page access"
+                : "Create a new user profile with specific page permissions"}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 pt-2">
+            {/* Row 1: Username + Full Name */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="username">Username *</Label>
+                <Input
+                  id="username"
+                  value={formData.username}
+                  onChange={(e) => handleInputChange("username", e.target.value)}
+                  placeholder="e.g. jdoe"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="fullName">Full Name *</Label>
+                <Input
+                  id="fullName"
+                  value={formData.fullName}
+                  onChange={(e) => handleInputChange("fullName", e.target.value)}
+                  placeholder="e.g. John Doe"
+                />
+              </div>
+            </div>
+
+            {/* Row 2: Password + Role */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="password">Password {isEditMode ? "" : "*"}</Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    value={formData.password}
+                    onChange={(e) => handleInputChange("password", e.target.value)}
+                    placeholder={isEditMode ? "Leave blank to keep unchanged" : "Enter password"}
+                    className="pr-10"
                   />
-                  {pageName}
-                </label>
-              ))}
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="role">Role *</Label>
+                <Select value={formData.role} onValueChange={handleRoleChange}>
+                  <SelectTrigger id="role">
+                    <SelectValue placeholder="Select role" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
+                    {ROLES.map((role) => (
+                      <SelectItem key={role} value={role} className="capitalize">
+                        {role === "admin"
+                          ? "Admin (Full Access & Settings)"
+                          : role === "user"
+                          ? "User (Assigned Pages Only)"
+                          : "Engineer"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Page Access */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Page Access</Label>
+                {formData.role === "admin" ? (
+                  <span className="flex items-center gap-1 text-xs text-indigo-600 font-medium">
+                    <Lock className="h-3 w-3" />
+                    Auto-granted (Admin)
+                  </span>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="p-0 h-auto text-xs text-indigo-600"
+                    onClick={() => {
+                      if (formData.page.length === ASSIGNABLE_PAGES.length) {
+                        setFormData((prev) => ({ ...prev, page: [] }));
+                      } else {
+                        setFormData((prev) => ({ ...prev, page: [...ASSIGNABLE_PAGES] }));
+                      }
+                    }}
+                  >
+                    {formData.page.length === ASSIGNABLE_PAGES.length
+                      ? "Deselect All"
+                      : "Select All Pages"}
+                  </Button>
+                )}
+              </div>
+              {formData.role === "admin" && (
+                <p className="text-xs text-muted-foreground">
+                  Admins automatically get access to every page — the list below is locked and informational only.
+                </p>
+              )}
+              <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto border rounded-md p-3 bg-slate-50/50">
+                {ASSIGNABLE_PAGES.map((pageName) => (
+                  <div key={pageName} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`page-${pageName}`}
+                      checked={
+                        formData.role === "admin" ? true : formData.page.includes(pageName)
+                      }
+                      disabled={formData.role === "admin"}
+                      onCheckedChange={() => togglePage(pageName)}
+                    />
+                    <Label
+                      htmlFor={`page-${pageName}`}
+                      className={`text-sm font-normal ${
+                        formData.role === "admin" ? "text-muted-foreground" : "cursor-pointer"
+                      }`}
+                    >
+                      {pageName}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setIsUserDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSubmit}
+                disabled={
+                  isSubmitting ||
+                  !formData.username ||
+                  !formData.fullName ||
+                  (!isEditMode && !formData.password)
+                }
+                className="bg-indigo-600 hover:bg-indigo-700 text-white"
+              >
+                {isSubmitting && <RefreshCw className="animate-spin w-4 h-4 mr-2" />}
+                {isEditMode ? "Update User" : "Create User"}
+              </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
 
-          <div className="md:col-span-2 flex justify-end space-x-4 pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setShowModal(false)}
-            >
+      {/* DIALOG: Delete Confirmation */}
+      <Dialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
+        <DialogContent className="max-w-sm bg-white">
+          <DialogHeader>
+            <DialogTitle>Delete User</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete{" "}
+              <span className="font-semibold text-foreground">
+                {deleteTarget?.full_name}
+              </span>
+              ? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
               Cancel
             </Button>
             <Button
-              type="submit"
-              disabled={isSubmitting}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-md transition-all duration-300"
-            >
-              {isSubmitting && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
-              {isEditMode ? "Save Changes" : "Create User"}
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Delete Confirmation Modal */}
-      <Modal
-        isOpen={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        title="Delete User"
-        size="sm"
-      >
-        <div className="p-2 space-y-4">
-          <p className="text-gray-700">
-            Are you sure you want to delete{" "}
-            <span className="font-semibold">{deleteTarget?.full_name}</span>? This cannot be undone.
-          </p>
-          <div className="flex justify-end space-x-4">
-            <Button type="button" variant="outline" onClick={() => setDeleteTarget(null)}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
               onClick={handleDelete}
               disabled={isDeleting}
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-rose-600 hover:bg-rose-700 text-white"
             >
-              {isDeleting && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
+              {isDeleting && <RefreshCw className="animate-spin w-4 h-4 mr-2" />}
               Delete
             </Button>
           </div>
-        </div>
-      </Modal>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

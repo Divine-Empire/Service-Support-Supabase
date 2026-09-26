@@ -96,9 +96,7 @@ export default function Cancle() {
   const parsedData = roleStorage ? JSON.parse(roleStorage) : null;
   const role = parsedData?.state?.user?.role;
 
-  const filteredData = role === "user"
-    ? cancelledData.filter((item) => item.CREName === userName)
-    : cancelledData;
+  const filteredData = cancelledData;
 
   return (
     <div className="space-y-2">

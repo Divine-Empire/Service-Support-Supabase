@@ -710,17 +710,9 @@ export default function VideoCallSolution() {
   const parsedData = JSON.parse(roleStorage);
   const role = parsedData.state.user.role;
 
-  const filteredPendingData = role === "user" ? filteredPendingDataa.filter(
-    (item) => item["CREName"] === userName
-  ) : role === "engineer" ? filteredPendingDataa.filter(
-    (item) => item["engineerAssign"] === userName
-  ) : filteredPendingDataa;
+  const filteredPendingData = filteredPendingDataa;
 
-  const filteredHistoryData = role === "user" ? filteredHistoryDataa.filter(
-    (item) => item["CREName"] === userName
-  ) : role === "engineer" ? filteredHistoryDataa.filter(
-    (item) => item["engineerAssign"] === userName
-  ) : filteredHistoryDataa;
+  const filteredHistoryData = filteredHistoryDataa;
 
   // console.log("filteredPendingData", filteredPendingData);
   // console.log("filteredHistoryData", filteredHistoryData);
