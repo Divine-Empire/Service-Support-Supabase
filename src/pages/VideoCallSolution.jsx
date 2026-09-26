@@ -150,6 +150,11 @@ export default function VideoCallSolution() {
 
       const ticketIds = (warrantyRows || []).map((w) => w.ticket_id);
 
+      const plannedDateMap = new Map();
+      (warrantyRows || []).forEach((w) => {
+        plannedDateMap.set(w.ticket_id, w.video_call_planned);
+      });
+
       if (ticketIds.length === 0) {
         setPendingData([]);
         setHistoryData([]);
@@ -207,6 +212,7 @@ export default function VideoCallSolution() {
           engineerAssign: t.engineer_assign || "",
           otp: t.otp || "",
           videoCallTime: t.video_call_time || "",
+          plannedDate: plannedDateMap.get(t.ticket_id) || "",
         };
 
         // Latest attempt still 'rescheduled' (or no attempt yet) => still
@@ -770,6 +776,9 @@ export default function VideoCallSolution() {
                           Date
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
+                          Planned Date
+                        </th>
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
                           Ticket-ID
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
@@ -855,6 +864,9 @@ export default function VideoCallSolution() {
                             <td className="px-4 py-3 text-blue-900">
                               {formatDate(ticket.timeStemp)}
                             </td>
+                            <td className="px-4 py-3 text-blue-900">
+                              {formatDate(ticket.plannedDate)}
+                            </td>
                             <td className="px-4 py-3 font-medium text-blue-800">
                               {ticket.ticketId}
                             </td>
@@ -935,6 +947,9 @@ export default function VideoCallSolution() {
                                 </h3>
                                 <p className="text-sm text-gray-500">
                                   {formatDate(ticket.timeStemp)}
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                  Planned: {formatDate(ticket.plannedDate)}
                                 </p>
                               </div>
                               <Button
@@ -1045,6 +1060,9 @@ export default function VideoCallSolution() {
                           Date
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
+                          Planned Date
+                        </th>
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
                           Ticket-ID
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
@@ -1124,6 +1142,9 @@ export default function VideoCallSolution() {
                           >
                             <td className="px-4 py-3 text-blue-900">
                               {formatDate(ticket.timeStemp)}
+                            </td>
+                            <td className="px-4 py-3 text-blue-900">
+                              {formatDate(ticket.plannedDate)}
                             </td>
                             <td className="px-4 py-3 font-medium text-blue-800">
                               {ticket.ticketId}
@@ -1233,6 +1254,9 @@ export default function VideoCallSolution() {
                               </h3>
                               <p className="text-sm text-gray-500">
                                 {formatDate(ticket.timeStemp)}
+                              </p>
+                              <p className="text-sm text-gray-500">
+                                Planned: {formatDate(ticket.plannedDate)}
                               </p>
                             </div>
 
