@@ -31,7 +31,7 @@ const TermsAndConditions = ({ quotationData, handleInputChange, hiddenFields, to
             {!hiddenFields[field] && (
               <input
                 type="text"
-                value={quotationData[field]}
+                value={quotationData[field] || ""}
                 onChange={(e) => handleInputChange(field, e.target.value)}
                 className="w-full p-2 border border-gray-300 rounded-md"
               />

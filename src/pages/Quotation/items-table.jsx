@@ -794,15 +794,10 @@ const ItemsTable = ({
                               );
                             }
                           }}
-                          list={`code-list-${item.id}`}
+                          list="global-code-list"
                           className="w-24 p-1 border border-gray-300 rounded-md"
                           disabled={isLoading}
                         />
-                        <datalist id={`code-list-${item.id}`}>
-                          {productCodes.map((code) => (
-                            <option key={code} value={code} />
-                          ))}
-                        </datalist>
                       </div>
                     </td>
                   )}
@@ -834,7 +829,7 @@ const ItemsTable = ({
                               );
                             }
                           }}
-                          list={`name-list-${item.id}`}
+                          list="global-name-list"
                           className="p-1 border border-gray-300 rounded-md"
                           style={{
                             width: `${Math.max(200, item.name.length * 8)}px`,
@@ -843,11 +838,6 @@ const ItemsTable = ({
                           disabled={isLoading}
                           required
                         />
-                        <datalist id={`name-list-${item.id}`}>
-                          {productNames.map((name) => (
-                            <option key={name} value={name} />
-                          ))}
-                        </datalist>
                       </div>
                     </td>
                   )}
@@ -1307,6 +1297,16 @@ const ItemsTable = ({
             </tfoot>
           </table>
         </div>
+        <datalist id="global-code-list">
+          {productCodes.map((code) => (
+            <option key={code} value={code} />
+          ))}
+        </datalist>
+        <datalist id="global-name-list">
+          {productNames.map((name) => (
+            <option key={name} value={name} />
+          ))}
+        </datalist>
       </div>
     </div>
   );

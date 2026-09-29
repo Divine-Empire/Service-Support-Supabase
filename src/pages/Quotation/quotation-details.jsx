@@ -1,4 +1,6 @@
 "use client"
+import { useState, useEffect } from "react"
+
 
 const QuotationDetails = ({
   quotationData,
@@ -12,6 +14,22 @@ const QuotationDetails = ({
   stateOptions,
   dropdownData,
 }) => {
+  const [localSearch, setLocalSearch] = useState(selectedQuotation || "")
+
+  useEffect(() => {
+    setLocalSearch(selectedQuotation || "")
+  }, [selectedQuotation])
+
+  const handleSearchChange = (e) => {
+    const val = e.target.value
+    setLocalSearch(val)
+    if (existingQuotations.includes(val)) {
+      handleQuotationSelect(val)
+    } else if (val === "") {
+      handleQuotationSelect("")
+    }
+  }
+
   const handleStateChange = (e) => {
     const selectedState = e.target.value
     handleInputChange("consignorState", selectedState)
@@ -54,24 +72,21 @@ const QuotationDetails = ({
             <label className="block text-sm font-medium">Quotation No.</label>
             {isRevising ? (
               <div className="flex items-center">
-                <select
-                  value={selectedQuotation}
-                  onChange={(e) => handleQuotationSelect(e.target.value)}
+                <input
+                  type="text"
+                  list="quotationList"
+                  value={localSearch}
+                  onChange={handleSearchChange}
+                  placeholder="Search and Select Quotation"
                   className="w-full p-2 border border-gray-300 rounded-md"
-                >
-                  <option value="">Select Quotation to Revise</option>
+                />
+                <datalist id="quotationList">
                   {existingQuotations && existingQuotations.length > 0 ? (
                     existingQuotations.map((quotation, index) => (
-                      <option key={`${quotation}-${index}`} value={quotation}>
-                        {quotation}
-                      </option>
+                      <option key={`${quotation}-${index}`} value={quotation} />
                     ))
-                  ) : (
-                    <option value="" disabled>
-                      Loading quotations...
-                    </option>
-                  )}
-                </select>
+                  ) : null}
+                </datalist>
                 {isLoadingQuotation && (
                   <div className="ml-2">
                     <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>

@@ -526,16 +526,33 @@ function MakeQuotation() {
       // new revision row always carries the SAME ticket_uuid as its root.
       let revisionTicketUuid = null;
       if (isRevising && selectedQuotation) {
-        if (!finalQuotationNo.match(/-\d{2}$/)) {
-          finalQuotationNo = `${finalQuotationNo}-01`;
-        } else {
-          const parts = finalQuotationNo.split("-");
-          const lastPart = parts[parts.length - 1];
-          const revisionNumber = Number.parseInt(lastPart, 10);
-          const newRevision = (revisionNumber + 1).toString().padStart(2, "0");
-          parts[parts.length - 1] = newRevision;
-          finalQuotationNo = parts.join("-");
+        // Find the base quotation number (remove existing -XX suffix if present)
+        let baseQuotationNo = selectedQuotation;
+        if (baseQuotationNo.match(/-\d{2}$/)) {
+          baseQuotationNo = baseQuotationNo.replace(/-\d{2}$/, "");
         }
+
+        // Query the DB to find the highest suffix for this base quotation
+        const { data: revisions, error: revError } = await supabase
+          .from("sss_make_quotation")
+          .select("quotation_no")
+          .like("quotation_no", `${baseQuotationNo}%`);
+
+        let maxRevision = 0;
+        if (!revError && revisions) {
+          revisions.forEach((rev) => {
+            const match = rev.quotation_no.match(/-\d{2}$/);
+            if (match && rev.quotation_no.startsWith(baseQuotationNo + "-")) {
+              const revNum = parseInt(match[0].replace("-", ""), 10);
+              if (revNum > maxRevision) {
+                maxRevision = revNum;
+              }
+            }
+          });
+        }
+
+        const newRevision = (maxRevision + 1).toString().padStart(2, "0");
+        finalQuotationNo = `${baseQuotationNo}-${newRevision}`;
 
         const { data: rootRow, error: rootRowError } = await supabase
           .from("sss_make_quotation")
@@ -549,7 +566,7 @@ function MakeQuotation() {
         revisionTicketUuid = rootRow?.ticket_uuid || null;
       }
 
-      const fileName = `Quotation_${finalQuotationNo}.pdf`;
+      const fileName = `Quotation_${finalQuotationNo}_${Date.now()}.pdf`;
 
       const byteCharacters = atob(base64Data);
       const byteNumbers = new Array(byteCharacters.length);
