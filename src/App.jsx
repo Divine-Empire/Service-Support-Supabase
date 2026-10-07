@@ -25,7 +25,7 @@ import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import CalibrationCertificate from './pages/CalibrationCertificate';
-import Cancle from './pages/Cancle';
+import CancelledTickets from './pages/Cancelled_Tickets';
 import Settings from './pages/Master/Settings';
 import Master from './pages/Master/Dropdown';
 import TatConfig from './pages/Master/tat-config';
@@ -65,7 +65,7 @@ function App() {
           <Route path="/calibration" element={<Calibration />} />
           <Route path="/sparedispatch" element={<SpareDispatchDetails />} />
           <Route path="/calibrationCertificate" element={<CalibrationCertificate />} />
-          <Route path="/cancel" element={<Cancle />} />
+          <Route path="/cancel" element={<CancelledTickets />} />
           <Route
             path="/master"
             element={

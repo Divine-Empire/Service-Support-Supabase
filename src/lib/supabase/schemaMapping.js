@@ -773,19 +773,20 @@ export const SCHEMA_MAPPING = {
     sourceSheet: "Cancel",
     primaryKey: "id",
     description:
-      "'Cancel Ticket' log, owned by src/pages/Cancle.jsx (route /cancel), migration 0046. Migrates the " +
+      "'Cancel Ticket' log, owned by src/pages/Cancelled_Tickets.jsx (route /cancel), migration 0046. Migrates the " +
       "legacy 'Cancel' sheet — the four stage pages that have a 'Cancel Ticket' checkbox+remarks sub-form " +
       "(FollowUp.jsx, Quotation.jsx, SiteVisitPlan.jsx, VideoCallSolution.jsx) now insert here instead of " +
       "POSTing to Apps Script. Append-only, no unique constraint on ticket_uuid (a ticket could in principle " +
       "be cancelled from more than one stage's form — same as the legacy sheet allowed). Client-facing " +
       "display fields (client_name/phone_number/company_name/category/mention_issue/cre_name) are NOT " +
-      "duplicated here — Cancle.jsx joins back to `tickets` for those, fixing a pre-existing gap in the " +
+      "duplicated here — Cancelled_Tickets.jsx joins back to `tickets` for those, fixing a pre-existing gap in the " +
       "legacy flow (its sheet row shape had no real ticket link, so role='user' CRE-name filtering on that " +
       "page silently never worked). " +
-      "IMPORTANT, explicit user decision (2026-08-26): cancelling a ticket ONLY removes it from the " +
-      "cancelling page's own pending list (client-side filter, unchanged from legacy behavior) — it does NOT " +
-      "globally exclude the ticket from any other stage's pending query. Making 'cancelled' a real cross-stage " +
-      "gate was explicitly deferred, not an oversight.",
+      "Cancelling is now a real cross-stage gate (migration 0053_cancel_nulls_planned.sql, supersedes the " +
+      "2026-08-26 'client-side filter only' decision): an AFTER INSERT trigger on this table " +
+      "(sss_cancel_null_planned) NULLs every *_planned stamp of that ticket across the stage tables, and a " +
+      "BEFORE INSERT/UPDATE guard (sss_guard_cancelled_planned) on each of those tables keeps them NULL if " +
+      "anything tries to re-stamp. sss_service_installation.planned is not touched (not keyed by ticket).",
     fields: [
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "ticket_uuid", type: "uuid", note: "FK -> tickets(uuid), the real relational key." },
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "ticket_id", type: "text", note: "Plain denormalized column (not the FK) — populated at insert, used for display/search." },

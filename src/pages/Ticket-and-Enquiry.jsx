@@ -777,7 +777,8 @@ export default function TicketAndEnquiry() {
   // Once a ticket reaches one of these stages, editing it here no longer
   // makes sense (billing/downstream paperwork has already started on it) —
   // it's dropped from this page's list entirely, not just its Edit button.
-  const EDIT_EXCLUDED_STAGES = ["Invoice", "Calibration", "Calibration Certificate", "Spare Dispatch Details"];
+  // "Cancelled" is set by the sss_cancelled_tickets trigger (migration 0054).
+  const EDIT_EXCLUDED_STAGES = ["Invoice", "Calibration", "Calibration Certificate", "Spare Dispatch Details", "Cancelled"];
   const editableData = pendingData.filter((item) => !EDIT_EXCLUDED_STAGES.includes(item.currentStage));
 
   const roleFilteredData = editableData;

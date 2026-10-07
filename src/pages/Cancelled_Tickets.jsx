@@ -14,7 +14,7 @@ import { useToast } from "../hooks/use-toast";
 import { LoaderIcon } from "lucide-react";
 import { supabase } from "../lib/supabase/client";
 
-export default function Cancle() {
+export default function CancelledTickets() {
   const [activeTab, setActiveTab] = useState("pending");
   const [cancelledData, setCancelledData] = useState([]);
   const [fetchLoading, setFetchLoading] = useState(false);

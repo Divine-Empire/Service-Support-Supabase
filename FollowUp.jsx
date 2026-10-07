@@ -690,7 +690,7 @@ export default function FollowUp() {
         );
         toast({
           title: "Success",
-          description: "Ticket details Cancle successfully",
+          description: "Ticket details cancelled successfully",
         });
         setShowFollowUpModal(false);
         setIsCancelled(false);
