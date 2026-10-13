@@ -508,14 +508,10 @@ function MakeQuotation() {
       //   hiddenColumns
       // );
 
-      const pdfDataUri = await generatePDFFromData(
-        quotationData,
-        selectedReferences,
-        specialDiscount,
-        hiddenColumns
-      );
-      const base64Data = pdfDataUri.split(",")[1];
-
+      // The new revision number must be known BEFORE the PDF is rendered:
+      // the PDF prints its own "Quo No" (generator prefers finalQuotationNo).
+      // Computing it afterwards made every revision's PDF show the PREVIOUS
+      // revision's number (file -06 contained "Quo No: ...-05").
       let finalQuotationNo = quotationData.quotationNo;
       // Re-read straight from the root row being revised, rather than
       // trusting quotationData.linkedTicketUuid — that's only as fresh as
@@ -565,6 +561,14 @@ function MakeQuotation() {
         }
         revisionTicketUuid = rootRow?.ticket_uuid || null;
       }
+
+      const pdfDataUri = await generatePDFFromData(
+        { ...quotationData, finalQuotationNo },
+        selectedReferences,
+        specialDiscount,
+        hiddenColumns
+      );
+      const base64Data = pdfDataUri.split(",")[1];
 
       const fileName = `Quotation_${finalQuotationNo}_${Date.now()}.pdf`;
 

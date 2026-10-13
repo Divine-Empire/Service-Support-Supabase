@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -36,6 +36,9 @@ export default function Quotation() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingQuotation, setIsUploadingQuotation] = useState(false);
   const [quotationPdfFile, setQuotationPdfFile] = useState(null);
+  // Latest Quotation No. the user picked — lets the async items lookup in
+  // handleQuotationNoChange drop a stale response after a quick A -> B switch.
+  const latestQuotationNoRef = useRef("");
   const [searchItem, setSearchItem] = useState("");
   const [filterTotalQuotation, setFilterTotalQuotation] = useState("all");
   const [isCancelled, setIsCancelled] = useState(false);
@@ -366,18 +369,26 @@ export default function Quotation() {
   // matched make_quotation row, and Basic Amount from the sum of that
   // quotation's non-freight quotation_items.amount. Fields stay editable
   // afterward (pre-fill, not lock) — same as MakeQuotationFrom.jsx.
+  //
+  // Everything is replaced (or cleared) on every switch so nothing from the
+  // previously selected quotation can linger: a manually picked PDF file
+  // (which would otherwise hide the new link and be uploaded on submit), the
+  // old link when the new row has none, or the old amounts.
   const handleQuotationNoChange = (value) => {
-    handleInputChange("quotationNo", value);
-
+    latestQuotationNoRef.current = value;
     const matched = generatedQuotations.find((q) => q.quotation_no === value);
-    if (matched) {
-      if (matched.grand_total !== undefined && matched.grand_total !== null) {
-        handleInputChange("totalAmountWithTax", String(matched.grand_total));
-      }
-      if (matched.pdf_url) {
-        handleInputChange("quotationPdfLink", matched.pdf_url);
-      }
-    }
+
+    setQuotationPdfFile(null);
+    setFormData((prev) => ({
+      ...prev,
+      quotationNo: value,
+      totalAmountWithTax:
+        matched && matched.grand_total !== undefined && matched.grand_total !== null
+          ? String(matched.grand_total)
+          : "",
+      quotationPdfLink: matched?.pdf_url || "",
+      basicAmount: "",
+    }));
 
     if (value) {
       supabase
@@ -385,6 +396,8 @@ export default function Quotation() {
         .select("amount, is_freight")
         .eq("quotation_no", value)
         .then(({ data: items, error }) => {
+          // User already moved on to another quotation — ignore this response.
+          if (latestQuotationNoRef.current !== value) return;
           if (!error && items && items.length > 0) {
             const subtotal = items.reduce((sum, item) => {
               if (item.is_freight) return sum;
