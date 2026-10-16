@@ -367,16 +367,16 @@ export default function Calibration() {
                       <thead className="sticky top-0 z-10">
                         <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Action</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Date</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Invoice Date</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Ticket ID</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Enquiry Type</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">Company Name</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Service Location</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Quotation Number</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Quotation Copy</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Attachment (Service)</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Attachment (NABL)</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Date</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Invoice Date</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Ticket ID</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Enquiry Type</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Service Location</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-blue-100">
@@ -406,20 +406,7 @@ export default function Calibration() {
                                   <span className="font-medium">Calibration</span>
                                 </Button>
                               </td>
-                              <td className="px-4 py-3 text-blue-900">{formatDate(ticket.timeStemp)}</td>
-                              <td className="px-4 py-3 text-blue-900">{formatDate(ticket.invoiceDate) || "-"}</td>
-                              <td className="px-4 py-3 font-medium text-blue-800">{ticket.ticketId}</td>
-                              <td className="px-4 py-3 text-blue-900">{ticket.enquiryType || "-"}</td>
                               <td className="px-4 py-3 text-blue-900">{ticket.companyName || "-"}</td>
-                              <td className="px-4 py-3">
-                                {ticket.serviceLocation ? (
-                                  <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-indigo-100 text-indigo-800">
-                                    {ticket.serviceLocation}
-                                  </span>
-                                ) : (
-                                  "-"
-                                )}
-                              </td>
                               <td className="px-4 py-3 text-blue-900 font-medium">{ticket.quotationNo || "-"}</td>
                               <td className="px-4 py-3">
                                 {ticket.quotationPdfLink ? (
@@ -459,6 +446,19 @@ export default function Calibration() {
                                   >
                                     View
                                   </a>
+                                ) : (
+                                  "-"
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-blue-900">{formatDate(ticket.timeStemp)}</td>
+                              <td className="px-4 py-3 text-blue-900">{formatDate(ticket.invoiceDate) || "-"}</td>
+                              <td className="px-4 py-3 font-medium text-blue-800">{ticket.ticketId}</td>
+                              <td className="px-4 py-3 text-blue-900">{ticket.enquiryType || "-"}</td>
+                              <td className="px-4 py-3">
+                                {ticket.serviceLocation ? (
+                                  <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-indigo-100 text-indigo-800">
+                                    {ticket.serviceLocation}
+                                  </span>
                                 ) : (
                                   "-"
                                 )}
@@ -565,16 +565,16 @@ export default function Calibration() {
                     <table className="hidden sm:block w-full">
                       <thead className="sticky top-0 z-10">
                         <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Date</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Invoice Date</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Ticket ID</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Enquiry Type</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">Company Name</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Service Location</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Quotation Number</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Quotation Copy</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Invoice Number</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Invoice Copy</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Date</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Invoice Date</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Ticket ID</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Enquiry Type</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Service Location</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Calibration Date</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Calibration Period (Month)</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Calibration Due Date</th>
@@ -600,20 +600,7 @@ export default function Calibration() {
                         ) : (
                           filteredHistoryData.map((ticket, ind) => (
                             <tr key={ind} className={ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"}>
-                              <td className="px-4 py-3 text-blue-900">{formatDate(ticket.timeStemp)}</td>
-                              <td className="px-4 py-3 text-blue-900">{formatDate(ticket.invoiceDate) || "-"}</td>
-                              <td className="px-4 py-3 font-medium text-blue-800">{ticket.ticketId}</td>
-                              <td className="px-4 py-3 text-blue-900">{ticket.enquiryType || "-"}</td>
                               <td className="px-4 py-3 text-blue-900">{ticket.companyName || "-"}</td>
-                              <td className="px-4 py-3">
-                                {ticket.serviceLocation ? (
-                                  <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-indigo-100 text-indigo-800">
-                                    {ticket.serviceLocation}
-                                  </span>
-                                ) : (
-                                  "-"
-                                )}
-                              </td>
                               <td className="px-4 py-3 text-blue-900 font-medium">{ticket.quotationNo || "-"}</td>
                               <td className="px-4 py-3">
                                 {ticket.quotationPdfLink ? (
@@ -640,6 +627,19 @@ export default function Calibration() {
                                   >
                                     View
                                   </a>
+                                ) : (
+                                  "-"
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-blue-900">{formatDate(ticket.timeStemp)}</td>
+                              <td className="px-4 py-3 text-blue-900">{formatDate(ticket.invoiceDate) || "-"}</td>
+                              <td className="px-4 py-3 font-medium text-blue-800">{ticket.ticketId}</td>
+                              <td className="px-4 py-3 text-blue-900">{ticket.enquiryType || "-"}</td>
+                              <td className="px-4 py-3">
+                                {ticket.serviceLocation ? (
+                                  <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-indigo-100 text-indigo-800">
+                                    {ticket.serviceLocation}
+                                  </span>
                                 ) : (
                                   "-"
                                 )}
