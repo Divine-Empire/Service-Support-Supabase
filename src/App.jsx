@@ -22,6 +22,7 @@ import Calibration from "./pages/Calibration";
 import SpareDispatchDetails from "./pages/SpareDispatchDetails";
 import NotFound from "./pages/not-found";
 import Layout from './components/Layout';
+import UpdateBanner from './components/UpdateBanner';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import CalibrationCertificate from './pages/CalibrationCertificate';
@@ -33,6 +34,7 @@ import TatConfig from './pages/Master/tat-config';
 function App() {
   return (
     <Router>
+      <UpdateBanner />
       <Toaster position="top-right" />
       <ShadcnToaster />
       {/* <Layout> */}
