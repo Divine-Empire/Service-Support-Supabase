@@ -7,6 +7,7 @@ import {
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { Textarea } from "../components/ui/textarea";
 import {
   Tabs,
   TabsContent,
@@ -33,6 +34,16 @@ export default function Invoice() {
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [formData, setFormData] = useState({});
   const [searchItem, setSearchItem] = useState("");
+  // "Cancel Ticket" option on the Pending create-Invoice form — same pattern
+  // as Quotation.jsx/FollowUp.jsx/SiteVisitPlan.jsx/VideoCallSolution.jsx:
+  // logs a row in sss_cancelled_tickets, whose trg_cancel_null_planned
+  // trigger automatically nulls every "<next_stage>_planned" timestamp for
+  // this ticket across every stage table (see sss_planned_columns()) and
+  // sets sss_tickets.current_stage = 'Cancelled' — removing it from this
+  // AND every later stage's pending list, with no per-page logic needed
+  // beyond this insert.
+  const [isCancelled, setIsCancelled] = useState(false);
+  const [cancelSubmit, setCancelSubmit] = useState(false);
   const { toast } = useToast();
 
   const [masterData, setMasterData] = useState({});
@@ -256,6 +267,7 @@ export default function Invoice() {
 
   const handleInvoiceClick = (ticket) => {
     setSelectedTicket(ticket);
+    setIsCancelled(false);
     setFormData({
       ticketId: ticket.ticketId,
       clientName: ticket.clientName,
@@ -372,6 +384,46 @@ export default function Invoice() {
       });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleSubmitCancel = async (e) => {
+    e.preventDefault();
+    setCancelSubmit(true);
+
+    try {
+      const { error } = await supabase.from("sss_cancelled_tickets").insert({
+        ticket_id: selectedTicket.ticketId,
+        ticket_uuid: selectedTicket.ticketUuid,
+        cancelled_from_stage: "Invoice",
+        remarks: formData.cancelRemarks || null,
+      });
+
+      if (error) throw error;
+
+      // Removes it from THIS page's own pending list only — does not
+      // globally exclude the ticket from any other stage's pending query
+      // (see migration 0046's comment). The trg_cancel_null_planned trigger
+      // on sss_cancelled_tickets is what actually nulls every downstream
+      // "<next_stage>_planned" stamp, so it stops appearing anywhere else too.
+      setPendingData((prevPending) =>
+        prevPending.filter((ticket) => ticket.ticketId !== selectedTicket.ticketId)
+      );
+      setShowInvoiceModal(false);
+      setIsCancelled(false);
+      toast({
+        title: "Success",
+        description: "Ticket cancelled successfully",
+      });
+    } catch (error) {
+      console.error("Error cancelling ticket:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to cancel ticket",
+        variant: "destructive",
+      });
+    } finally {
+      setCancelSubmit(false);
     }
   };
 
@@ -1392,6 +1444,21 @@ export default function Invoice() {
             onSubmit={handleSubmit}
             className="grid grid-cols-1 md:grid-cols-2 gap-6"
           >
+            <div className="flex items-center space-x-2 md:col-span-2">
+              <input
+                type="checkbox"
+                id="cancelTicketInvoice"
+                checked={isCancelled}
+                onChange={(e) => setIsCancelled(e.target.checked)}
+                className="h-4 w-4 text-red-600 focus:ring-red-500 border-gray-300 rounded"
+              />
+              <Label htmlFor="cancelTicketInvoice" className="text-red-600 font-medium">
+                Cancel Ticket
+              </Label>
+            </div>
+
+            {!isCancelled && (
+              <>
             <div>
               <Label>Ticket ID</Label>
               <Input value={formData.ticketId || ""} disabled className="bg-slate-50" />
@@ -1597,6 +1664,31 @@ export default function Invoice() {
                 )}
               </Button>
             </div>
+              </>
+            )}
+
+            {isCancelled && (
+              <>
+                <div className="md:col-span-2">
+                  <Label>Remarks</Label>
+                  <Textarea
+                    rows={3}
+                    value={formData.cancelRemarks || ""}
+                    onChange={(e) => handleInputChange("cancelRemarks", e.target.value)}
+                  />
+                </div>
+                <div className="md:col-span-2 flex justify-center py-6">
+                  <Button
+                    type="button"
+                    onClick={handleSubmitCancel}
+                    className="bg-red-600 hover:bg-red-700 text-white px-8 py-3"
+                  >
+                    {cancelSubmit && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
+                    Confirm Cancellation
+                  </Button>
+                </div>
+              </>
+            )}
           </form>
         </div>
       </Modal>

@@ -78,7 +78,7 @@ export default function Calibration() {
 
       const { data: invoiceFullRows } = await supabase
         .from("sss_invoice")
-        .select("ticket_id, invoice_no_nabl, invoice_no_service, invoice_no_spare, attachment_nabl, attachment_service, attachment_spare")
+        .select("ticket_id, invoice_date, invoice_no_nabl, invoice_no_service, invoice_no_spare, attachment_nabl, attachment_service, attachment_spare")
         .in("ticket_id", ticketIds);
 
       const calibrationByTicket = new Map((calibrationRows || []).map((c) => [c.ticket_id, c]));
@@ -101,8 +101,10 @@ export default function Calibration() {
           companyName: t.company_name || "",
           CREName: t.cre_name || "",
           enquiryType: t.enquiry_type || "",
+          serviceLocation: t.service_location || "",
           quotationNo: q?.quotation_no || "",
           quotationPdfLink: q?.quotation_pdf_link || "",
+          invoiceDate: inv?.invoice_date || "",
           invoiceNo: inv?.invoice_no_nabl || inv?.invoice_no_service || inv?.invoice_no_spare || "",
           invoiceCopy: inv?.attachment_nabl || inv?.attachment_service || inv?.attachment_spare || "",
           // Shown as separate columns on the Pending tab (NABL/Service only —
@@ -366,11 +368,11 @@ export default function Calibration() {
                         <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Action</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Date</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Invoice Date</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Ticket ID</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Enquiry Type</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">Company Name</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Person Name</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Phone Number</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Service Location</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Quotation Number</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Quotation Copy</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Attachment (Service)</th>
@@ -405,11 +407,19 @@ export default function Calibration() {
                                 </Button>
                               </td>
                               <td className="px-4 py-3 text-blue-900">{formatDate(ticket.timeStemp)}</td>
+                              <td className="px-4 py-3 text-blue-900">{formatDate(ticket.invoiceDate) || "-"}</td>
                               <td className="px-4 py-3 font-medium text-blue-800">{ticket.ticketId}</td>
                               <td className="px-4 py-3 text-blue-900">{ticket.enquiryType || "-"}</td>
                               <td className="px-4 py-3 text-blue-900">{ticket.companyName || "-"}</td>
-                              <td className="px-4 py-3 text-blue-900">{ticket.clientName}</td>
-                              <td className="px-4 py-3 text-blue-900">{ticket.phoneNumber}</td>
+                              <td className="px-4 py-3">
+                                {ticket.serviceLocation ? (
+                                  <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-indigo-100 text-indigo-800">
+                                    {ticket.serviceLocation}
+                                  </span>
+                                ) : (
+                                  "-"
+                                )}
+                              </td>
                               <td className="px-4 py-3 text-blue-900 font-medium">{ticket.quotationNo || "-"}</td>
                               <td className="px-4 py-3">
                                 {ticket.quotationPdfLink ? (
@@ -482,7 +492,6 @@ export default function Calibration() {
                                 <div>
                                   <h3 className="font-bold text-blue-800 text-lg">{ticket.ticketId}</h3>
                                   <p className="text-sm text-gray-600 font-medium">Company: {ticket.companyName || "N/A"}</p>
-                                  <p className="text-sm text-gray-600">Person: {ticket.clientName}</p>
                                 </div>
                                 <Button
                                   size="sm"
@@ -495,8 +504,8 @@ export default function Calibration() {
                               </div>
                               <div className="grid grid-cols-2 gap-3 text-sm">
                                 <div>
-                                  <p className="text-gray-500 font-medium">Phone</p>
-                                  <p className="text-blue-900">{ticket.phoneNumber}</p>
+                                  <p className="text-gray-500 font-medium">Invoice Date</p>
+                                  <p className="text-blue-900">{formatDate(ticket.invoiceDate) || "N/A"}</p>
                                 </div>
                                 <div>
                                   <p className="text-gray-500 font-medium">Quotation No.</p>
@@ -508,6 +517,18 @@ export default function Calibration() {
                                   <p className="text-gray-500 font-medium">Enquiry Type</p>
                                   <p className="text-blue-900">{ticket.enquiryType || "N/A"}</p>
                                 </div>
+                                <div>
+                                  <p className="text-gray-500 font-medium">Service Location</p>
+                                  {ticket.serviceLocation ? (
+                                    <span className="px-2.5 py-0.5 inline-flex text-xs leading-5 font-semibold rounded-full bg-indigo-100 text-indigo-800">
+                                      {ticket.serviceLocation}
+                                    </span>
+                                  ) : (
+                                    <p className="text-blue-900">N/A</p>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3 text-sm">
                                 <div>
                                   <p className="text-gray-500 font-medium">Quotation Copy</p>
                                   {ticket.quotationPdfLink ? (
@@ -545,11 +566,11 @@ export default function Calibration() {
                       <thead className="sticky top-0 z-10">
                         <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Date</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Invoice Date</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Ticket ID</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Enquiry Type</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">Company Name</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Person Name</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Phone Number</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Service Location</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Quotation Number</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Quotation Copy</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Invoice Number</th>
@@ -580,11 +601,19 @@ export default function Calibration() {
                           filteredHistoryData.map((ticket, ind) => (
                             <tr key={ind} className={ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"}>
                               <td className="px-4 py-3 text-blue-900">{formatDate(ticket.timeStemp)}</td>
+                              <td className="px-4 py-3 text-blue-900">{formatDate(ticket.invoiceDate) || "-"}</td>
                               <td className="px-4 py-3 font-medium text-blue-800">{ticket.ticketId}</td>
                               <td className="px-4 py-3 text-blue-900">{ticket.enquiryType || "-"}</td>
                               <td className="px-4 py-3 text-blue-900">{ticket.companyName || "-"}</td>
-                              <td className="px-4 py-3 text-blue-900">{ticket.clientName}</td>
-                              <td className="px-4 py-3 text-blue-900">{ticket.phoneNumber}</td>
+                              <td className="px-4 py-3">
+                                {ticket.serviceLocation ? (
+                                  <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-indigo-100 text-indigo-800">
+                                    {ticket.serviceLocation}
+                                  </span>
+                                ) : (
+                                  "-"
+                                )}
+                              </td>
                               <td className="px-4 py-3 text-blue-900 font-medium">{ticket.quotationNo || "-"}</td>
                               <td className="px-4 py-3">
                                 {ticket.quotationPdfLink ? (
@@ -673,12 +702,11 @@ export default function Calibration() {
                               <div>
                                 <h3 className="font-bold text-blue-800 text-lg">{ticket.ticketId}</h3>
                                 <p className="text-sm text-gray-600 font-medium">Company: {ticket.companyName || "N/A"}</p>
-                                <p className="text-sm text-gray-600">Person: {ticket.clientName}</p>
                               </div>
                               <div className="grid grid-cols-2 gap-3 text-sm">
                                 <div>
-                                  <p className="text-gray-500 font-medium">Phone</p>
-                                  <p className="text-blue-900">{ticket.phoneNumber}</p>
+                                  <p className="text-gray-500 font-medium">Invoice Date</p>
+                                  <p className="text-blue-900">{formatDate(ticket.invoiceDate) || "N/A"}</p>
                                 </div>
                                 <div>
                                   <p className="text-gray-500 font-medium">Quotation No.</p>
@@ -690,6 +718,18 @@ export default function Calibration() {
                                   <p className="text-gray-500 font-medium">Enquiry Type</p>
                                   <p className="text-blue-900">{ticket.enquiryType || "N/A"}</p>
                                 </div>
+                                <div>
+                                  <p className="text-gray-500 font-medium">Service Location</p>
+                                  {ticket.serviceLocation ? (
+                                    <span className="px-2.5 py-0.5 inline-flex text-xs leading-5 font-semibold rounded-full bg-indigo-100 text-indigo-800">
+                                      {ticket.serviceLocation}
+                                    </span>
+                                  ) : (
+                                    <p className="text-blue-900">N/A</p>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3 text-sm">
                                 <div>
                                   <p className="text-gray-500 font-medium">Invoice No.</p>
                                   <p className="text-blue-900">{ticket.invoiceNo || "N/A"}</p>

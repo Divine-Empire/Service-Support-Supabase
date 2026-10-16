@@ -1,10 +1,18 @@
 import { supabase } from "./client";
 
-// Read-only client for the production Lead-To-Order-Supabase-New project's
-// tables (lto_client_master, lto_dropdown, etc.) — used to source master/
-// dropdown data (consignor details, bank details, product master,
+// Client for the production Lead-To-Order-Supabase-New project's tables
+// (lto_client_master, lto_dropdown, lto_items, etc.) — used to source
+// master/dropdown data (consignor details, bank details, product master,
 // prepared-by/reference lists) for the GST quotation builder
-// (src/pages/Quotation/) — never for writes there.
+// (src/pages/Quotation/), and for reading product data site-wide.
+//
+// Was read-only everywhere until Master > Items (src/pages/Master/Dropdown.jsx)
+// started managing `lto_items` directly from this app (add/edit/delete) —
+// that's a deliberate, explicit exception: `lto_items` is the single shared
+// item catalog both apps read from, so edits here are meant to write
+// straight back to the same table LTO itself uses, not a separate copy.
+// Every other lto_* table accessed through this client should still be
+// treated as read-only unless a similar explicit decision is made for it.
 //
 // Historically this pointed at a separate Supabase project via its own
 // VITE_LTO_SUPABASE_URL/VITE_LTO_SUPABASE_ANON_KEY and a second createClient()

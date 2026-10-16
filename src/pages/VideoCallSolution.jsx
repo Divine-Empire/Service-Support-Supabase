@@ -36,6 +36,7 @@ import { Textarea } from "../components/ui/textarea";
 import { supabase } from "../lib/supabase/client";
 import { fetchDropdownRows } from "../lib/supabase/dropdown";
 import { fetchEngineerNames } from "../lib/supabase/engineers";
+import { fetchItemNames } from "../lib/supabase/items";
 import {
   sendVideoCallRescheduledNotifications,
   sendVideoCallOtpResendNotification,
@@ -256,21 +257,23 @@ export default function VideoCallSolution() {
   const [alternateEngineerOptions, setAlternateEngineerOptions] = useState([]);
 
   // Categories this page uses: 'Service Location' (reused for the "Service
-  // Type" select, matching the legacy sheet's own reuse), and 'Item-Name'
-  // (the Item & Quantity Details table's item datalist, seeded in migration
-  // 0025 from the DROPDOWN sheet's own 'Item-Name' column). Engineer names
-  // ('Alternate Engineer') now come from Master > Engineer Contacts, not a
-  // dropdown category — see engineers.js.
+  // Type" select, matching the legacy sheet's own reuse). Engineer names
+  // ('Alternate Engineer') come from Master > Engineer Contacts, not a
+  // dropdown category — see engineers.js. Item names (the Item & Quantity
+  // Details table's item datalist) used to come from the 'item_name'
+  // dropdown category too, but that's now retired in favor of Master > Items
+  // reading/writing `lto_items` directly (the same shared catalog
+  // Lead-To-Order-Supabase-New uses) — see items.js.
   const DROPDOWN_CATEGORY_TO_KEY = {
     service_location: "Service Location",
-    item_name: "Item-Name",
   };
 
   const fetchMasterSheet = async () => {
     try {
-      const [data, engineerNames] = await Promise.all([
+      const [data, engineerNames, itemNames] = await Promise.all([
         fetchDropdownRows(Object.keys(DROPDOWN_CATEGORY_TO_KEY)),
         fetchEngineerNames(),
+        fetchItemNames(),
       ]);
 
       const structuredData = {};
@@ -282,6 +285,7 @@ export default function VideoCallSolution() {
       });
 
       structuredData["Engineer Assign Name"] = engineerNames;
+      structuredData["Item-Name"] = itemNames;
 
       setMasterData([structuredData]);
       setAlternateEngineerOptions(engineerNames);

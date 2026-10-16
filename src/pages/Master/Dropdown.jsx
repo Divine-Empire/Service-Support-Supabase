@@ -25,6 +25,7 @@ import { Loader2Icon, LoaderIcon, Plus, Pencil, Trash2 } from "lucide-react";
 import { supabase } from "../../lib/supabase/client";
 import { ltoSupabase } from "../../lib/supabase/ltoClient";
 import { fetchDropdownRows } from "../../lib/supabase/dropdown";
+import useAuthStore from "../../store/authStore";
 
 // Renamed in migration 0043 to match the renamed tickets columns:
 // 'category' now holds the NABL/Service/Spare-style values (source for
@@ -33,6 +34,11 @@ import { fetchDropdownRows } from "../../lib/supabase/dropdown";
 // "Sub-Category" field, formerly "Category"), and 'enquiry_type' is a
 // brand new, initially-empty category sourcing the brand new "Enquiry
 // Type" field (used for TAT/planning on stages after Invoice).
+//
+// 'item_name' USED to be a category here too, but the item catalog (~3,500
+// rows) now lives in its own "Items" tab below, reading/writing `lto_items`
+// directly (see items.js) instead of being just another free-text dropdown
+// category — see the Items tab section further down.
 const CATEGORY_LABELS = {
   call_type: "Call Type",
   source_of_enquiry: "Source of Enquiry",
@@ -42,7 +48,6 @@ const CATEGORY_LABELS = {
   enquiry_type: "Enquiry Type",
   service_location: "Service Location",
   machine_name: "Machine Name",
-  item_name: "Item Name",
 };
 
 export default function Master() {
@@ -101,6 +106,148 @@ export default function Master() {
       toast({ title: "Error", description: "Failed to load company details", variant: "destructive" });
     } finally {
       setCompanyLoading(false);
+    }
+  };
+
+  // ── Items tab state ──────────────────────────────────────────────────
+  // Full CRUD on `lto_items` — the SAME shared item catalog table
+  // Lead-To-Order-Supabase-New itself reads/writes (see ltoClient.js). This
+  // used to be a 'item_name' dropdown category here; now it's its own tab
+  // with a real table (name/code/rate/description), matching the dedicated
+  // Items Master page LTO already has, plus a `user_who_updated` +
+  // `updated_at` stamp on every write so it's clear who changed what.
+  const { user: currentUser } = useAuthStore();
+  const [items, setItems] = useState([]);
+  const [itemsLoading, setItemsLoading] = useState(false);
+  const [itemSearch, setItemSearch] = useState("");
+  const [debouncedItemSearch, setDebouncedItemSearch] = useState("");
+  const [itemPage, setItemPage] = useState(1);
+  const [itemsPerPage] = useState(20);
+  const [itemsTotalCount, setItemsTotalCount] = useState(0);
+  const [itemModalOpen, setItemModalOpen] = useState(false);
+  const [itemModalMode, setItemModalMode] = useState("add"); // "add" | "edit"
+  const [editingItem, setEditingItem] = useState(null);
+  const [itemFormData, setItemFormData] = useState({ item_name: "", item_code: "", rate: "", description: "" });
+  const [isSavingItem, setIsSavingItem] = useState(false);
+  const [deleteItemTarget, setDeleteItemTarget] = useState(null);
+  const [isDeletingItem, setIsDeletingItem] = useState(false);
+
+  const fetchItems = async () => {
+    setItemsLoading(true);
+    try {
+      const from = (itemPage - 1) * itemsPerPage;
+      const to = from + itemsPerPage - 1;
+
+      let query = ltoSupabase.from("lto_items").select("*", { count: "exact" });
+
+      const term = debouncedItemSearch.trim();
+      if (term) {
+        const like = `%${term}%`;
+        query = query.or(`item_name.ilike.${like},item_code.ilike.${like},description.ilike.${like}`);
+      }
+
+      query = query.order("item_name", { ascending: true }).range(from, to);
+
+      const { data, error, count } = await query;
+      if (error) throw error;
+      setItems(data || []);
+      setItemsTotalCount(count || 0);
+    } catch (error) {
+      console.error("Error fetching items:", error);
+      toast({ title: "Error", description: "Failed to load items", variant: "destructive" });
+    } finally {
+      setItemsLoading(false);
+    }
+  };
+
+  const handleOpenItemModal = (mode, item = null) => {
+    setItemModalMode(mode);
+    setEditingItem(item);
+    setItemFormData(
+      item && mode === "edit"
+        ? {
+            item_name: item.item_name || "",
+            item_code: item.item_code || "",
+            rate: item.rate !== null && item.rate !== undefined ? String(item.rate) : "",
+            description: item.description || "",
+          }
+        : { item_name: "", item_code: "", rate: "", description: "" }
+    );
+    setItemModalOpen(true);
+  };
+
+  const handleCloseItemModal = () => {
+    setItemModalOpen(false);
+    setEditingItem(null);
+    setItemFormData({ item_name: "", item_code: "", rate: "", description: "" });
+  };
+
+  const handleSubmitItem = async (e) => {
+    e.preventDefault();
+    const name = itemFormData.item_name.trim();
+    if (!name) {
+      alert("Item Name is required");
+      return;
+    }
+    const code = itemFormData.item_code.trim();
+    if (!code) {
+      alert("Item Code is required");
+      return;
+    }
+    if (itemModalMode === "edit" && !editingItem?.uuid) {
+      toast({ title: "Error", description: "Cannot save: this item has no uuid. Please refresh and try again.", variant: "destructive" });
+      return;
+    }
+
+    setIsSavingItem(true);
+    const payload = {
+      item_name: name,
+      item_code: code,
+      rate: itemFormData.rate !== "" ? parseFloat(itemFormData.rate) : null,
+      description: itemFormData.description.trim() || null,
+      // Who touched this row last, and when -- every add/edit from this tab
+      // stamps both, regardless of which fields actually changed.
+      user_who_updated: currentUser?.username || currentUser?.name || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      if (itemModalMode === "add") {
+        const { error } = await ltoSupabase.from("lto_items").insert(payload);
+        if (error) throw error;
+        toast({ title: "Success", description: "Item added successfully" });
+      } else {
+        const { error } = await ltoSupabase.from("lto_items").update(payload).eq("uuid", editingItem.uuid);
+        if (error) throw error;
+        toast({ title: "Success", description: "Item updated successfully" });
+      }
+      handleCloseItemModal();
+      fetchItems();
+    } catch (error) {
+      console.error("Error saving item:", error);
+      const message = error?.code === "23505"
+        ? `An item named "${payload.item_name}" already exists. Choose a different name.`
+        : (error.message || String(error));
+      toast({ title: "Error", description: message, variant: "destructive" });
+    } finally {
+      setIsSavingItem(false);
+    }
+  };
+
+  const handleDeleteItem = async () => {
+    if (!deleteItemTarget) return;
+    setIsDeletingItem(true);
+    try {
+      const { error } = await ltoSupabase.from("lto_items").delete().eq("uuid", deleteItemTarget.uuid);
+      if (error) throw error;
+      toast({ title: "Success", description: "Item deleted successfully" });
+      setDeleteItemTarget(null);
+      fetchItems();
+    } catch (error) {
+      console.error("Error deleting item:", error);
+      toast({ title: "Error", description: "Failed to delete item", variant: "destructive" });
+    } finally {
+      setIsDeletingItem(false);
     }
   };
 
@@ -179,6 +326,25 @@ export default function Master() {
     fetchEngineerContacts();
     fetchApprovalRecipients();
   }, []);
+
+  // Items tab: debounce the raw search input so we don't fire a query per
+  // keystroke, then re-fetch whenever the page OR the debounced term changes.
+  // A new search term also resets back to page 1 (a stale later page would
+  // otherwise look like "no results" for an unrelated reason).
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedItemSearch(itemSearch.trim()), 400);
+    return () => clearTimeout(timer);
+  }, [itemSearch]);
+
+  useEffect(() => {
+    setItemPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedItemSearch]);
+
+  useEffect(() => {
+    fetchItems();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemPage, debouncedItemSearch]);
 
   // ── Dropdown tab handlers ───────────────────────────────────────────
   const categories = [...new Set(dropdownRows.map((r) => r.category))];
@@ -473,6 +639,12 @@ export default function Master() {
                 Company Details
               </TabsTrigger>
               <TabsTrigger
+                value="items"
+                className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+              >
+                Items
+              </TabsTrigger>
+              <TabsTrigger
                 value="engineerContacts"
                 className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
               >
@@ -669,6 +841,106 @@ export default function Master() {
                   </table>
                 </div>
               </div>
+            </TabsContent>
+
+            {/* ── Items Tab ────────────────────────────────────────── */}
+            {/* Full CRUD on `lto_items` — the SAME shared item catalog
+                Lead-To-Order-Supabase-New reads/writes (see ltoClient.js).
+                Every add/edit stamps user_who_updated + updated_at. */}
+            <TabsContent value="items" className="mt-0">
+              <div className="flex flex-col sm:flex-row justify-between items-center gap-3 mb-4">
+                <Input
+                  placeholder="Search items by name, code, description..."
+                  value={itemSearch}
+                  onChange={(e) => setItemSearch(e.target.value)}
+                  className="sm:w-80"
+                />
+                <Button
+                  type="button"
+                  onClick={() => handleOpenItemModal("add")}
+                  className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shrink-0"
+                >
+                  <Plus className="w-4 h-4 mr-1" /> Add Item
+                </Button>
+              </div>
+
+              <div className="relative overflow-x-auto">
+                <div className="max-h-[60vh] overflow-y-auto border border-gray-200 rounded-lg">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 z-10">
+                      <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
+                        <th className="text-white px-4 py-3 text-right w-24">Actions</th>
+                        <th className="text-white px-4 py-3 text-left">Item Name</th>
+                        <th className="text-white px-4 py-3 text-left">Item Code</th>
+                        <th className="text-white px-4 py-3 text-left">Rate (₹)</th>
+                        <th className="text-white px-4 py-3 text-left">Description</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-blue-100">
+                      {itemsLoading ? (
+                        <tr>
+                          <td colSpan={5} className="text-center py-8">
+                            <div className="flex justify-center items-center text-blue-700">
+                              <LoaderIcon className="animate-spin w-8 h-8" />
+                            </div>
+                          </td>
+                        </tr>
+                      ) : items.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="text-center py-8 text-blue-700">
+                            No items found.
+                          </td>
+                        </tr>
+                      ) : (
+                        items.map((item, ind) => (
+                          <tr key={item.uuid} className={ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"}>
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex justify-end gap-1">
+                                <Button variant="outline" size="sm" onClick={() => handleOpenItemModal("edit", item)} className="h-7 px-2 border-blue-200 text-blue-700 hover:bg-blue-50">
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </Button>
+                                <Button variant="outline" size="sm" onClick={() => setDeleteItemTarget(item)} className="h-7 px-2 border-red-200 text-red-600 hover:bg-red-50">
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-blue-900 font-medium">{item.item_name}</td>
+                            <td className="px-4 py-3 text-blue-900">{item.item_code || "—"}</td>
+                            <td className="px-4 py-3 text-blue-900">
+                              {item.rate !== null && item.rate !== undefined
+                                ? `₹${Number(item.rate).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                : "—"}
+                            </td>
+                            <td className="px-4 py-3 text-blue-900 max-w-xs truncate" title={item.description || ""}>{item.description || "—"}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {itemsTotalCount > itemsPerPage && (
+                <div className="flex items-center justify-between mt-3 text-sm text-gray-600">
+                  <span>
+                    Showing {items.length === 0 ? 0 : (itemPage - 1) * itemsPerPage + 1}–{(itemPage - 1) * itemsPerPage + items.length} of {itemsTotalCount}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" disabled={itemPage <= 1} onClick={() => setItemPage((p) => Math.max(1, p - 1))}>
+                      Previous
+                    </Button>
+                    <span>Page {itemPage} of {Math.ceil(itemsTotalCount / itemsPerPage) || 1}</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={itemPage >= Math.ceil(itemsTotalCount / itemsPerPage)}
+                      onClick={() => setItemPage((p) => p + 1)}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              )}
             </TabsContent>
 
             {/* ── Engineer Contacts Tab ────────────────────────────── */}
@@ -879,6 +1151,86 @@ export default function Master() {
             <Button type="button" variant="outline" onClick={() => setDeleteDropdownTarget(null)}>Cancel</Button>
             <Button type="button" onClick={handleDeleteDropdownValue} disabled={isDeletingDropdown} className="bg-red-600 hover:bg-red-700 text-white">
               {isDeletingDropdown && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
+              Delete
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Item add/edit modal */}
+      <Modal
+        isOpen={itemModalOpen}
+        onClose={handleCloseItemModal}
+        title={itemModalMode === "add" ? "Add Item" : "Edit Item"}
+        size="md"
+      >
+        <form onSubmit={handleSubmitItem} className="p-2 space-y-4">
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-gray-700">Item Name *</label>
+            <Input
+              placeholder="e.g. Solar Panel 400W"
+              value={itemFormData.item_name}
+              onChange={(e) => setItemFormData((prev) => ({ ...prev, item_name: e.target.value }))}
+              required
+            />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-gray-700">Item Code *</label>
+              <Input
+                placeholder="e.g. ITM-001"
+                value={itemFormData.item_code}
+                onChange={(e) => setItemFormData((prev) => ({ ...prev, item_code: e.target.value }))}
+                required
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-gray-700">Rate (₹)</label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="e.g. 1500.00"
+                value={itemFormData.rate}
+                onChange={(e) => setItemFormData((prev) => ({ ...prev, rate: e.target.value }))}
+              />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-gray-700">Description</label>
+            <textarea
+              rows={3}
+              placeholder="Enter additional details or specifications..."
+              value={itemFormData.description}
+              onChange={(e) => setItemFormData((prev) => ({ ...prev, description: e.target.value }))}
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none resize-none"
+            />
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <Button type="button" variant="outline" onClick={handleCloseItemModal} disabled={isSavingItem}>Cancel</Button>
+            <Button type="submit" disabled={isSavingItem} className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white">
+              {isSavingItem && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
+              Save
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Item delete confirmation */}
+      <Modal
+        isOpen={!!deleteItemTarget}
+        onClose={() => setDeleteItemTarget(null)}
+        title="Delete Item"
+        size="sm"
+      >
+        <div className="p-2 space-y-4">
+          <p className="text-gray-700">
+            Delete <span className="font-semibold">{deleteItemTarget?.item_name}</span>? This item also disappears from Lead-To-Order's own Items Master, since both apps share the same catalog.
+          </p>
+          <div className="flex justify-end space-x-4">
+            <Button type="button" variant="outline" onClick={() => setDeleteItemTarget(null)}>Cancel</Button>
+            <Button type="button" onClick={handleDeleteItem} disabled={isDeletingItem} className="bg-red-600 hover:bg-red-700 text-white">
+              {isDeletingItem && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
               Delete
             </Button>
           </div>
