@@ -219,12 +219,15 @@ export const STAGE_PLANNING_RULES = {
     baseTime: (ctx) => ctx.orderReceivedSubmittedAt,
   },
 
-  // Invoice -> Calibration. Only when tickets.enquiry_type = 'NABL' — every
-  // other enquiry_type skips Calibration entirely (planned stays null).
+  // Invoice -> Calibration. When tickets.enquiry_type = 'NABL' or 'NON-NABL'.
+  // Every other enquiry_type skips Calibration entirely (planned stays null).
   // Base time is Invoice's own submit-time timestamp.
   calibration: {
     tatStageName: "Calibration",
-    shouldPlan: (ctx) => ctx.ticket?.enquiryType === "NABL",
+    shouldPlan: (ctx) => {
+      const type = String(ctx.ticket?.enquiryType || "").trim().toUpperCase();
+      return type === "NABL" || type === "NON-NABL" || type === "NON NABL";
+    },
     baseTime: (ctx) => ctx.invoiceSubmittedAt,
   },
 

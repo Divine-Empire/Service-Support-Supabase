@@ -52,6 +52,17 @@ export default function Invoice() {
   // Advance Payment Attachment + Senior Approval together for one ticket.
   const [advanceDetailsTicket, setAdvanceDetailsTicket] = useState(null);
 
+  // History tab's "Edit" action — separate state from the create-invoice
+  // flow above (formData/selectedTicket/showInvoiceModal) on purpose, so
+  // editing an existing invoice row can never collide with the Pending
+  // tab's create form.
+  const [editingHistoryRow, setEditingHistoryRow] = useState(null);
+  const [editFormData, setEditFormData] = useState({});
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+  const [editAttachmentServiceFile, setEditAttachmentServiceFile] = useState(null);
+  const [editAttachmentSpareFile, setEditAttachmentSpareFile] = useState(null);
+  const [editAttachmentNABLFile, setEditAttachmentNABLFile] = useState(null);
+
   const fetchData = async () => {
     setFetchLoading(true);
     try {
@@ -180,6 +191,13 @@ export default function Invoice() {
             attachmentSpare: inv.attachment_spare || "",
             attachmentNABL: inv.attachment_nabl || "",
             delayMinutes: inv.delay_minutes,
+            // This invoice row's own creation moment -- the original basis
+            // stagePlanning.js's 'calibration'/'sparedispatch' rules add TAT
+            // minutes to. Needed so editing Enquiry Type later recomputes
+            // calibration_planned/spare_dispatch_planned from the SAME base
+            // time as the original submission, not "now" (which would quietly
+            // shift the TAT deadline just because of an unrelated edit).
+            invoiceCreatedAt: inv.created_at || null,
           });
         } else {
           pending.push(base);
@@ -202,6 +220,10 @@ export default function Invoice() {
 
   const DROPDOWN_CATEGORY_TO_KEY = {
     invoice_posted_by: "Invoice Posted By",
+    // Same category/key mapping as Ticket-and-Enquiry.jsx's "Enquiry Type"
+    // field — reused here so the History tab's Edit modal can offer the
+    // same options.
+    enquiry_type: "Enquiry Type",
   };
 
   const fetchMasterSheet = async () => {
@@ -327,7 +349,7 @@ export default function Invoice() {
         attachment_spare: attachmentSpareUrl,
         attachment_nabl: attachmentNABLUrl,
         otp: generateSixDigitNumber(),
-        // Readiness stamp for Calibration.jsx — only set when tickets.enquiry_type = 'NABL'.
+        // Readiness stamp for Calibration.jsx — set when tickets.enquiry_type is 'NABL' or 'NON-NABL'.
         calibration_planned: calibrationPlanned,
         // Readiness stamp for SpareDispatchDetails.jsx — only set when tickets.enquiry_type = 'SPARE'.
         spare_dispatch_planned: spareDispatchPlanned,
@@ -350,6 +372,181 @@ export default function Invoice() {
       });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // History tab's "Edit" action — prefill from the clicked row's current
+  // sss_invoice values (plus the ticket's current enquiry_type).
+  const handleEditClick = (ticket) => {
+    setEditingHistoryRow(ticket);
+    setEditFormData({
+      ticketId: ticket.ticketId,
+      clientName: ticket.clientName,
+      phoneNumber: ticket.phoneNumber,
+      companyName: ticket.companyName || "",
+      siteAddress: ticket.siteAddress || "",
+      quotationNo: ticket.quotationNo || "",
+      quotationPdfLink: ticket.quotationPdfLink || "",
+      enquiryType: ticket.enquiryType || "",
+      invoicePostedBy: ticket.invoicePostedBy || "",
+      invoiceDate: ticket.invoiceDate || "",
+      invoiceNoNABL: ticket.invoiceNoNABL || "",
+      invoiceNoSERVICE: ticket.invoiceNoSERVICE || "",
+      invoiceNoSPARE: ticket.invoiceNoSPARE || "",
+      invoiceAmountNABLBasic: ticket.invoiceAmountNABLBasic ?? "",
+      invoiceAmountNABLGst: ticket.invoiceAmountNABLGst ?? "",
+      serviceAmountBasic: ticket.serviceAmountBasic ?? "",
+      serviceAmountGst: ticket.serviceAmountGst ?? "",
+      spareAmountBasic: ticket.spareAmountBasic ?? "",
+      spareAmountGst: ticket.spareAmountGst ?? "",
+      attachmentService: ticket.attachmentService || "",
+      attachmentSpare: ticket.attachmentSpare || "",
+      attachmentNABL: ticket.attachmentNABL || "",
+    });
+    setEditAttachmentServiceFile(null);
+    setEditAttachmentSpareFile(null);
+    setEditAttachmentNABLFile(null);
+  };
+
+  const handleEditInputChange = (field, value) => {
+    setEditFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const uploadEditAttachment = async (file, prefix) => {
+    const path = `invoice/${prefix}_${editingHistoryRow?.ticketId}_${Date.now()}_${file.name}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("ticket_enquiry")
+      .upload(path, file, { contentType: file.type });
+
+    if (uploadError) throw uploadError;
+
+    const { data } = supabase.storage.from("ticket_enquiry").getPublicUrl(path);
+    return data.publicUrl;
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    setIsEditSubmitting(true);
+
+    try {
+      // Only newly-picked files get (re-)uploaded — otherwise keep whatever
+      // URL was already on the row.
+      const [attachmentServiceUrl, attachmentSpareUrl, attachmentNABLUrl] = await Promise.all([
+        editAttachmentServiceFile
+          ? uploadEditAttachment(editAttachmentServiceFile, "service")
+          : Promise.resolve(editFormData.attachmentService || null),
+        editAttachmentSpareFile
+          ? uploadEditAttachment(editAttachmentSpareFile, "spare")
+          : Promise.resolve(editFormData.attachmentSpare || null),
+        editAttachmentNABLFile
+          ? uploadEditAttachment(editAttachmentNABLFile, "nabl")
+          : Promise.resolve(editFormData.attachmentNABL || null),
+      ]);
+
+      const invoiceUpdatePayload = {
+        invoice_posted_by: editFormData.invoicePostedBy || null,
+        invoice_date: editFormData.invoiceDate || null,
+        invoice_no_nabl: editFormData.invoiceNoNABL || null,
+        invoice_no_service: editFormData.invoiceNoSERVICE || null,
+        invoice_no_spare: editFormData.invoiceNoSPARE || null,
+        invoice_amount_nabl_basic: editFormData.invoiceAmountNABLBasic || null,
+        invoice_amount_nabl_gst: editFormData.invoiceAmountNABLGst || null,
+        service_amount_basic: editFormData.serviceAmountBasic || null,
+        service_amount_gst: editFormData.serviceAmountGst || null,
+        spare_amount_basic: editFormData.spareAmountBasic || null,
+        spare_amount_gst: editFormData.spareAmountGst || null,
+        attachment_service: attachmentServiceUrl,
+        attachment_spare: attachmentSpareUrl,
+        attachment_nabl: attachmentNABLUrl,
+      };
+
+      // Enquiry Type drives calibration_planned/spare_dispatch_planned (see
+      // stagePlanning.js's 'calibration'/'sparedispatch' rules) -- those were
+      // computed ONCE at Invoice-creation time and never touched again, so a
+      // later Enquiry Type edit would otherwise leave them silently stale
+      // (e.g. a ticket switched from NON-NABL to NABL would never get
+      // calibration_planned set, and so would never appear in Calibration.jsx).
+      const originalEnquiryType = editingHistoryRow.enquiryType || "";
+      const newEnquiryType = editFormData.enquiryType || "";
+      const enquiryTypeChanged = newEnquiryType !== originalEnquiryType;
+      let enquiryTypeBlocked = false;
+
+      if (enquiryTypeChanged) {
+        // Once a ticket has actually been processed through Calibration
+        // (a row exists in sss_calibration, created only when that stage's
+        // own form is submitted -- not just "planned"/pending), its
+        // Enquiry Type is locked: changing it now could silently desync it
+        // from calibration work that's already done.
+        const { data: calibrationRows, error: calibrationCheckError } = await supabase
+          .from("sss_calibration")
+          .select("id")
+          .eq("ticket_uuid", editingHistoryRow.ticketUuid)
+          .limit(1);
+
+        if (calibrationCheckError) throw calibrationCheckError;
+
+        if (calibrationRows && calibrationRows.length > 0) {
+          enquiryTypeBlocked = true;
+        } else {
+          // Recompute from the SAME base time stagePlanning.js used at
+          // Invoice-creation (this invoice row's own created_at), not "now"
+          // -- an edit shouldn't quietly shift the TAT deadline.
+          const planningCtx = {
+            ticket: { enquiryType: newEnquiryType },
+            invoiceSubmittedAt: editingHistoryRow.invoiceCreatedAt
+              ? new Date(editingHistoryRow.invoiceCreatedAt)
+              : new Date(),
+          };
+          const [calibrationPlanned, spareDispatchPlanned] = await Promise.all([
+            computeStagePlanned("calibration", planningCtx),
+            computeStagePlanned("sparedispatch", planningCtx),
+          ]);
+          invoiceUpdatePayload.calibration_planned = calibrationPlanned;
+          invoiceUpdatePayload.spare_dispatch_planned = spareDispatchPlanned;
+        }
+      }
+
+      const { error: invoiceError } = await supabase
+        .from("sss_invoice")
+        .update(invoiceUpdatePayload)
+        .eq("ticket_uuid", editingHistoryRow.ticketUuid);
+
+      if (invoiceError) throw invoiceError;
+
+      if (enquiryTypeChanged && !enquiryTypeBlocked) {
+        const { error: ticketError } = await supabase
+          .from("sss_tickets")
+          .update({ enquiry_type: newEnquiryType || null })
+          .eq("uuid", editingHistoryRow.ticketUuid);
+
+        if (ticketError) throw ticketError;
+      }
+
+      if (enquiryTypeBlocked) {
+        toast({
+          title: "Enquiry Type not changed",
+          description:
+            "This ticket has already been processed through the Calibration stage, so its Enquiry Type can no longer be changed. The rest of the invoice details were saved.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Success",
+          description: "Invoice details updated successfully",
+        });
+      }
+      setEditingHistoryRow(null);
+      fetchData();
+    } catch (error) {
+      console.error("Error updating invoice:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update invoice details",
+        variant: "destructive",
+      });
+    } finally {
+      setIsEditSubmitting(false);
     }
   };
 
@@ -461,6 +658,9 @@ export default function Invoice() {
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
                           Ticket ID
                         </th>
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[130px] sticky top-0">
+                          Enquiry Type
+                        </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                           Quotation No.
                         </th>
@@ -503,7 +703,7 @@ export default function Invoice() {
                       {filteredPendingData.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={14}
+                            colSpan={15}
                             className="text-center py-8 bg-white"
                             data-testid="text-no-pending"
                           >
@@ -539,6 +739,9 @@ export default function Invoice() {
                             </td>
                             <td className="px-4 py-3 font-medium text-blue-800">
                               {ticket.ticketId}
+                            </td>
+                            <td className="px-4 py-3 text-blue-900">
+                              {ticket.enquiryType || "-"}
                             </td>
                             <td className="px-4 py-3 text-blue-900">
                               {ticket.quotationNo}
@@ -697,6 +900,15 @@ export default function Invoice() {
 
                             <div>
                               <p className="text-gray-500 font-medium text-sm">
+                                Enquiry Type
+                              </p>
+                              <p className="text-blue-900">
+                                {ticket.enquiryType || "N/A"}
+                              </p>
+                            </div>
+
+                            <div>
+                              <p className="text-gray-500 font-medium text-sm">
                                 Site Address
                               </p>
                               <p className="text-blue-900">
@@ -797,8 +1009,14 @@ export default function Invoice() {
                   <table className="hidden sm:block w-full">
                     <thead className="sticky top-0 z-10">
                       <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[100px] sticky top-0">
+                          Action
+                        </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
                           Ticket ID
+                        </th>
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[130px] sticky top-0">
+                          Enquiry Type
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                           Quotation No
@@ -863,7 +1081,7 @@ export default function Invoice() {
                       {filteredHistoryData.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={19}
+                            colSpan={21}
                             className="text-center py-8 bg-white"
                             data-testid="text-no-history"
                           >
@@ -886,8 +1104,22 @@ export default function Invoice() {
                               ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"
                             }
                           >
+                            <td className="px-4 py-3">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleEditClick(ticket)}
+                                className="bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 hover:from-blue-100 hover:to-indigo-100 hover:text-blue-700 transition-all duration-300 border border-blue-200 hover:border-blue-300 rounded-lg px-3 py-1.5 shadow-sm hover:shadow-md"
+                                data-testid={`button-edit-history-${ticket.ticketId}`}
+                              >
+                                <span className="font-medium">Edit</span>
+                              </Button>
+                            </td>
                             <td className="px-4 py-3 font-medium text-blue-800">
                               {ticket.ticketId || ""}
+                            </td>
+                            <td className="px-4 py-3 text-blue-900">
+                              {ticket.enquiryType || "-"}
                             </td>
                             <td className="px-4 py-3 text-blue-900">
                               {ticket.quotationNo || ""}
@@ -1018,12 +1250,31 @@ export default function Invoice() {
                             } border-l-4 border-l-blue-500`}
                         >
                           <CardContent className="p-4 space-y-3">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <h3 className="font-bold text-blue-800 text-lg">
+                                  {ticket.ticketId}
+                                </h3>
+                                <p className="text-sm text-gray-600">
+                                  {ticket.clientName}
+                                </p>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleEditClick(ticket)}
+                                className="bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 hover:from-blue-100 hover:to-indigo-100 border border-blue-200"
+                              >
+                                Edit
+                              </Button>
+                            </div>
+
                             <div>
-                              <h3 className="font-bold text-blue-800 text-lg">
-                                {ticket.ticketId}
-                              </h3>
-                              <p className="text-sm text-gray-600">
-                                {ticket.clientName}
+                              <p className="text-gray-500 font-medium text-sm">
+                                Enquiry Type
+                              </p>
+                              <p className="text-blue-900">
+                                {ticket.enquiryType || "N/A"}
                               </p>
                             </div>
 
@@ -1343,6 +1594,284 @@ export default function Invoice() {
                   </span>
                 ) : (
                   "Submit"
+                )}
+              </Button>
+            </div>
+          </form>
+        </div>
+      </Modal>
+
+      {/* History tab's Edit modal — mirrors the create-invoice form above,
+          plus an editable Enquiry Type field. Deliberately separate state
+          (editFormData/editingHistoryRow) from the create modal's formData. */}
+      <Modal
+        isOpen={!!editingHistoryRow}
+        onClose={() => setEditingHistoryRow(null)}
+        title="Edit Invoice"
+        size="2xl"
+      >
+        <div className="max-h-[calc(100vh-200px)] overflow-y-auto px-4 pb-4">
+          <form
+            onSubmit={handleEditSubmit}
+            className="grid grid-cols-1 md:grid-cols-2 gap-6"
+          >
+            <div>
+              <Label>Ticket ID</Label>
+              <Input value={editFormData.ticketId || ""} disabled className="bg-slate-50" />
+            </div>
+            <div>
+              <Label>Client Name</Label>
+              <Input value={editFormData.clientName || ""} disabled className="bg-slate-50" />
+            </div>
+            <div>
+              <Label>Phone Number</Label>
+              <Input value={editFormData.phoneNumber || ""} disabled className="bg-slate-50" />
+            </div>
+            <div>
+              <Label>Quotation No.</Label>
+              <Input value={editFormData.quotationNo || ""} disabled className="bg-slate-50" />
+            </div>
+            <div>
+              <Label>Company Name</Label>
+              <Input value={editFormData.companyName || ""} disabled className="bg-slate-50" />
+            </div>
+            <div>
+              <Label>Site Address</Label>
+              <Input value={editFormData.siteAddress || ""} disabled className="bg-slate-50" />
+            </div>
+
+            <div>
+              <Label>Enquiry Type</Label>
+              <Select
+                value={editFormData.enquiryType || undefined}
+                onValueChange={(value) => handleEditInputChange("enquiryType", value)}
+              >
+                <SelectTrigger data-testid="select-edit-enquiry-type">
+                  <SelectValue placeholder="Select enquiry type" />
+                </SelectTrigger>
+                <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
+                  {masterData.length > 0 && masterData[0]["Enquiry Type"] ? (
+                    masterData[0]["Enquiry Type"].map(
+                      (item, ind) =>
+                        item && (
+                          <SelectItem key={ind} value={item} className="hover:bg-blue-50 focus:bg-blue-50">
+                            {item}
+                          </SelectItem>
+                        )
+                    )
+                  ) : (
+                    <SelectItem value="loading" disabled>
+                      Loading options...
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Invoice Posted By *</Label>
+              <Select
+                value={editFormData.invoicePostedBy || undefined}
+                onValueChange={(value) => handleEditInputChange("invoicePostedBy", value)}
+              >
+                <SelectTrigger data-testid="select-edit-invoice-posted-by">
+                  <SelectValue placeholder="Select who posted this invoice" />
+                </SelectTrigger>
+                <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
+                  {masterData.length > 0 && masterData[0]["Invoice Posted By"] ? (
+                    masterData[0]["Invoice Posted By"].map(
+                      (item, ind) =>
+                        item && (
+                          <SelectItem key={ind} value={item} className="hover:bg-blue-50 focus:bg-blue-50">
+                            {item}
+                          </SelectItem>
+                        )
+                    )
+                  ) : (
+                    <SelectItem value="loading" disabled>
+                      Loading options...
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Invoice Date *</Label>
+              <Input
+                type="date"
+                value={editFormData.invoiceDate || ""}
+                onChange={(e) => handleEditInputChange("invoiceDate", e.target.value)}
+                required
+                data-testid="input-edit-invoice-date"
+              />
+            </div>
+
+            <div>
+              <Label>Invoice No (NABL)</Label>
+              <Input
+                value={editFormData.invoiceNoNABL || ""}
+                onChange={(e) => handleEditInputChange("invoiceNoNABL", e.target.value)}
+                placeholder="Enter Invoice No (NABL)"
+              />
+            </div>
+            <div>
+              <Label>Invoice No (SERVICE)</Label>
+              <Input
+                value={editFormData.invoiceNoSERVICE || ""}
+                onChange={(e) => handleEditInputChange("invoiceNoSERVICE", e.target.value)}
+                placeholder="Enter Invoice No (SERVICE)"
+              />
+            </div>
+            <div>
+              <Label>Invoice No (SPARE)</Label>
+              <Input
+                value={editFormData.invoiceNoSPARE || ""}
+                onChange={(e) => handleEditInputChange("invoiceNoSPARE", e.target.value)}
+                placeholder="Enter Invoice No (SPARE)"
+              />
+            </div>
+
+            <div>
+              <Label>Invoice Amount NABL (Basic)</Label>
+              <Input
+                type="number"
+                value={editFormData.invoiceAmountNABLBasic || ""}
+                onChange={(e) => handleEditInputChange("invoiceAmountNABLBasic", e.target.value)}
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <Label>Invoice Amount NABL (GST)</Label>
+              <Input
+                type="number"
+                value={editFormData.invoiceAmountNABLGst || ""}
+                onChange={(e) => handleEditInputChange("invoiceAmountNABLGst", e.target.value)}
+                placeholder="0"
+              />
+            </div>
+
+            <div>
+              <Label>Service Amount (Basic)</Label>
+              <Input
+                type="number"
+                value={editFormData.serviceAmountBasic || ""}
+                onChange={(e) => handleEditInputChange("serviceAmountBasic", e.target.value)}
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <Label>Service Amount (GST)</Label>
+              <Input
+                type="number"
+                value={editFormData.serviceAmountGst || ""}
+                onChange={(e) => handleEditInputChange("serviceAmountGst", e.target.value)}
+                placeholder="0"
+              />
+            </div>
+
+            <div>
+              <Label>Spare Amount (Basic)</Label>
+              <Input
+                type="number"
+                value={editFormData.spareAmountBasic || ""}
+                onChange={(e) => handleEditInputChange("spareAmountBasic", e.target.value)}
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <Label>Spare Amount (GST)</Label>
+              <Input
+                type="number"
+                value={editFormData.spareAmountGst || ""}
+                onChange={(e) => handleEditInputChange("spareAmountGst", e.target.value)}
+                placeholder="0"
+              />
+            </div>
+
+            <div>
+              <Label>Attachment (Service)</Label>
+              <Input
+                type="file"
+                onChange={(e) => setEditAttachmentServiceFile(e.target.files[0] || null)}
+                disabled={isEditSubmitting}
+              />
+              {editAttachmentServiceFile ? (
+                <p className="text-xs text-emerald-700 mt-1 truncate">Selected: {editAttachmentServiceFile.name}</p>
+              ) : editFormData.attachmentService ? (
+                <a
+                  href={editFormData.attachmentService}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-600 hover:text-blue-800 mt-1 inline-block"
+                >
+                  View current file
+                </a>
+              ) : null}
+            </div>
+            <div>
+              <Label>Attachment (Spare)</Label>
+              <Input
+                type="file"
+                onChange={(e) => setEditAttachmentSpareFile(e.target.files[0] || null)}
+                disabled={isEditSubmitting}
+              />
+              {editAttachmentSpareFile ? (
+                <p className="text-xs text-emerald-700 mt-1 truncate">Selected: {editAttachmentSpareFile.name}</p>
+              ) : editFormData.attachmentSpare ? (
+                <a
+                  href={editFormData.attachmentSpare}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-600 hover:text-blue-800 mt-1 inline-block"
+                >
+                  View current file
+                </a>
+              ) : null}
+            </div>
+            <div>
+              <Label>Attachment (NABL)</Label>
+              <Input
+                type="file"
+                onChange={(e) => setEditAttachmentNABLFile(e.target.files[0] || null)}
+                disabled={isEditSubmitting}
+              />
+              {editAttachmentNABLFile ? (
+                <p className="text-xs text-emerald-700 mt-1 truncate">Selected: {editAttachmentNABLFile.name}</p>
+              ) : editFormData.attachmentNABL ? (
+                <a
+                  href={editFormData.attachmentNABL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-600 hover:text-blue-800 mt-1 inline-block"
+                >
+                  View current file
+                </a>
+              ) : null}
+            </div>
+
+            <div className="md:col-span-2 flex justify-end space-x-4 pt-6 border-t border-gray-200 sticky bottom-0 bg-white py-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditingHistoryRow(null)}
+                data-testid="button-cancel-edit-invoice"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isEditSubmitting}
+                data-testid="button-submit-edit-invoice"
+                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-sm"
+              >
+                {isEditSubmitting ? (
+                  <span className="flex items-center">
+                    <Loader2Icon className="animate-spin mr-2" />
+                    Uploading & Saving...
+                  </span>
+                ) : (
+                  "Save"
                 )}
               </Button>
             </div>

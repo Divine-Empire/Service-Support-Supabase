@@ -99,6 +99,7 @@ export default function CalibrationCertificate() {
           phoneNumber: t.phone_number || "",
           companyName: t.company_name || "",
           CREName: t.cre_name || "",
+          enquiryType: t.enquiry_type || "",
           quotationNo: q?.quotation_no || "",
           quotationPdfLink: q?.quotation_pdf_link || "",
           invoiceNo: inv?.invoice_no_nabl || inv?.invoice_no_service || inv?.invoice_no_spare || "",
@@ -366,6 +367,7 @@ export default function CalibrationCertificate() {
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Action</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Date</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Ticket ID</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Enquiry Type</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">Company Name</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Person Name</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Phone Number</th>
@@ -378,7 +380,7 @@ export default function CalibrationCertificate() {
                       <tbody className="bg-white divide-y divide-blue-100">
                         {filteredPendingData.length === 0 ? (
                           <tr>
-                            <td colSpan={10} className="text-center py-8 bg-white" data-testid="text-no-pending">
+                            <td colSpan={11} className="text-center py-8 bg-white" data-testid="text-no-pending">
                               {fetchLoading ? (
                                 <div className="flex justify-center items-center text-blue-700">
                                   <LoaderIcon className="animate-spin w-8 h-8" />
@@ -404,6 +406,7 @@ export default function CalibrationCertificate() {
                               </td>
                               <td className="px-4 py-3 text-blue-900">{formatDate(ticket.timeStemp)}</td>
                               <td className="px-4 py-3 font-medium text-blue-800">{ticket.ticketId}</td>
+                              <td className="px-4 py-3 text-blue-900">{ticket.enquiryType || "-"}</td>
                               <td className="px-4 py-3 text-blue-900">{ticket.companyName || "-"}</td>
                               <td className="px-4 py-3 text-blue-900">{ticket.clientName}</td>
                               <td className="px-4 py-3 text-blue-900">{ticket.phoneNumber}</td>
@@ -483,15 +486,21 @@ export default function CalibrationCertificate() {
                                   <p className="text-blue-900">{ticket.phoneNumber}</p>
                                 </div>
                                 <div>
-                                  <p className="text-gray-500 font-medium">Quotation No.</p>
-                                  <p className="text-blue-900">{ticket.quotationNo || "N/A"}</p>
+                                  <p className="text-gray-500 font-medium">Enquiry Type</p>
+                                  <p className="text-blue-900">{ticket.enquiryType || "N/A"}</p>
                                 </div>
                               </div>
                               <div className="grid grid-cols-2 gap-3 text-sm">
                                 <div>
+                                  <p className="text-gray-500 font-medium">Quotation No.</p>
+                                  <p className="text-blue-900">{ticket.quotationNo || "N/A"}</p>
+                                </div>
+                                <div>
                                   <p className="text-gray-500 font-medium">Invoice No.</p>
                                   <p className="text-blue-900">{ticket.invoiceNo || "N/A"}</p>
                                 </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3 text-sm">
                                 <div>
                                   <p className="text-gray-500 font-medium">Quotation Copy</p>
                                   {ticket.quotationPdfLink ? (
@@ -522,6 +531,7 @@ export default function CalibrationCertificate() {
                         <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Date</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Ticket ID</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Enquiry Type</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">Company Name</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Person Name</th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Phone Number</th>
@@ -543,7 +553,7 @@ export default function CalibrationCertificate() {
                       <tbody className="bg-white divide-y divide-blue-100">
                         {filteredHistoryData.length === 0 ? (
                           <tr>
-                            <td colSpan={18} className="text-center py-8 bg-white" data-testid="text-no-history">
+                            <td colSpan={19} className="text-center py-8 bg-white" data-testid="text-no-history">
                               {fetchLoading ? (
                                 <div className="flex justify-center items-center text-blue-700">
                                   <LoaderIcon className="animate-spin w-8 h-8" />
@@ -558,6 +568,7 @@ export default function CalibrationCertificate() {
                             <tr key={ind} className={ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"}>
                               <td className="px-4 py-3 text-blue-900">{formatDate(ticket.timeStemp)}</td>
                               <td className="px-4 py-3 font-medium text-blue-800">{ticket.ticketId}</td>
+                              <td className="px-4 py-3 text-blue-900">{ticket.enquiryType || "-"}</td>
                               <td className="px-4 py-3 text-blue-900">{ticket.companyName || "-"}</td>
                               <td className="px-4 py-3 text-blue-900">{ticket.clientName}</td>
                               <td className="px-4 py-3 text-blue-900">{ticket.phoneNumber}</td>
@@ -659,15 +670,21 @@ export default function CalibrationCertificate() {
                                   <p className="text-blue-900">{ticket.phoneNumber}</p>
                                 </div>
                                 <div>
-                                  <p className="text-gray-500 font-medium">Quotation No.</p>
-                                  <p className="text-blue-900">{ticket.quotationNo || "N/A"}</p>
+                                  <p className="text-gray-500 font-medium">Enquiry Type</p>
+                                  <p className="text-blue-900">{ticket.enquiryType || "N/A"}</p>
                                 </div>
                               </div>
                               <div className="grid grid-cols-2 gap-3 text-sm">
                                 <div>
+                                  <p className="text-gray-500 font-medium">Quotation No.</p>
+                                  <p className="text-blue-900">{ticket.quotationNo || "N/A"}</p>
+                                </div>
+                                <div>
                                   <p className="text-gray-500 font-medium">Invoice No.</p>
                                   <p className="text-blue-900">{ticket.invoiceNo || "N/A"}</p>
                                 </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3 text-sm">
                                 <div>
                                   <p className="text-gray-500 font-medium">Quotation Copy</p>
                                   {ticket.quotationPdfLink ? (

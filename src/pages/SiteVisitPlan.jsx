@@ -279,6 +279,7 @@ export default function SiteVisitPlan() {
           engineerAssign: t.engineer_assign || "",
           siteName: t.site_address || "",
           warrantyCheck: warrantyByTicket.get(t.ticket_id) || "",
+          enquiryType: t.enquiry_type || "",
         };
 
         const rows = siteVisitRowsByTicket.get(t.ticket_id) || [];
@@ -854,6 +855,9 @@ export default function SiteVisitPlan() {
                           Ticket-ID
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
+                          Enquiry Type
+                        </th>
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                           Source of enquiry
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
@@ -904,7 +908,7 @@ export default function SiteVisitPlan() {
                       {filteredPendingData.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={18}
+                            colSpan={19}
                             className="text-center py-8 bg-white"
                             data-testid="text-no-pending"
                           >
@@ -943,6 +947,9 @@ export default function SiteVisitPlan() {
                             </td>
                             <td className="px-4 py-3 font-medium text-blue-800">
                               {ticket.ticketId}
+                            </td>
+                            <td className="px-4 py-3 text-blue-900">
+                              {ticket.enquiryType || ""}
                             </td>
                             <td className="px-4 py-3 text-blue-900">
                               {ticket.sourceOfEnquiry || ""}
@@ -1166,6 +1173,9 @@ export default function SiteVisitPlan() {
                           Ticket-ID
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
+                          Enquiry Type
+                        </th>
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                           Source of enquiry
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
@@ -1219,7 +1229,7 @@ export default function SiteVisitPlan() {
                       {filteredHistoryData.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={18}
+                            colSpan={19}
                             className="text-center py-8 bg-white"
                             data-testid="text-no-history"
                           >
@@ -1247,6 +1257,9 @@ export default function SiteVisitPlan() {
                             </td>
                             <td className="px-4 py-3 font-medium text-blue-800">
                               {ticket.ticketId}
+                            </td>
+                            <td className="px-4 py-3 text-blue-900">
+                              {ticket.enquiryType || ""}
                             </td>
                             <td className="px-4 py-3 text-blue-900">
                               {ticket.sourceOfEnquiry || ""}
@@ -1397,6 +1410,16 @@ export default function SiteVisitPlan() {
                                   {ticket.transportation || "N/A"}
                                 </span>
                               </div>
+                            </div>
+
+                            {/* Enquiry Type */}
+                            <div>
+                              <p className="text-gray-500 font-medium text-sm">
+                                Enquiry Type
+                              </p>
+                              <p className="text-blue-900">
+                                {ticket.enquiryType || "N/A"}
+                              </p>
                             </div>
                           </CardContent>
                         </Card>

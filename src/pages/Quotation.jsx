@@ -149,6 +149,7 @@ export default function Quotation() {
           ticketId: t.ticket_id,
           ticketUuid: t.uuid,
           timeStemp: t.created_at || "",
+          enquiryType: t.enquiry_type || "",
           sourceOfEnquiry: t.source_of_enquiry || "",
           callType: t.call_type || "",
           enquiryReceiverName: t.enquiry_receiver_name || "",
@@ -719,6 +720,9 @@ export default function Quotation() {
                           Ticket-ID
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
+                          Enquiry Type
+                        </th>
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                           Source of enquiry
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
@@ -784,7 +788,7 @@ export default function Quotation() {
                       {fetchLoading ? (
                         <tr>
                           <td
-                            colSpan={22}
+                            colSpan={23}
                             className="text-center py-8 bg-white"
                           >
                             <div className="flex justify-center items-center text-blue-700">
@@ -795,7 +799,7 @@ export default function Quotation() {
                       ) : filteredPendingData.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={22}
+                            colSpan={23}
                             className="text-center py-8 bg-white"
                             data-testid="text-no-pending"
                           >
@@ -828,6 +832,9 @@ export default function Quotation() {
                             </td>
                             <td className="px-4 py-3 font-medium text-blue-800">
                               {ticket.ticketId}
+                            </td>
+                            <td className="px-4 py-3 text-blue-900">
+                              {ticket.enquiryType || "-"}
                             </td>
                             <td className="px-4 py-3 text-blue-900">
                               {ticket.sourceOfEnquiry || ""}
@@ -1161,6 +1168,9 @@ export default function Quotation() {
                           Ticket-ID
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
+                          Enquiry Type
+                        </th>
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                           Source of enquiry
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
@@ -1229,7 +1239,7 @@ export default function Quotation() {
                       {fetchLoading ? (
                         <tr>
                           <td
-                            colSpan={role === "admin" ? 23 : 22}
+                            colSpan={role === "admin" ? 24 : 23}
                             className="text-center py-8 bg-white"
                           >
                             <div className="flex justify-center items-center text-blue-700">
@@ -1241,7 +1251,7 @@ export default function Quotation() {
                       ) : filteredHistoryData.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={role === "admin" ? 23 : 22}
+                            colSpan={role === "admin" ? 24 : 23}
                             className="text-center py-8 bg-white"
                             data-testid="text-no-history"
                           >
@@ -1277,6 +1287,9 @@ export default function Quotation() {
                               </td>
                               <td className="px-4 py-3 font-medium text-blue-800">
                                 {ticket.ticketId}
+                              </td>
+                              <td className="px-4 py-3 text-blue-900">
+                                {ticket.enquiryType || "-"}
                               </td>
                               <td className="px-4 py-3 text-blue-900">
                                 {ticket.sourceOfEnquiry || ""}
@@ -1429,6 +1442,18 @@ export default function Quotation() {
                                 </p>
                                 <p className="text-blue-900">
                                   {ticket.phoneNumber}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Enquiry Type */}
+                            <div className="grid grid-cols-2 gap-3 text-sm">
+                              <div>
+                                <p className="text-gray-500 font-medium">
+                                  Enquiry Type
+                                </p>
+                                <p className="text-blue-900">
+                                  {ticket.enquiryType || "N/A"}
                                 </p>
                               </div>
                             </div>

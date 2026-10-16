@@ -63,6 +63,16 @@ export default function FollowUp() {
   const [isCancelled, setIsCancelled] = useState(false);
   const [isUploadingClientAttachment, setIsUploadingClientAttachment] = useState(false);
 
+  // --- History tab: "Client Approval" attachment edit modal state ---
+  // Scoped separately from the Pending tab's Follow-Up form state above,
+  // since this edits one specific sss_follow_up row (by its own id), not a
+  // new follow-up submission.
+  const [editingHistoryRow, setEditingHistoryRow] = useState(null);
+  const [editAttachmentFile, setEditAttachmentFile] = useState(null);
+  const [editAttachmentUrl, setEditAttachmentUrl] = useState("");
+  const [isUploadingEditAttachment, setIsUploadingEditAttachment] = useState(false);
+  const [isSavingEditAttachment, setIsSavingEditAttachment] = useState(false);
+
   const fetchData = async () => {
     setFetchLoading(true);
     try {
@@ -153,6 +163,7 @@ export default function FollowUp() {
           ticketUuid: t.uuid,
           timeStemp: t.created_at || "",
           sourceOfEnquiry: t.source_of_enquiry || "",
+          enquiryType: t.enquiry_type || "",
           callType: t.call_type || "",
           enquiryReceiverName: t.enquiry_receiver_name || "",
           clientType: t.client_type || "",
@@ -316,6 +327,98 @@ export default function FollowUp() {
       handleInputChange("clientAttachmentUrl", "");
     } finally {
       setIsUploadingClientAttachment(false);
+    }
+  };
+
+  // --- History tab: "Client Approval" attachment edit modal handlers ---
+  const handleEditHistoryAttachmentClick = (row) => {
+    setEditingHistoryRow(row);
+    setEditAttachmentUrl(row["client-attachment"] || "");
+    setEditAttachmentFile(null);
+    setIsUploadingEditAttachment(false);
+  };
+
+  const closeEditHistoryAttachmentModal = () => {
+    setEditingHistoryRow(null);
+    setEditAttachmentFile(null);
+    setEditAttachmentUrl("");
+    setIsUploadingEditAttachment(false);
+    setIsSavingEditAttachment(false);
+  };
+
+  const handleEditAttachmentFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setIsUploadingEditAttachment(true);
+    try {
+      // Reuses the same Supabase storage bucket/path pattern as
+      // uploadImageToDrive (the Pending tab's Follow-Up form upload), but
+      // keyed off the History row's own ticket_id rather than selectedTicket.
+      const path = `follow_up/${editingHistoryRow?.ticketId || editingHistoryRow?.ticket_id}_${Date.now()}_${file.name}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("ticket_enquiry")
+        .upload(path, file, { contentType: file.type });
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from("ticket_enquiry").getPublicUrl(path);
+
+      setEditAttachmentFile(file);
+      setEditAttachmentUrl(data.publicUrl);
+      toast({
+        title: "Success",
+        description: "Client Approval uploaded successfully",
+      });
+    } catch (error) {
+      console.error("Error uploading edit attachment:", error);
+      e.target.value = null;
+      toast({
+        title: "Error",
+        description: error.message || "Failed to upload image",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploadingEditAttachment(false);
+    }
+  };
+
+  const handleSaveEditHistoryAttachment = async () => {
+    if (!editingHistoryRow?.id) {
+      toast({
+        title: "Error",
+        description: "Missing follow-up row id, cannot save",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSavingEditAttachment(true);
+    try {
+      const { error } = await supabase
+        .from("sss_follow_up")
+        .update({ client_attachment_url: editAttachmentUrl || null })
+        .eq("id", editingHistoryRow.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Client Approval updated successfully",
+      });
+
+      closeEditHistoryAttachmentModal();
+      fetchData();
+    } catch (error) {
+      console.error("Error updating Client Approval:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update Client Approval",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingEditAttachment(false);
     }
   };
 
@@ -601,6 +704,7 @@ export default function FollowUp() {
       what_did_the_customer_say: item.what_did_customer_say || "",
       "client-attachment": item.client_attachment_url || "",
       sourceOfEnquiry: ticketDetails.sourceOfEnquiry || "",
+      enquiryType: ticketDetails.enquiryType || "",
       callType: ticketDetails.callType || "",
       enquiryReceiverName: ticketDetails.enquiryReceiverName || "",
       clientType: ticketDetails.clientType || "",
@@ -821,6 +925,9 @@ export default function FollowUp() {
                           Ticket-ID
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
+                          Enquiry Type
+                        </th>
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                           Source of enquiry
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
@@ -898,7 +1005,7 @@ export default function FollowUp() {
                       {finalFilteredPendingData.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={27}
+                            colSpan={28}
                             className="text-center py-8 bg-white"
                             data-testid="text-no-pending"
                           >
@@ -937,6 +1044,9 @@ export default function FollowUp() {
                             </td>
                             <td className="px-4 py-3 font-medium text-blue-800">
                               {ticket.ticketId}
+                            </td>
+                            <td className="px-4 py-3 text-blue-900">
+                              {ticket.enquiryType || "-"}
                             </td>
                             <td className="px-4 py-3 text-blue-900">
                               {ticket.sourceOfEnquiry || ""}
@@ -1077,6 +1187,9 @@ export default function FollowUp() {
                                 {/* NEW: Quotation No in Mobile View */}
                                 <p className="text-sm text-gray-700 font-medium">
                                   Quote: {ticket.quotationNo || "N/A"}
+                                </p>
+                                <p className="text-sm text-gray-700">
+                                  Enquiry Type: {ticket.enquiryType || "N/A"}
                                 </p>
                                 <p className="text-sm text-gray-600">
                                   {ticket.clientName}
@@ -1269,11 +1382,17 @@ export default function FollowUp() {
                   <table className="hidden sm:block w-full">
                     <thead className="sticky top-0 z-10">
                       <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
+                          Action
+                        </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                           Date
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                           Ticket-ID
+                        </th>
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
+                          Enquiry Type
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                           Source of enquiry
@@ -1341,7 +1460,7 @@ export default function FollowUp() {
                       {finalFilteredHistoryData.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={22}
+                            colSpan={24}
                             className="text-center py-8 bg-white"
                             data-testid="text-no-history"
                           >
@@ -1365,11 +1484,25 @@ export default function FollowUp() {
                                 ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"
                               }
                             >
+                              <td className="px-4 py-3">
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleEditHistoryAttachmentClick(ticket)}
+                                  variant="outline"
+                                  className="bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 hover:from-blue-100 hover:to-indigo-100 hover:text-blue-700 transition-all duration-300 border border-blue-200 hover:border-blue-300 rounded-lg px-3 py-1.5 shadow-sm hover:shadow-md group"
+                                  data-testid={`button-edit-history-${ind}`}
+                                >
+                                  <span className="font-medium">Edit</span>
+                                </Button>
+                              </td>
                               <td className="px-4 py-3 font-medium text-blue-800">
                                 {formatDate(ticket.timeStemp)}
                               </td>
                               <td className="px-4 py-3 font-medium text-blue-800">
                                 {ticket.ticketId}
+                              </td>
+                              <td className="px-4 py-3 text-blue-900">
+                                {ticket.enquiryType || "-"}
                               </td>
                               <td className="px-4 py-3 text-blue-900">
                                 {ticket.sourceOfEnquiry || ""}
@@ -1474,16 +1607,29 @@ export default function FollowUp() {
                         >
                           <CardContent className="p-4 space-y-3">
                             {/* Header */}
-                            <div>
-                              <h3 className="font-bold text-blue-800 text-lg">
-                                {ticket.ticket_id}
-                              </h3>
-                              <p className="text-sm text-gray-700 font-medium">
-                                Quote: {ticket.quotationNo || "N/A"}
-                              </p>
-                              <p className="text-sm text-gray-500">
-                                {formatDate(ticket.timestamp)}
-                              </p>
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <h3 className="font-bold text-blue-800 text-lg">
+                                  {ticket.ticket_id}
+                                </h3>
+                                <p className="text-sm text-gray-700 font-medium">
+                                  Quote: {ticket.quotationNo || "N/A"}
+                                </p>
+                                <p className="text-sm text-gray-700">
+                                  Enquiry Type: {ticket.enquiryType || "N/A"}
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                  {formatDate(ticket.timestamp)}
+                                </p>
+                              </div>
+                              <Button
+                                size="sm"
+                                onClick={() => handleEditHistoryAttachmentClick(ticket)}
+                                variant="outline"
+                                className="bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 hover:from-blue-100 hover:to-indigo-100 border border-blue-200"
+                              >
+                                Edit
+                              </Button>
                             </div>
 
                             {/* Stage & Engineer */}
@@ -1705,6 +1851,69 @@ export default function FollowUp() {
             </>
           )}
         </form>
+      </Modal>
+
+      {/* History tab: Client Approval attachment edit modal (Task B) */}
+      <Modal
+        isOpen={!!editingHistoryRow}
+        onClose={closeEditHistoryAttachmentModal}
+        title="Edit Client Approval"
+        size="md"
+      >
+        <div className="space-y-4">
+          <div>
+            <Label className="flex items-center gap-2">
+              Client Approval
+              {isUploadingEditAttachment && (
+                <LoaderIcon className="animate-spin w-4 h-4 text-blue-600" />
+              )}
+            </Label>
+            <Input
+              type="file"
+              disabled={isUploadingEditAttachment || isSavingEditAttachment}
+              onChange={handleEditAttachmentFileChange}
+              data-testid="edit-history-approval-attachment"
+            />
+            {isUploadingEditAttachment && (
+              <p className="text-xs text-blue-600 mt-1">Uploading file, please wait...</p>
+            )}
+            {editAttachmentUrl && (
+              <p className="mt-1 text-sm text-green-600">
+                Currently uploaded:{" "}
+                <a
+                  href={editAttachmentUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-green-800 font-medium"
+                >
+                  View File
+                </a>
+              </p>
+            )}
+          </div>
+
+          <div className="flex space-x-4 pt-2">
+            <Button
+              type="button"
+              onClick={handleSaveEditHistoryAttachment}
+              disabled={isUploadingEditAttachment || isSavingEditAttachment}
+              data-testid="button-save-edit-history-attachment"
+              className="px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-70"
+            >
+              {isSavingEditAttachment && <Loader2Icon className="animate-spin" />}
+              Save
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeEditHistoryAttachmentModal}
+              disabled={isSavingEditAttachment}
+              data-testid="button-cancel-edit-history-attachment"
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

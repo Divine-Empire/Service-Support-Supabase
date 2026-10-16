@@ -42,6 +42,17 @@ export default function OrderReceived() {
   const [isUploadingAdvancePaymentAttachment, setIsUploadingAdvancePaymentAttachment] = useState(false);
   const [searchItem, setSearchItem] = useState("");
   const [enquiryTypeFilter, setEnquiryTypeFilter] = useState("all");
+
+  // History tab "Edit" feature — scoped state, kept fully separate from the
+  // main create-flow (formData/selectedTicket/showOrderReceivedModal above)
+  // so the two modals never collide.
+  const [showEditHistoryModal, setShowEditHistoryModal] = useState(false);
+  const [editingHistoryRow, setEditingHistoryRow] = useState(null);
+  const [editFormData, setEditFormData] = useState({});
+  const [isSavingEditHistory, setIsSavingEditHistory] = useState(false);
+  const [isUploadingEditAdvancePayment, setIsUploadingEditAdvancePayment] = useState(false);
+  const [isUploadingEditSeniorApproval, setIsUploadingEditSeniorApproval] = useState(false);
+
   const { toast } = useToast();
 
   const fetchData = async () => {
@@ -268,8 +279,8 @@ export default function OrderReceived() {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const uploadToStorage = async (file) => {
-    const path = `order_received/${selectedTicket?.ticketId}_${Date.now()}_${file.name}`;
+  const uploadToStorage = async (file, ticketIdOverride) => {
+    const path = `order_received/${ticketIdOverride || selectedTicket?.ticketId}_${Date.now()}_${file.name}`;
 
     const { error: uploadError } = await supabase.storage
       .from("ticket_enquiry")
@@ -330,6 +341,115 @@ export default function OrderReceived() {
       });
     } finally {
       setIsUploadingAdvancePaymentAttachment(false);
+    }
+  };
+
+  // --- History tab "Edit" feature (Acceptance Via / Advance Payment
+  // Attachment / Senior Approval only) ---
+
+  const handleEditHistoryClick = (ticket) => {
+    setEditingHistoryRow(ticket);
+    setEditFormData({
+      acceptanceVia: ticket.acceptanceVia || "",
+      advancePaymentAttachmentUrl: ticket.advancePaymentAttachment || "",
+      seniorApprovalUrl: ticket.seniorApproval || "",
+    });
+    setShowEditHistoryModal(true);
+  };
+
+  const handleEditInputChange = (field, value) => {
+    setEditFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleEditAdvancePaymentAttachmentChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setIsUploadingEditAdvancePayment(true);
+    try {
+      const url = await uploadToStorage(file, editingHistoryRow?.ticketId);
+      handleEditInputChange("advancePaymentAttachmentUrl", url);
+      toast({
+        title: "Success",
+        description: "Advance Payment Attachment uploaded successfully",
+      });
+    } catch (error) {
+      console.error(error);
+      e.target.value = null;
+      toast({
+        title: "Error",
+        description: "Failed to upload Advance Payment Attachment",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploadingEditAdvancePayment(false);
+    }
+  };
+
+  const handleEditSeniorApprovalChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setIsUploadingEditSeniorApproval(true);
+    try {
+      const url = await uploadToStorage(file, editingHistoryRow?.ticketId);
+      handleEditInputChange("seniorApprovalUrl", url);
+      toast({
+        title: "Success",
+        description: "Senior Approval uploaded successfully",
+      });
+    } catch (error) {
+      console.error(error);
+      e.target.value = null;
+      toast({
+        title: "Error",
+        description: "Failed to upload Senior Approval",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploadingEditSeniorApproval(false);
+    }
+  };
+
+  const handleSaveEditHistory = async () => {
+    if (!editingHistoryRow?.ticketUuid) {
+      toast({
+        title: "Error",
+        description: "Missing ticket reference for this row",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSavingEditHistory(true);
+    try {
+      const { error } = await supabase
+        .from("sss_order_received")
+        .update({
+          acceptance_via: editFormData.acceptanceVia || null,
+          advance_payment_attachment: editFormData.advancePaymentAttachmentUrl || null,
+          senior_approval: editFormData.seniorApprovalUrl || null,
+        })
+        .eq("ticket_uuid", editingHistoryRow.ticketUuid);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Order Received details updated successfully",
+      });
+      setShowEditHistoryModal(false);
+      setEditingHistoryRow(null);
+      fetchData();
+    } catch (error) {
+      console.error("Error updating order received details:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update details",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingEditHistory(false);
     }
   };
 
@@ -503,6 +623,9 @@ export default function OrderReceived() {
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
                             Ticket-ID
                           </th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[130px] sticky top-0">
+                            Enquiry Type
+                          </th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                             Client Name
                           </th>
@@ -532,7 +655,7 @@ export default function OrderReceived() {
                       <tbody className="bg-white divide-y divide-blue-100">
                         {fetchLoading ? (
                           <tr>
-                            <td colSpan={11} className="text-center py-8 bg-white">
+                            <td colSpan={12} className="text-center py-8 bg-white">
                               <div className="flex justify-center items-center text-blue-700">
                                 <LoaderIcon className="animate-spin w-8 h-8 mr-2" />
                               </div>
@@ -541,7 +664,7 @@ export default function OrderReceived() {
                         ) : filteredPendingData.length === 0 ? (
                           <tr>
                             <td
-                              colSpan={11}
+                              colSpan={12}
                               className="text-center py-8 bg-white"
                               data-testid="text-no-pending"
                             >
@@ -574,6 +697,9 @@ export default function OrderReceived() {
                               </td>
                               <td className="px-4 py-3 font-medium text-blue-800">
                                 {ticket.ticketId}
+                              </td>
+                              <td className="px-4 py-3 text-blue-900">
+                                {ticket.enquiryType || "-"}
                               </td>
                               <td className="px-4 py-3 text-blue-900">
                                 {ticket.clientName || ""}
@@ -674,12 +800,23 @@ export default function OrderReceived() {
                               <div className="grid grid-cols-2 gap-3 text-sm">
                                 <div>
                                   <p className="text-gray-500 font-medium">
+                                    Enquiry Type
+                                  </p>
+                                  <p className="text-blue-900">
+                                    {ticket.enquiryType || "N/A"}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-500 font-medium">
                                     Company
                                   </p>
                                   <p className="text-blue-900">
                                     {ticket.companyName}
                                   </p>
                                 </div>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-3 text-sm">
                                 <div>
                                   <p className="text-gray-500 font-medium">
                                     Phone
@@ -769,11 +906,17 @@ export default function OrderReceived() {
                     <table className="hidden sm:block w-full">
                       <thead className="sticky top-0 z-10">
                         <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[100px] sticky top-0">
+                            Action
+                          </th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
                             Date
                           </th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
                             Ticket-ID
+                          </th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[130px] sticky top-0">
+                            Enquiry Type
                           </th>
                           <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                             Client Name
@@ -813,7 +956,7 @@ export default function OrderReceived() {
                       <tbody className="bg-white divide-y divide-blue-100">
                         {fetchLoading ? (
                           <tr>
-                            <td colSpan={13} className="text-center py-8 bg-white">
+                            <td colSpan={15} className="text-center py-8 bg-white">
                               <div className="flex justify-center items-center text-blue-700">
                                 <LoaderIcon className="animate-spin w-8 h-8 mr-2" />
                               </div>
@@ -822,7 +965,7 @@ export default function OrderReceived() {
                         ) : filteredHistoryData.length === 0 ? (
                           <tr>
                             <td
-                              colSpan={13}
+                              colSpan={15}
                               className="text-center py-8 bg-white"
                               data-testid="text-no-history"
                             >
@@ -839,11 +982,25 @@ export default function OrderReceived() {
                                 ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"
                               }
                             >
+                              <td className="px-4 py-3">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-700 transition-all duration-300 border border-slate-200 hover:border-slate-300 rounded-lg px-2.5 py-1 text-xs shadow-sm"
+                                  onClick={() => handleEditHistoryClick(ticket)}
+                                  data-testid={`button-edit-history-${ticket.ticketId}`}
+                                >
+                                  Edit
+                                </Button>
+                              </td>
                               <td className="px-4 py-3 font-medium text-blue-800">
                                 {formatDate(ticket.timeStemp)}
                               </td>
                               <td className="px-4 py-3 font-medium text-blue-800">
                                 {ticket.ticketId}
+                              </td>
+                              <td className="px-4 py-3 text-blue-900">
+                                {ticket.enquiryType || "-"}
                               </td>
                               <td className="px-4 py-3 text-blue-900">
                                 {ticket.clientName || ""}
@@ -939,16 +1096,34 @@ export default function OrderReceived() {
                               } border-l-4 border-l-blue-500`}
                           >
                             <CardContent className="p-4 space-y-3">
-                              <div>
-                                <h3 className="font-bold text-blue-800 text-lg">
-                                  {ticket.ticketId}
-                                </h3>
-                                <p className="text-sm text-gray-600">
-                                  {ticket.clientName}
-                                </p>
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <h3 className="font-bold text-blue-800 text-lg">
+                                    {ticket.ticketId}
+                                  </h3>
+                                  <p className="text-sm text-gray-600">
+                                    {ticket.clientName}
+                                  </p>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 text-xs px-2.5 py-1"
+                                  onClick={() => handleEditHistoryClick(ticket)}
+                                >
+                                  Edit
+                                </Button>
                               </div>
 
                               <div className="grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                  <p className="text-gray-500 font-medium">
+                                    Enquiry Type
+                                  </p>
+                                  <p className="text-blue-900">
+                                    {ticket.enquiryType || "N/A"}
+                                  </p>
+                                </div>
                                 <div>
                                   <p className="text-gray-500 font-medium">
                                     Payment Term
@@ -1311,6 +1486,153 @@ export default function OrderReceived() {
               </Button>
             </div>
           </form>
+        </div>
+      </Modal>
+
+      {/* History tab Edit Modal — edits only Acceptance Via / Advance
+          Payment Attachment / Senior Approval on an existing
+          sss_order_received row. Kept fully separate from the create-flow
+          "Order Received" modal above. */}
+      <Modal
+        isOpen={showEditHistoryModal}
+        onClose={() => {
+          setShowEditHistoryModal(false);
+          setEditingHistoryRow(null);
+        }}
+        title="Edit Order Received Details"
+        size="lg"
+      >
+        <div className="max-h-[calc(100vh-200px)] overflow-y-auto px-4 pb-4 space-y-6">
+          <div>
+            <Label>Ticket ID</Label>
+            <Input
+              value={editingHistoryRow?.ticketId || ""}
+              disabled
+              className="bg-slate-50"
+            />
+          </div>
+
+          <div>
+            <Label>Acceptance Via</Label>
+            <Select
+              value={editFormData.acceptanceVia || undefined}
+              onValueChange={(value) => handleEditInputChange("acceptanceVia", value)}
+            >
+              <SelectTrigger data-testid="select-edit-acceptance-via">
+                <SelectValue placeholder="Acceptance Via" />
+              </SelectTrigger>
+              <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
+                {masterData.length > 0 && masterData[0]["Acceptance Via"] ? (
+                  masterData[0]["Acceptance Via"].map(
+                    (item, ind) =>
+                      item && (
+                        <SelectItem
+                          key={ind}
+                          value={item}
+                          className="hover:bg-blue-50 focus:bg-blue-50"
+                        >
+                          {item}
+                        </SelectItem>
+                      )
+                  )
+                ) : (
+                  <SelectItem value="loading" disabled>
+                    Loading options...
+                  </SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label className="flex items-center gap-2">
+              Advance Payment Attachment
+              {isUploadingEditAdvancePayment && (
+                <LoaderIcon className="animate-spin w-4 h-4 text-blue-600" />
+              )}
+            </Label>
+            <Input
+              type="file"
+              disabled={isUploadingEditAdvancePayment}
+              onChange={handleEditAdvancePaymentAttachmentChange}
+              data-testid="input-edit-advance-payment-attachment"
+            />
+            {isUploadingEditAdvancePayment && (
+              <p className="text-xs text-blue-600 mt-1">Uploading file, please wait...</p>
+            )}
+            {editFormData.advancePaymentAttachmentUrl && (
+              <p className="mt-1 text-sm text-green-600">
+                Uploaded:{" "}
+                <a
+                  href={editFormData.advancePaymentAttachmentUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-green-800 font-medium"
+                >
+                  View File
+                </a>
+              </p>
+            )}
+          </div>
+
+          <div>
+            <Label className="flex items-center gap-2">
+              Senior Approval
+              {isUploadingEditSeniorApproval && (
+                <LoaderIcon className="animate-spin w-4 h-4 text-blue-600" />
+              )}
+            </Label>
+            <Input
+              type="file"
+              disabled={isUploadingEditSeniorApproval}
+              onChange={handleEditSeniorApprovalChange}
+              data-testid="input-edit-senior-approval"
+            />
+            {isUploadingEditSeniorApproval && (
+              <p className="text-xs text-blue-600 mt-1">Uploading file, please wait...</p>
+            )}
+            {editFormData.seniorApprovalUrl && (
+              <p className="mt-1 text-sm text-green-600">
+                Uploaded:{" "}
+                <a
+                  href={editFormData.seniorApprovalUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-green-800 font-medium"
+                >
+                  View File
+                </a>
+              </p>
+            )}
+          </div>
+
+          <div className="flex space-x-4 pt-2 sticky bottom-0 bg-white py-4">
+            <Button
+              type="button"
+              onClick={handleSaveEditHistory}
+              disabled={
+                isSavingEditHistory ||
+                isUploadingEditAdvancePayment ||
+                isUploadingEditSeniorApproval
+              }
+              data-testid="button-save-edit-history"
+              className="px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-70"
+            >
+              {isSavingEditHistory && <Loader2Icon className="animate-spin" />}
+              Save
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setShowEditHistoryModal(false);
+                setEditingHistoryRow(null);
+              }}
+              data-testid="button-cancel-edit-history"
+            >
+              Cancel
+            </Button>
+          </div>
         </div>
       </Modal>
     </div>
