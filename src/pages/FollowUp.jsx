@@ -30,13 +30,15 @@ import { supabase } from "../lib/supabase/client";
 export default function FollowUp() {
   const [activeTab, setActiveTab] = useState("pending");
   const [dateFilterTab, setDateFilterTab] = useState("");
+  // Independent of the Today/Overdue/Pending chips (combined with them via
+  // AND): keeps only rows whose last call was logged today.
+  const [lastCallTodayOnly, setLastCallTodayOnly] = useState(false);
 
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [formData, setFormData] = useState({});
   const [followUpData, setFollowUpData] = useState([]);
   const [searchItem, setSearchItem] = useState("");
-  const [clientAttachmentFilter, setClientAttachmentFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
 
   const { toast } = useToast();
@@ -744,33 +746,53 @@ export default function FollowUp() {
     })
     .reverse();
 
-  const filterByDateCategory = (data) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+  // Pending-tab rows carry nextCallDate/lastCallDate (from the ticket's
+  // latest follow_up log), History-tab rows are raw sss_follow_up rows
+  // (next_date_of_call/created_at). Both are normalized to a local
+  // YYYY-MM-DD string so comparisons are timezone-safe.
+  const toLocalYmd = (raw) => {
+    if (!raw) return "";
+    const s = String(raw);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return "";
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const todayYmd = toLocalYmd(new Date());
+  const nextCallYmd = (item) => toLocalYmd(item.nextCallDate ?? item.next_date_of_call);
+  const lastCallYmd = (item) => toLocalYmd(item.lastCallDate ?? item.created_at);
 
-    return data.filter((item) => {
-      const nextDate = new Date(item.nextDateOfCall);
-      nextDate.setHours(0, 0, 0, 0);
-
-      if (dateFilterTab === "today") {
-        return nextDate.getTime() === today.getTime();
-      } else if (dateFilterTab === "upcoming") {
-        return nextDate.getTime() > today.getTime();
-      } else if (dateFilterTab === "overdue") {
-        return nextDate.getTime() < today.getTime();
-      }
-      return true;
-    });
+  const matchesDateChip = (item, chip) => {
+    const next = nextCallYmd(item);
+    if (chip === "today") return next === todayYmd;
+    if (chip === "overdue") return next !== "" && next < todayYmd;
+    // Pending: no next call date yet, or one that is still ahead.
+    if (chip === "pending") return next === "" || next > todayYmd;
+    return true;
   };
 
-  const attachmentFilteredPendingData = filteredPendingData.filter((item) => {
-    if (clientAttachmentFilter === "hasAttachment") {
-      return item.clientAttachment && String(item.clientAttachment).trim() !== "";
-    } else if (clientAttachmentFilter === "noAttachment") {
-      return !item.clientAttachment || String(item.clientAttachment).trim() === "";
-    }
-    return true;
-  });
+  const filterByDateCategory = (data) =>
+    data.filter(
+      (item) =>
+        matchesDateChip(item, dateFilterTab) &&
+        (!lastCallTodayOnly || lastCallYmd(item) === todayYmd)
+    );
+
+  const chipCount = (data, chip) =>
+    data.filter(
+      (item) =>
+        matchesDateChip(item, chip) &&
+        (!lastCallTodayOnly || lastCallYmd(item) === todayYmd)
+    ).length;
+  const lastCallTodayCount = (data) =>
+    data.filter(
+      (item) =>
+        matchesDateChip(item, dateFilterTab) && lastCallYmd(item) === todayYmd
+    ).length;
+
+  const attachmentFilteredPendingData = filteredPendingData;
+
+  const chipBase = activeTab === "history" ? filteredHistoryData : attachmentFilteredPendingData;
 
   const finalFilteredPendingDataa = filterByDateCategory(attachmentFilteredPendingData);
   const finalFilteredHistoryDataa = filterByDateCategory(filteredHistoryData);
@@ -816,10 +838,13 @@ export default function FollowUp() {
                 </TabsTrigger>
               </TabsList>
 
-              <div className="flex gap-2 bg-gradient-to-r from-green-50 to-teal-50 border border-green-200 p-1 rounded-lg w-fit">
+              <div className="flex flex-wrap gap-2 bg-gradient-to-r from-green-50 to-teal-50 border border-green-200 p-1 rounded-lg w-fit">
                 <button
                   type="button"
-                  onClick={() => setDateFilterTab("")}
+                  onClick={() => {
+                    setDateFilterTab("");
+                    setLastCallTodayOnly(false);
+                  }}
                   className="px-4 py-2 rounded-md text-sm transition-all bg-transparent text-gray-700 hover:bg-green-100 border border-red-500"
                 >
                   Reset
@@ -827,35 +852,46 @@ export default function FollowUp() {
                 <button
                   type="button"
                   onClick={() => setDateFilterTab("today")}
-                  className={`px-4 py-2 rounded-md text-sm transition-all ${
+                  className={`px-3 py-2 rounded-md text-sm transition-all ${
                     dateFilterTab === "today"
                       ? "bg-green-600 text-white shadow-md"
                       : "bg-transparent text-gray-700 hover:bg-green-100"
                   }`}
                 >
-                  Today
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDateFilterTab("upcoming")}
-                  className={`px-4 py-2 rounded-md text-sm transition-all ${
-                    dateFilterTab === "upcoming"
-                      ? "bg-green-600 text-white shadow-md"
-                      : "bg-transparent text-gray-700 hover:bg-green-100"
-                  }`}
-                >
-                  Upcoming
+                  Today ({chipCount(chipBase, "today")})
                 </button>
                 <button
                   type="button"
                   onClick={() => setDateFilterTab("overdue")}
-                  className={`px-4 py-2 rounded-md text-sm transition-all ${
+                  className={`px-3 py-2 rounded-md text-sm transition-all ${
                     dateFilterTab === "overdue"
                       ? "bg-red-600 text-white shadow-md"
                       : "bg-transparent text-gray-700 hover:bg-red-100"
                   }`}
                 >
-                  Overdue
+                  Overdue ({chipCount(chipBase, "overdue")})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDateFilterTab("pending")}
+                  className={`px-3 py-2 rounded-md text-sm transition-all ${
+                    dateFilterTab === "pending"
+                      ? "bg-green-600 text-white shadow-md"
+                      : "bg-transparent text-gray-700 hover:bg-green-100"
+                  }`}
+                >
+                  Pending ({chipCount(chipBase, "pending")})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLastCallTodayOnly((v) => !v)}
+                  className={`px-3 py-2 rounded-md text-sm transition-all ${
+                    lastCallTodayOnly
+                      ? "bg-indigo-600 text-white shadow-md"
+                      : "bg-transparent text-gray-700 hover:bg-indigo-100"
+                  }`}
+                >
+                  Last Call: Today ({lastCallTodayCount(chipBase)})
                 </button>
               </div>
             </div>
@@ -889,21 +925,6 @@ export default function FollowUp() {
                 </select>
               </div>
 
-              {activeTab === "pending" && (
-                <div className="w-full sm:w-44">
-                  <select
-                    id="clientAttachmentFilter"
-                    value={clientAttachmentFilter}
-                    onChange={(e) => setClientAttachmentFilter(e.target.value)}
-                    className="flex h-10 w-full rounded-md border border-blue-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                    data-testid="select-client-attachment-filter"
-                  >
-                    <option value="all">All Approvals</option>
-                    <option value="hasAttachment">Client Approval Not Empty</option>
-                    <option value="noAttachment">Client Approval Empty</option>
-                  </select>
-                </div>
-              )}
             </div>
           </CardHeader>
           <CardContent>

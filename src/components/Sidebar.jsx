@@ -21,6 +21,7 @@ import {
   Timer,
   Truck,
   Mail,
+  ClipboardList,
 } from "lucide-react";
 import useAuthStore from "../store/authStore";
 
@@ -51,6 +52,7 @@ export const navigation = [
   },
   { name: "Spare Dispatch Details", href: "/sparedispatch", icon: Truck },
   { name: "Cancel", href: "/cancel", icon: Settings },
+  { name: "Report", href: "/report", icon: ClipboardList },
   { name: "Master", href: "/master", icon: Database },
   { name: "TAT Config", href: "/tat-config", icon: Timer },
   { name: "Settings", href: "/settings", icon: UserCog },
@@ -70,8 +72,12 @@ export default function Sidebar({ onClose, isMobile = false }) {
     ? user.page.map((page) => page.trim()).map((page) => (page === "Client Details" || page === "Ticket & Enquiry" ? "Ticket-and-Enquiry" : page))
     : [];
 
+  const isAdmin = user?.role === "admin";
+
   const filteredMenuItems = navigation.filter((item) => {
-    if (item.name === "Settings" || item.name === "Master" || item.name === "TAT Config") return user?.role === "admin";
+    // Admin role = full access, independent of the page-access list.
+    if (isAdmin) return true;
+    if (item.name === "Settings" || item.name === "Master" || item.name === "TAT Config") return false;
     return (
       allowedPages.includes(item.name) ||
       item.name === "Service Installation"

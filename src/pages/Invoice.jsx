@@ -8,6 +8,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
+import { MultiSelect } from "../components/ui/multi-select";
 import {
   Tabs,
   TabsContent,
@@ -34,6 +35,12 @@ export default function Invoice() {
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [formData, setFormData] = useState({});
   const [searchItem, setSearchItem] = useState("");
+  // History-tab-only filters. invoice_date is a plain `date` column
+  // (YYYY-MM-DD), so string comparison is inclusive on both ends and
+  // timezone-safe.
+  const [invoiceDateFrom, setInvoiceDateFrom] = useState("");
+  const [invoiceDateTo, setInvoiceDateTo] = useState("");
+  const [enquiryTypeFilter, setEnquiryTypeFilter] = useState([]);
   // "Cancel Ticket" option on the Pending create-Invoice form — same pattern
   // as Quotation.jsx/FollowUp.jsx/SiteVisitPlan.jsx/VideoCallSolution.jsx:
   // logs a row in sss_cancelled_tickets, whose trg_cancel_null_planned
@@ -634,7 +641,22 @@ export default function Invoice() {
     })
     .reverse();
 
+  const historyEnquiryTypeOptions = [
+    ...new Set(historyData.map((i) => i.enquiryType).filter(Boolean)),
+  ].sort((a, b) => a.localeCompare(b));
+
   const filteredHistoryDataa = historyData
+    .filter((item) => {
+      const d = String(item.invoiceDate || "").slice(0, 10);
+      if (invoiceDateFrom && (!d || d < invoiceDateFrom)) return false;
+      if (invoiceDateTo && (!d || d > invoiceDateTo)) return false;
+      if (
+        enquiryTypeFilter.length > 0 &&
+        !enquiryTypeFilter.includes(item.enquiryType)
+      )
+        return false;
+      return true;
+    })
     .filter((item) => {
       const q = searchItem.toLowerCase();
       return (
@@ -693,6 +715,53 @@ export default function Invoice() {
                   onChange={(e) => setSearchItem(e.target.value)}
                 />
               </div>
+              {activeTab === "history" && (
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-gray-500">Invoice Date From</span>
+                    <Input
+                      type="date"
+                      className="h-10 w-[150px] bg-white border-blue-200"
+                      value={invoiceDateFrom}
+                      onChange={(e) => setInvoiceDateFrom(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-gray-500">Invoice Date To</span>
+                    <Input
+                      type="date"
+                      className="h-10 w-[150px] bg-white border-blue-200"
+                      value={invoiceDateTo}
+                      onChange={(e) => setInvoiceDateTo(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex flex-col w-[180px]">
+                    <span className="text-[10px] text-gray-500">Enquiry Type</span>
+                    <MultiSelect
+                      options={historyEnquiryTypeOptions}
+                      value={enquiryTypeFilter}
+                      onChange={setEnquiryTypeFilter}
+                      placeholder="All"
+                    />
+                  </div>
+                  {(invoiceDateFrom || invoiceDateTo || enquiryTypeFilter.length > 0) && (
+                    <Button
+                      variant="outline"
+                      className="h-10"
+                      onClick={() => {
+                        setInvoiceDateFrom("");
+                        setInvoiceDateTo("");
+                        setEnquiryTypeFilter([]);
+                      }}
+                    >
+                      Reset
+                    </Button>
+                  )}
+                  <span className="pb-2 text-xs font-medium text-blue-700 whitespace-nowrap">
+                    Showing {filteredHistoryData.length} of {historyData.length}
+                  </span>
+                </div>
+              )}
             </div>
           </CardHeader>
 

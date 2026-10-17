@@ -88,7 +88,9 @@ const Login = () => {
         navigate("/cancel");
       }
 
-      // Redirect based on role if needed
+      // Admin = full access; land on the Dashboard if none of the listed
+      // pages matched (e.g. an admin whose page list is empty/limited).
+      if (!pagesss && user.role === "admin") navigate("/");
     } else {
       toast.error("Invalid credentials");
     }
