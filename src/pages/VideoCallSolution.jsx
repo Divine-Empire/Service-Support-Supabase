@@ -208,6 +208,9 @@ export default function VideoCallSolution() {
           machineName: t.machine_name || "",
           category: t.category || "",
           mentionIssue: t.mention_issue || "",
+          // sss_tickets.remarks (the ticket's own remarks) — distinct from the
+          // video-call attempt's `remarks` on History rows.
+          ticketRemarks: t.remarks || "",
           serviceLocation: t.service_location || "",
           CREName: t.cre_name || "",
           engineerAssign: t.engineer_assign || "",
@@ -821,6 +824,9 @@ export default function VideoCallSolution() {
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
                           Mention Issue
                         </th>
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
+                          Remarks
+                        </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                           Service Location
                         </th>
@@ -909,6 +915,9 @@ export default function VideoCallSolution() {
                             </td>
                             <td className="px-4 py-3 text-blue-900">
                               {ticket.mentionIssue}
+                            </td>
+                            <td className="px-4 py-3 text-blue-900">
+                              {ticket.ticketRemarks}
                             </td>
                             <td className="px-4 py-3 text-blue-900">
                               {ticket.serviceLocation}
@@ -1033,6 +1042,10 @@ export default function VideoCallSolution() {
                                 <p className="text-blue-900">{ticket.mentionIssue || "N/A"}</p>
                               </div>
                               <div>
+                                <p className="text-gray-500 font-medium">Remarks</p>
+                                <p className="text-blue-900">{ticket.ticketRemarks || "N/A"}</p>
+                              </div>
+                              <div>
                                 <p className="text-gray-500 font-medium">Service Location</p>
                                 <p className="text-blue-900">{ticket.serviceLocation || "N/A"}</p>
                               </div>
@@ -1104,6 +1117,9 @@ export default function VideoCallSolution() {
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
                           Mention Issue
+                        </th>
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
+                          Remarks
                         </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                           Service Location
@@ -1188,6 +1204,9 @@ export default function VideoCallSolution() {
                             </td>
                             <td className="px-4 py-3 text-blue-900">
                               {ticket.mentionIssue}
+                            </td>
+                            <td className="px-4 py-3 text-blue-900">
+                              {ticket.ticketRemarks}
                             </td>
                             <td className="px-4 py-3 text-blue-900">
                               {ticket.serviceLocation}
@@ -1329,6 +1348,10 @@ export default function VideoCallSolution() {
                               <div>
                                 <p className="text-gray-500 font-medium">Mention Issue</p>
                                 <p className="text-blue-900">{ticket.mentionIssue || "N/A"}</p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500 font-medium">Remarks</p>
+                                <p className="text-blue-900">{ticket.ticketRemarks || "N/A"}</p>
                               </div>
                               <div>
                                 <p className="text-gray-500 font-medium">Service Location</p>
