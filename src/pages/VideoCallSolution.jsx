@@ -829,15 +829,13 @@ export default function VideoCallSolution() {
                           Ticket Remarks
                         </th>
                         {role === "admin" && (
-                          <>
-                            <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                              Engineer Assign
-                            </th>
-                            <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[220px] sticky top-0">
-                              Enquiry Item List
-                            </th>
-                          </>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
+                            Engineer Assign
+                          </th>
                         )}
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
+                          Enquiry Item List
+                        </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                           Service Location
                         </th>
@@ -848,7 +846,7 @@ export default function VideoCallSolution() {
                       {filteredPendingData.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={role === "admin" ? 18 : 16}
+                            colSpan={role === "admin" ? 17 : 16}
                             className="text-center py-8 bg-white"
                             data-testid="text-no-pending"
                           >
@@ -934,26 +932,24 @@ export default function VideoCallSolution() {
                               {ticket.ticketRemarks}
                             </td>
                             {role === "admin" && (
-                              <>
-                                <td className="px-4 py-3 text-blue-900">
-                                  {ticket.engineerAssign}
-                                </td>
-                                <td className="px-4 py-3 text-blue-900">
-                                  {ticket.enquiryItemList ? (
-                                    <a
-                                      href={ticket.enquiryItemList}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="text-blue-600 underline hover:text-blue-800"
-                                    >
-                                      View
-                                    </a>
-                                  ) : (
-                                    "-"
-                                  )}
-                                </td>
-                              </>
+                              <td className="px-4 py-3 text-blue-900">
+                                {ticket.engineerAssign}
+                              </td>
                             )}
+                            <td className="px-4 py-3 text-blue-900">
+                              {ticket.enquiryItemList ? (
+                                <a
+                                  href={ticket.enquiryItemList}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-blue-600 underline hover:text-blue-800"
+                                >
+                                  View
+                                </a>
+                              ) : (
+                                "-"
+                              )}
+                            </td>
                             <td className="px-4 py-3 text-blue-900">
                               {ticket.serviceLocation}
                             </td>
@@ -1081,28 +1077,26 @@ export default function VideoCallSolution() {
                                 <p className="text-blue-900">{ticket.ticketRemarks || "N/A"}</p>
                               </div>
                               {role === "admin" && (
-                                <>
-                                  <div>
-                                    <p className="text-gray-500 font-medium">Engineer Assign</p>
-                                    <p className="text-blue-900">{ticket.engineerAssign || "N/A"}</p>
-                                  </div>
-                                  <div>
-                                    <p className="text-gray-500 font-medium">Enquiry Item List</p>
-                                    {ticket.enquiryItemList ? (
-                      <a
-                        href={ticket.enquiryItemList}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-blue-600 underline hover:text-blue-800"
-                      >
-                        View
-                      </a>
-                    ) : (
-                      <p className="text-blue-900">N/A</p>
-                    )}
-                                  </div>
-                                </>
+                                <div>
+                                  <p className="text-gray-500 font-medium">Engineer Assign</p>
+                                  <p className="text-blue-900">{ticket.engineerAssign || "N/A"}</p>
+                                </div>
                               )}
+                              <div>
+                                <p className="text-gray-500 font-medium">Enquiry Item List</p>
+                                {ticket.enquiryItemList ? (
+                                  <a
+                                    href={ticket.enquiryItemList}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-blue-600 underline hover:text-blue-800"
+                                  >
+                                    View
+                                  </a>
+                                ) : (
+                                  <p className="text-blue-900">N/A</p>
+                                )}
+                              </div>
                               <div>
                                 <p className="text-gray-500 font-medium">Service Location</p>
                                 <p className="text-blue-900">{ticket.serviceLocation || "N/A"}</p>
@@ -1180,15 +1174,13 @@ export default function VideoCallSolution() {
                           Ticket Remarks
                         </th>
                         {role === "admin" && (
-                          <>
-                            <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                              Engineer Assign
-                            </th>
-                            <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[220px] sticky top-0">
-                              Enquiry Item List
-                            </th>
-                          </>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
+                            Engineer Assign
+                          </th>
                         )}
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
+                          Enquiry Item List
+                        </th>
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                           Service Location
                         </th>
@@ -1208,7 +1200,7 @@ export default function VideoCallSolution() {
                       {filteredHistoryData.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={role === "admin" ? 20 : 18}
+                            colSpan={role === "admin" ? 19 : 18}
                             className="text-center py-8 bg-white"
                             data-testid="text-no-history"
                           >
@@ -1283,26 +1275,24 @@ export default function VideoCallSolution() {
                               {ticket.ticketRemarks}
                             </td>
                             {role === "admin" && (
-                              <>
-                                <td className="px-4 py-3 text-blue-900">
-                                  {ticket.engineerAssign}
-                                </td>
-                                <td className="px-4 py-3 text-blue-900">
-                                  {ticket.enquiryItemList ? (
-                                    <a
-                                      href={ticket.enquiryItemList}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="text-blue-600 underline hover:text-blue-800"
-                                    >
-                                      View
-                                    </a>
-                                  ) : (
-                                    "-"
-                                  )}
-                                </td>
-                              </>
+                              <td className="px-4 py-3 text-blue-900">
+                                {ticket.engineerAssign}
+                              </td>
                             )}
+                            <td className="px-4 py-3 text-blue-900">
+                              {ticket.enquiryItemList ? (
+                                <a
+                                  href={ticket.enquiryItemList}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-blue-600 underline hover:text-blue-800"
+                                >
+                                  View
+                                </a>
+                              ) : (
+                                "-"
+                              )}
+                            </td>
                             <td className="px-4 py-3 text-blue-900">
                               {ticket.serviceLocation}
                             </td>
@@ -1455,28 +1445,26 @@ export default function VideoCallSolution() {
                                 <p className="text-blue-900">{ticket.ticketRemarks || "N/A"}</p>
                               </div>
                               {role === "admin" && (
-                                <>
-                                  <div>
-                                    <p className="text-gray-500 font-medium">Engineer Assign</p>
-                                    <p className="text-blue-900">{ticket.engineerAssign || "N/A"}</p>
-                                  </div>
-                                  <div>
-                                    <p className="text-gray-500 font-medium">Enquiry Item List</p>
-                                    {ticket.enquiryItemList ? (
-                      <a
-                        href={ticket.enquiryItemList}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-blue-600 underline hover:text-blue-800"
-                      >
-                        View
-                      </a>
-                    ) : (
-                      <p className="text-blue-900">N/A</p>
-                    )}
-                                  </div>
-                                </>
+                                <div>
+                                  <p className="text-gray-500 font-medium">Engineer Assign</p>
+                                  <p className="text-blue-900">{ticket.engineerAssign || "N/A"}</p>
+                                </div>
                               )}
+                              <div>
+                                <p className="text-gray-500 font-medium">Enquiry Item List</p>
+                                {ticket.enquiryItemList ? (
+                                  <a
+                                    href={ticket.enquiryItemList}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-blue-600 underline hover:text-blue-800"
+                                  >
+                                    View
+                                  </a>
+                                ) : (
+                                  <p className="text-blue-900">N/A</p>
+                                )}
+                              </div>
                               <div>
                                 <p className="text-gray-500 font-medium">Service Location</p>
                                 <p className="text-blue-900">{ticket.serviceLocation || "N/A"}</p>
