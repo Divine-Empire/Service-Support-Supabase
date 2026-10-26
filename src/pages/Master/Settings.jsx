@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Card,
   CardContent,
@@ -79,15 +79,39 @@ export default function Settings() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [visiblePasswords, setVisiblePasswords] = useState(new Set());
+  // User-management RPCs verify the caller server-side, so the admin re-enters their
+  // login here. Kept in memory only (never persisted) and dropped when the page unmounts.
+  const [adminCreds, setAdminCreds] = useState(null);
+  const [authForm, setAuthForm] = useState({ username: "", password: "" });
+  const [authError, setAuthError] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
   const { toast } = useToast();
 
-  const fetchUsers = async () => {
+  const isAuthError = (error) =>
+    error?.code === "42501" || /not authorized/i.test(error?.message || "");
+
+  const adminArgs = (creds = adminCreds) => ({
+    p_admin_username: creds?.username ?? "",
+    p_admin_password: creds?.password ?? "",
+  });
+
+  // Credentials rejected mid-session (changed password, demoted, deleted) -> back to the gate.
+  const lockOnAuthError = (error) => {
+    if (!isAuthError(error)) return false;
+    setAdminCreds(null);
+    setUsers([]);
+    setAuthError("Session expired. Please confirm your admin login again.");
+    return true;
+  };
+
+  const fetchUsers = async (creds = adminCreds) => {
     setFetchLoading(true);
     try {
-      const { data, error } = await supabase.rpc("sss_admin_list_users");
+      const { data, error } = await supabase.rpc("sss_admin_list_users", adminArgs(creds));
       if (error) throw error;
       setUsers(data || []);
     } catch (error) {
+      if (lockOnAuthError(error)) return;
       console.error("Error fetching users:", error);
       toast({
         title: "Error",
@@ -99,9 +123,27 @@ export default function Settings() {
     }
   };
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
+  const handleUnlock = async (e) => {
+    e.preventDefault();
+    const creds = { username: authForm.username.trim(), password: authForm.password };
+    if (!creds.username || !creds.password) {
+      setAuthError("Enter your admin username and password.");
+      return;
+    }
+    setAuthLoading(true);
+    setAuthError("");
+    try {
+      const { data, error } = await supabase.rpc("sss_admin_list_users", adminArgs(creds));
+      if (error) throw error;
+      setUsers(data || []);
+      setAdminCreds(creds);
+      setAuthForm({ username: "", password: "" });
+    } catch (error) {
+      setAuthError(isAuthError(error) ? "Invalid admin credentials." : "Could not verify. Please try again.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
 
   const togglePasswordVisibility = (userId) => {
     setVisiblePasswords((prev) => {
@@ -172,6 +214,7 @@ export default function Settings() {
     try {
       if (isEditMode) {
         const { error } = await supabase.rpc("sss_admin_update_user", {
+          ...adminArgs(),
           p_uuid: formData.uuid,
           p_full_name: formData.fullName.trim(),
           p_username: formData.username.trim(),
@@ -183,6 +226,7 @@ export default function Settings() {
         toast({ title: "User updated", description: `${formData.username} has been updated successfully.` });
       } else {
         const { error } = await supabase.rpc("sss_admin_create_user", {
+          ...adminArgs(),
           p_full_name: formData.fullName.trim(),
           p_username: formData.username.trim(),
           p_password: formData.password.trim(),
@@ -195,6 +239,10 @@ export default function Settings() {
       setIsUserDialogOpen(false);
       fetchUsers();
     } catch (error) {
+      if (lockOnAuthError(error)) {
+        setIsUserDialogOpen(false);
+        return;
+      }
       console.error("Error saving user:", error);
       toast({
         title: "Error",
@@ -213,6 +261,7 @@ export default function Settings() {
     setIsDeleting(true);
     try {
       const { error } = await supabase.rpc("sss_admin_delete_user", {
+        ...adminArgs(),
         p_uuid: deleteTarget.uuid,
       });
       if (error) throw error;
@@ -220,6 +269,10 @@ export default function Settings() {
       setDeleteTarget(null);
       fetchUsers();
     } catch (error) {
+      if (lockOnAuthError(error)) {
+        setDeleteTarget(null);
+        return;
+      }
       console.error("Error deleting user:", error);
       toast({
         title: "Error",
@@ -230,6 +283,55 @@ export default function Settings() {
       setIsDeleting(false);
     }
   };
+
+  if (!adminCreds) {
+    return (
+      <div className="mx-auto max-w-md pt-10">
+        <Card>
+          <CardHeader className="border-b py-3">
+            <div className="flex items-center gap-2 font-medium">
+              <Lock className="h-4 w-4" />
+              Confirm admin login
+            </div>
+          </CardHeader>
+          <CardContent className="p-4">
+            <form onSubmit={handleUnlock} className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                User management is protected. Re-enter your admin username and password to continue.
+              </p>
+              <div className="space-y-1.5">
+                <Label htmlFor="admin-auth-username">Admin username</Label>
+                <Input
+                  id="admin-auth-username"
+                  autoComplete="username"
+                  value={authForm.username}
+                  onChange={(e) => setAuthForm((p) => ({ ...p, username: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="admin-auth-password">Admin password</Label>
+                <Input
+                  id="admin-auth-password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={authForm.password}
+                  onChange={(e) => setAuthForm((p) => ({ ...p, password: e.target.value }))}
+                />
+              </div>
+              {authError && (
+                <p role="alert" className="text-sm text-red-600">
+                  {authError}
+                </p>
+              )}
+              <Button type="submit" disabled={authLoading} className="w-full">
+                {authLoading ? "Verifying..." : "Continue"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2">
@@ -245,7 +347,7 @@ export default function Settings() {
               </TabsList>
 
               <div className="flex items-center gap-2">
-                <Button onClick={fetchUsers} variant="outline" size="sm">
+                <Button onClick={() => fetchUsers()} variant="outline" size="sm">
                   <RefreshCw className="h-4 w-4 mr-2" />
                   Refresh
                 </Button>
