@@ -114,8 +114,10 @@ export default function Master() {
   // Lead-To-Order-Supabase-New itself reads/writes (see ltoClient.js). This
   // used to be a 'item_name' dropdown category here; now it's its own tab
   // with a real table (name/code/rate/description), matching the dedicated
-  // Items Master page LTO already has, plus a `user_who_updated` +
-  // `updated_at` stamp on every write so it's clear who changed what.
+  // Items Master page LTO already has. lto_items now only holds the common
+  // details (name, code, unit, updated_at/updated_by); rate, reseller rate and
+  // the description (technical_specs) live in the item's 'basic' row of
+  // lto_item_specs -- see Lead-To-Order-Supabase-New/Database/17_item_specs.sql.
   const { user: currentUser } = useAuthStore();
   const [items, setItems] = useState([]);
   const [itemsLoading, setItemsLoading] = useState(false);
@@ -138,19 +140,29 @@ export default function Master() {
       const from = (itemPage - 1) * itemsPerPage;
       const to = from + itemsPerPage - 1;
 
-      let query = ltoSupabase.from("lto_items").select("*", { count: "exact" });
+      let query = ltoSupabase
+        .from("lto_items")
+        .select("uuid, item_name, item_code, unit, lto_item_specs(rate, reseller_rate, technical_specs)", { count: "exact" })
+        .eq("lto_item_specs.type", "basic");
 
       const term = debouncedItemSearch.trim();
       if (term) {
         const like = `%${term}%`;
-        query = query.or(`item_name.ilike.${like},item_code.ilike.${like},description.ilike.${like}`);
+        query = query.or(`item_name.ilike.${like},item_code.ilike.${like}`);
       }
 
       query = query.order("item_name", { ascending: true }).range(from, to);
 
       const { data, error, count } = await query;
       if (error) throw error;
-      setItems(data || []);
+      // Flatten the basic spec row so the table / edit form keep reading
+      // item.rate / item.description.
+      setItems(
+        (data || []).map(({ lto_item_specs: specs, ...item }) => {
+          const basic = (specs && specs[0]) || {};
+          return { ...item, rate: basic.rate ?? null, reseller_rate: basic.reseller_rate ?? null, description: basic.technical_specs || "" };
+        })
+      );
       setItemsTotalCount(count || 0);
     } catch (error) {
       console.error("Error fetching items:", error);
@@ -205,19 +217,47 @@ export default function Master() {
       item_code: code,
       rate: itemFormData.rate !== "" ? parseFloat(itemFormData.rate) : null,
       description: itemFormData.description.trim() || null,
-      // Who touched this row last, and when -- every add/edit from this tab
-      // stamps both, regardless of which fields actually changed.
-      user_who_updated: currentUser?.username || currentUser?.name || null,
-      updated_at: new Date().toISOString(),
     };
+    // Who touched this item last -- stamped on every add/edit.
+    const updatedBy = currentUser?.username || currentUser?.name || null;
 
     try {
       if (itemModalMode === "add") {
-        const { error } = await ltoSupabase.from("lto_items").insert(payload);
+        // lto_add_item rejects a duplicate item code (DUPLICATE_CODE:<name>).
+        const { data: newUuid, error } = await ltoSupabase.rpc("lto_add_item", {
+          p_item_name: name,
+          p_item_code: code,
+          p_unit: "Nos",
+          p_updated_by: updatedBy,
+        });
         if (error) throw error;
+        const { error: specError } = await ltoSupabase.from("lto_item_specs").insert({
+          item_uuid: newUuid,
+          type: "basic",
+          rate: payload.rate,
+          technical_specs: payload.description,
+          updated_by: updatedBy,
+        });
+        if (specError) throw specError;
         toast({ title: "Success", description: "Item added successfully" });
       } else {
-        const { error } = await ltoSupabase.from("lto_items").update(payload).eq("uuid", editingItem.uuid);
+        // One call updates the item and its 'basic' spec row. The existing
+        // reseller rate and unit are passed through unchanged.
+        const { error } = await ltoSupabase.rpc("lto_save_item_details", {
+          p_item_uuid: editingItem.uuid,
+          p_item_name: name,
+          p_item_code: code,
+          p_unit: editingItem.unit || null,
+          p_specs: [
+            {
+              type: "basic",
+              rate: payload.rate,
+              reseller_rate: editingItem.reseller_rate ?? null,
+              technical_specs: payload.description,
+            },
+          ],
+          p_updated_by: updatedBy,
+        });
         if (error) throw error;
         toast({ title: "Success", description: "Item updated successfully" });
       }
@@ -225,9 +265,12 @@ export default function Master() {
       fetchItems();
     } catch (error) {
       console.error("Error saving item:", error);
-      const message = error?.code === "23505"
-        ? `An item named "${payload.item_name}" already exists. Choose a different name.`
-        : (error.message || String(error));
+      const dup = (error?.message || "").match(/DUPLICATE_CODE:(.*)$/);
+      const message = dup
+        ? `This item code is already used by "${dup[1].trim()}".`
+        : error?.code === "23505"
+          ? `An item named "${payload.item_name}" already exists. Choose a different name.`
+          : (error.message || String(error));
       toast({ title: "Error", description: message, variant: "destructive" });
     } finally {
       setIsSavingItem(false);
@@ -850,7 +893,7 @@ export default function Master() {
             <TabsContent value="items" className="mt-0">
               <div className="flex flex-col sm:flex-row justify-between items-center gap-3 mb-4">
                 <Input
-                  placeholder="Search items by name, code, description..."
+                  placeholder="Search items by name or code..."
                   value={itemSearch}
                   onChange={(e) => setItemSearch(e.target.value)}
                   className="sm:w-80"

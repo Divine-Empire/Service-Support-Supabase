@@ -242,7 +242,8 @@ const QuotationForm = ({
     handleSpecialDiscountChange(discount)
   }
 
-  // Product master — production lto_items table, paginated 500 rows/page.
+  // Product master — lto_items (+ its 'basic' lto_item_specs row for rate /
+  // technical specs), paginated 500 rows/page.
   useEffect(() => {
     const fetchProductData = async () => {
       try {
@@ -254,23 +255,19 @@ const QuotationForm = ({
         let keepGoing = true
 
         while (keepGoing) {
-          let res = await ltoSupabase
+          const res = await ltoSupabase
             .from("lto_items")
-            .select("item_code, item_name, description, rate, reseller_rate, warranty")
+            .select("item_code, item_name, lto_item_specs(rate, technical_specs)")
+            .eq("lto_item_specs.type", "basic")
+            .order("item_name", { ascending: true })
             .range(from, from + step - 1)
-
-          if (res.error) {
-            // Fallback in case reseller_rate/warranty columns aren't present.
-            res = await ltoSupabase
-              .from("lto_items")
-              .select("item_code, item_name, description, rate")
-              .range(from, from + step - 1)
-          }
 
           if (res.error) throw res.error
 
           const rows = res.data || []
-          rows.forEach((row) => {
+          rows.forEach((item) => {
+            const basic = (item.lto_item_specs && item.lto_item_specs[0]) || {}
+            const row = { ...item, description: basic.technical_specs, rate: basic.rate }
             const code = row.item_code
             const name = row.item_name
             if (!name) return
