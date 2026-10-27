@@ -1661,7 +1661,7 @@ const InstallationTable = ({ data, loading, getStatusBadge, onApprove, onEnquiry
                   <div className="space-y-1">
                     <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Order & Company</p>
                     <p className="text-sm font-bold text-gray-900">{item["Order No."]}</p>
-                    <p className="text-sm text-gray-600">{item["COMPANY NAME"]}</p>
+                    <p className="text-sm text-gray-600 truncate" title={item["COMPANY NAME"] || ""}>{item["COMPANY NAME"]}</p>
                   </div>
                   {activeTab === "pending" && (
                     <Button
@@ -1862,7 +1862,7 @@ const InstallationTable = ({ data, loading, getStatusBadge, onApprove, onEnquiry
                     )}
                     <td className="px-6 py-4 font-bold text-indigo-700 whitespace-nowrap">{item["SI NO"]}</td>
                     <td className="px-6 py-4 text-gray-900 font-medium whitespace-nowrap">{item["Order No."]}</td>
-                    <td className="px-6 py-4 text-gray-600 whitespace-nowrap">{item["COMPANY NAME"]}</td>
+                    <td className="px-6 py-4 text-gray-600 truncate max-w-[200px]" title={item["COMPANY NAME"] || ""}>{item["COMPANY NAME"]}</td>
 
                     {activeTab === "pending" ? (
                       <>

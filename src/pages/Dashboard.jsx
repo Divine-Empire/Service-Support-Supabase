@@ -74,7 +74,6 @@ export default function Dashboard() {
   const [quotationPendingCount, setQuotationPendingCount] = useState(0);
   const [siteVisitPendingCount, setSiteVisitPendingCount] = useState(0);
   const [invoicePendingCount, setInvoicePendingCount] = useState(0);
-  const [otpPendingCount, setOtpPendingCount] = useState(0);
   const [stageCounts, setStageCounts] = useState({});
   const [stageOverdueCounts, setStageOverdueCounts] = useState({});
   const [followUpCategoryBreakdown, setFollowUpCategoryBreakdown] = useState({});
@@ -116,8 +115,6 @@ export default function Dashboard() {
         { data: siteVisitRows, error: e5 },
         { data: orderReceivedRows, error: e6 },
         { data: invoiceRows, error: e7 },
-        { data: tadaRows, error: e8 },
-        { data: otpRows, error: e9 },
         { data: tatConfigRows, error: e10 },
       ] = await Promise.all([
         supabase.from("sss_warranty_check").select("ticket_id, video_call_planned, quotation_planned"),
@@ -127,11 +124,9 @@ export default function Dashboard() {
         supabase.from("sss_site_visit").select("ticket_id"),
         supabase.from("sss_order_received").select("ticket_id, invoice_planned"),
         supabase.from("sss_invoice").select("ticket_id"),
-        supabase.from("sss_tada").select("ticket_id, otp_verification_planned"),
-        supabase.from("sss_otp_verification").select("ticket_id"),
         supabase.from("sss_tat_config").select("stage_name, responsible_person"),
       ]);
-      for (const err of [e1, e2, e3, e4, e5, e6, e7, e8, e9, e10]) if (err) throw err;
+      for (const err of [e1, e2, e3, e4, e5, e6, e7, e10]) if (err) throw err;
 
       // Admin-editable per-stage owner (Master > TAT Config) — falls back to
       // STAGE_RESPONSIBLE when a stage has no tat_config row, or the row
@@ -160,8 +155,6 @@ export default function Dashboard() {
       const siteVisitTicketIds = new Set((siteVisitRows || []).map((s) => s.ticket_id));
       const invoiceTicketIds = new Set((invoiceRows || []).map((i) => i.ticket_id));
       const orderReceivedByTicket = new Map((orderReceivedRows || []).map((o) => [o.ticket_id, o]));
-      const tadaByTicket = new Map((tadaRows || []).map((t) => [t.ticket_id, t]));
-      const otpTicketIds = new Set((otpRows || []).map((o) => o.ticket_id));
 
       // follow_up is append-only (multiple log rows per ticket) — need both
       // the LATEST row (for site_visit_planned) and whether ANY row ever
@@ -181,7 +174,7 @@ export default function Dashboard() {
       const followUpCategories = {};
       const fuDetailRows = [];
       const svDetailRows = [];
-      let otpPending = 0;
+      let zeroValueQuotations = 0;
 
       tickets.forEach((t) => {
         const wc = warrantyByTicket.get(t.ticket_id);
@@ -205,6 +198,9 @@ export default function Dashboard() {
         if (wc?.quotation_planned && stillOpen) {
           counts["Quotation"]++;
           if (new Date(wc.quotation_planned) < now) overdueCounts["Quotation"]++;
+          // Dashboard card: pending quotations whose basic_amount is 0 or
+          // blank (no quotation row yet counts as blank).
+          if (!Number(quotationByTicket.get(t.ticket_id)?.basic_amount)) zeroValueQuotations++;
         }
 
         // Follow-Up — gated by quotation.follow_up_planned, same exit
@@ -257,20 +253,11 @@ export default function Dashboard() {
           counts["Invoice"]++;
           if (new Date(or.invoice_planned) < now) overdueCounts["Invoice"]++;
         }
-
-        // "Engineer" KPI — actually the OTP Verification stage (gated by
-        // tada.otp_verification_planned), mislabeled in the legacy UI. Kept
-        // the same label for 1:1 continuity.
-        const td = tadaByTicket.get(t.ticket_id);
-        if (td?.otp_verification_planned && !otpTicketIds.has(t.ticket_id)) {
-          otpPending++;
-        }
       });
 
-      setQuotationPendingCount(counts["Quotation"]);
+      setQuotationPendingCount(zeroValueQuotations);
       setSiteVisitPendingCount(counts["Site Visit Plan"]);
       setInvoicePendingCount(counts["Invoice"]);
-      setOtpPendingCount(otpPending);
       setStageCounts(counts);
       setStageOverdueCounts(overdueCounts);
       setFollowUpCategoryBreakdown(followUpCategories);
@@ -372,7 +359,7 @@ export default function Dashboard() {
   return (
     <div className="p-6 space-y-6 bg-gray-50 min-h-screen">
       {/* KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="shadow rounded-2xl p-4 flex items-center gap-3">
           <PhoneCall className="w-8 h-8 text-blue-500" />
           <div>
@@ -405,13 +392,6 @@ export default function Dashboard() {
           </div>
         </Card>
 
-        <Card className="shadow rounded-2xl p-4 flex items-center gap-3">
-          <FileText className="w-8 h-8 text-blue-500" />
-          <div>
-            <p className="text-sm text-gray-500">Engineer</p>
-            <p className="text-xl font-bold">{otpPendingCount}</p>
-          </div>
-        </Card>
       </div>
 
       {/* Pending Items by Stage */}
