@@ -240,14 +240,16 @@ export const STAGE_PLANNING_RULES = {
     baseTime: (ctx) => ctx.invoiceSubmittedAt,
   },
 
-  // Invoice -> Spare Dispatch Details. Only when tickets.enquiry_type =
-  // 'SPARE' — mutually exclusive with 'calibration' above in practice
+  // Invoice -> Spare Dispatch Details. When tickets.enquiry_type = 'SPARE'
+  // OR tickets.service_location = 'Warehouse' (either is enough) — mutually exclusive with 'calibration' above in practice
   // (enquiry_type is single-select), but not enforced here; both rules are
   // independent and simply check their own condition. Base time is
   // Invoice's own submit-time timestamp.
   sparedispatch: {
     tatStageName: "Spare Dispatch",
-    shouldPlan: (ctx) => ctx.ticket?.enquiryType === "SPARE",
+    shouldPlan: (ctx) =>
+      ctx.ticket?.enquiryType === "SPARE" ||
+      String(ctx.ticket?.serviceLocation || "").trim().toLowerCase() === "warehouse",
     baseTime: (ctx) => ctx.invoiceSubmittedAt,
   },
 

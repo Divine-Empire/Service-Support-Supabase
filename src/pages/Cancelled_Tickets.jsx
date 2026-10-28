@@ -1,27 +1,32 @@
 import { useState, useEffect } from "react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-} from "../components/ui/card";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "../components/ui/tabs";
+import { ListToolbar, ListTable, StatusBadge } from "../components/shared";
+import { useClientList } from "../hooks/useClientList";
 import { useToast } from "../hooks/use-toast";
-import { LoaderIcon } from "lucide-react";
 import { supabase } from "../lib/supabase/client";
+import { formatDate } from "../lib/format";
+
+const COLUMNS = [
+  { key: "cancelledOn", label: "Cancelled On", defaultVisible: true, text: (r) => formatDate(r.timeStemp) },
+  { key: "ticketId", label: "Ticket ID", defaultVisible: true, strong: true, text: (r) => r.ticketId },
+  { key: "clientName", label: "Client Name", defaultVisible: true, text: (r) => r.clientName },
+  { key: "phoneNumber", label: "Phone Number", defaultVisible: false, text: (r) => r.phoneNumber },
+  { key: "companyName", label: "Company Name", defaultVisible: true, wrap: true, width: 200, text: (r) => r.companyName },
+  { key: "category", label: "Category", defaultVisible: true, text: (r) => r.category },
+  { key: "mentionIssue", label: "Mention Issue", defaultVisible: true, wrap: true, width: 250, text: (r) => r.mentionIssue },
+  { key: "cancelledFromStage", label: "Cancelled From Stage", defaultVisible: true, cell: (r) =>
+    r.cancelledFromStage ? <StatusBadge tone="danger">{r.cancelledFromStage}</StatusBadge> : "" },
+  { key: "remarks", label: "Remarks", defaultVisible: true, wrap: true, width: 200, text: (r) => r.remarks },
+];
 
 export default function CancelledTickets() {
-  const [activeTab, setActiveTab] = useState("pending");
   const [cancelledData, setCancelledData] = useState([]);
   const [fetchLoading, setFetchLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const { toast } = useToast();
 
   const fetchCancelledTickets = async () => {
     setFetchLoading(true);
+    setLoadError(null);
     try {
       const { data: cancelRows, error: cancelError } = await supabase
         .from("sss_cancelled_tickets")
@@ -66,6 +71,7 @@ export default function CancelledTickets() {
       setCancelledData(formatted);
     } catch (error) {
       console.error("Error fetching cancelled tickets:", error);
+      setLoadError(error.message || "Failed to load cancelled tickets");
       toast({
         title: "Error",
         description: "Failed to load cancelled tickets",
@@ -78,239 +84,34 @@ export default function CancelledTickets() {
 
   useEffect(() => {
     fetchCancelledTickets();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const formatDate = (dateString) => {
-    if (!dateString) return "";
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return dateString;
-    const day = String(date.getDate()).padStart(2, "0");
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const year = date.getFullYear();
-    return `${day}/${month}/${year}`;
-  };
-
-  const userName = localStorage.getItem("currentUsername");
-
-  const roleStorage = localStorage.getItem("o2d-auth-storage");
-  const parsedData = roleStorage ? JSON.parse(roleStorage) : null;
-  const role = parsedData?.state?.user?.role;
-
-  const filteredData = cancelledData;
+  const list = useClientList({
+    key: "cancelled-tickets",
+    data: { pending: cancelledData },
+    tabLabels: { pending: "Cancelled" },
+    loading: fetchLoading,
+    error: loadError,
+    onRetry: fetchCancelledTickets,
+    searchKeys: ["ticketId", "clientName", "companyName", "phoneNumber"],
+    filters: [
+      { key: "category", label: "Category", allLabel: "All Categories", get: (r) => r.category },
+      { key: "stage", label: "Cancelled From Stage", allLabel: "All Stages", get: (r) => r.cancelledFromStage },
+    ],
+    columns: COLUMNS,
+    sort: "none", // rows already arrive newest first
+  });
 
   return (
-    <div className="space-y-2">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <Card className="border-0 shadow-lg bg-gradient-to-br from-blue-50 to-indigo-50">
-          <CardHeader className="bg-gradient-to-r from-blue-50/50 to-indigo-50/50 rounded-t-lg border-b border-blue-100 px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
-            <div className="flex flex-wrap items-center gap-4">
-              <TabsList className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200">
-                <TabsTrigger
-                  value="pending"
-                  data-testid="tab-pending"
-                  className="data-[state=active]:bg-red-600 data-[state=active]:text-white"
-                >
-                  Cancelled ({filteredData.length})
-                </TabsTrigger>
-              </TabsList>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="mt-2">
-              <TabsContent value="pending" className="mt-0">
-                <div className="relative overflow-x-auto">
-                  <div className="max-h-[calc(103vh-200px)] overflow-y-auto">
-                    <table className="hidden sm:block w-full">
-                      <thead className="sticky top-0 z-10">
-                        <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                            Cancelled On
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
-                            Ticket ID
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                            Client Name
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                            Phone Number
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[180px] sticky top-0">
-                            Company Name
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                            Category
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[250px] sticky top-0">
-                            Mention Issue
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                            Cancelled From Stage
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
-                            Remarks
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-blue-100">
-                        {filteredData.length === 0 ? (
-                          <tr>
-                            <td
-                              colSpan={9}
-                              className="text-center py-8 bg-white"
-                              data-testid="text-no-pending"
-                            >
-                              {fetchLoading ? (
-                                <div className="flex justify-center items-center text-blue-700">
-                                  <LoaderIcon className="animate-spin w-8 h-8" />
-                                </div>
-                              ) : (
-                                <h1 className="text-blue-700">
-                                  No cancelled tickets found.
-                                </h1>
-                              )}
-                            </td>
-                          </tr>
-                        ) : (
-                          filteredData.map((ticket) => (
-                            <tr
-                              key={ticket.id}
-                              className="bg-white even:bg-blue-50/50"
-                            >
-                              <td className="px-4 py-3 text-blue-900">
-                                {formatDate(ticket.timeStemp)}
-                              </td>
-                              <td className="px-4 py-3 font-medium text-blue-800">
-                                {ticket.ticketId}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.clientName}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.phoneNumber}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.companyName}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.category}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900 truncate max-w-xs hover:whitespace-normal">
-                                {ticket.mentionIssue}
-                              </td>
-                              <td className="px-4 py-3">
-                                <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
-                                  {ticket.cancelledFromStage}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.remarks}
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-
-                    {/* Mobile Card View */}
-                    <div className="sm:hidden space-y-4">
-                      {filteredData.length === 0 ? (
-                        <div
-                          className="text-center py-8 bg-white"
-                          data-testid="text-no-pending"
-                        >
-                          {fetchLoading ? (
-                            <div className="flex justify-center items-center text-blue-700">
-                              <LoaderIcon className="animate-spin w-8 h-8" />
-                            </div>
-                          ) : (
-                            <h1 className="text-blue-700">
-                              No cancelled tickets found.
-                            </h1>
-                          )}
-                        </div>
-                      ) : (
-                        filteredData.map((ticket) => (
-                          <Card
-                            key={ticket.id}
-                            className="border-l-4 border-l-red-500 bg-white"
-                          >
-                            <CardContent className="p-4 space-y-3">
-                              <div>
-                                <h3 className="font-bold text-blue-800 text-lg">
-                                  {ticket.ticketId}
-                                </h3>
-                                <p className="text-sm text-gray-600">
-                                  {ticket.clientName}
-                                </p>
-                              </div>
-
-                              <div className="grid grid-cols-2 gap-3 text-sm">
-                                <div>
-                                  <p className="text-gray-500 font-medium">
-                                    Phone
-                                  </p>
-                                  <p className="text-blue-900">
-                                    {ticket.phoneNumber}
-                                  </p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-500 font-medium">
-                                    Category
-                                  </p>
-                                  <p className="text-blue-900">
-                                    {ticket.category || "N/A"}
-                                  </p>
-                                </div>
-                              </div>
-
-                              <div>
-                                <p className="text-gray-500 font-medium text-sm">
-                                  Company
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.companyName || "N/A"}
-                                </p>
-                              </div>
-
-                              <div>
-                                <p className="text-gray-500 font-medium text-sm">
-                                  Cancelled From Stage
-                                </p>
-                                <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
-                                  {ticket.cancelledFromStage}
-                                </span>
-                              </div>
-
-                              <div>
-                                <p className="text-gray-500 font-medium text-sm">
-                                  Mention Issue
-                                </p>
-                                <p className="text-blue-900 line-clamp-2">
-                                  {ticket.mentionIssue || "N/A"}
-                                </p>
-                              </div>
-
-                              <div>
-                                <p className="text-gray-500 font-medium text-sm">
-                                  Remarks
-                                </p>
-                                <p className="text-blue-900 line-clamp-3">
-                                  {ticket.remarks || "N/A"}
-                                </p>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </TabsContent>
-            </div>
-          </CardContent>
-        </Card>
-      </Tabs>
+    <div className="space-y-3">
+      <ListToolbar list={list} searchPlaceholder="Search by ticket, client, company or phone..." />
+      <ListTable
+        list={list}
+        rowKey={(r) => r.id}
+        emptyTitle="No cancelled tickets found."
+        ariaLabel="Cancelled tickets"
+      />
     </div>
   );
 }

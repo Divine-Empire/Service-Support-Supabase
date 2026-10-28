@@ -1,105 +1,20 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast';
-import { Toaster as ShadcnToaster } from './components/ui/toaster';
-
-import Dashboard from "./pages/Dashboard";
-import ServiceInstallation from "./pages/ServiceInstallation";
-import TicketAndEnquiry from "./pages/Ticket-and-Enquiry";
-import VideoCallSolution from "./pages/VideoCallSolution";
-import WarrantyCheck from "./pages/Warranty-Check";
-import Quotation from "./pages/Quotation";
-import FollowUp from "./pages/FollowUp";
-import Warehouse from "./pages/Warehouse";
-import SiteVisitPlan from "./pages/SiteVisitPlan";
-import TADA from "./pages/TADA";
-import TadaApproval from "./pages/TadaApproval";
-import TadaDecision from "./pages/TadaDecision";
-import EngineerApproval from "./pages/SiteVisitOTPVerification";
-import CrmVerification from "./pages/CrmVerification";
-import Invoice from "./pages/Invoice";
-import Calibration from "./pages/Calibration";
-import SpareDispatchDetails from "./pages/SpareDispatchDetails";
-import NotFound from "./pages/not-found";
-import Layout from './components/Layout';
-import UpdateBanner from './components/UpdateBanner';
-import ProtectedRoute from './components/ProtectedRoute';
-import Login from './pages/Login';
-import CalibrationCertificate from './pages/CalibrationCertificate';
-import CancelledTickets from './pages/Cancelled_Tickets';
-import Report from "./pages/Report";
-import Settings from './pages/Master/Settings';
-import Master from './pages/Master/Dropdown';
-import TatConfig from './pages/Master/tat-config';
+import { Suspense } from "react";
+import { BrowserRouter } from "react-router-dom";
+import Providers from "./app/providers";
+import AppRoutes from "./app/routes";
+import UpdateBanner from "./components/UpdateBanner";
 
 function App() {
   return (
-    <Router>
-      <UpdateBanner />
-      <Toaster position="top-right" />
-      <ShadcnToaster />
-      {/* <Layout> */}
-        <Routes>
-
-          <Route path="/login" element={<Login />} />
-          {/* Public — no login. Reached only via the token link in the
-              Senior Approval email (sss-send-tada-approval-email). */}
-          <Route path="/tada-decision" element={<TadaDecision />} />
-
-        <Route path="/" element={
-          <ProtectedRoute>
-            <Layout />
-          </ProtectedRoute>
-        }>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/serviceinstallation" element={<ServiceInstallation />} />
-          <Route path="/ticket-and-enquiry" element={<TicketAndEnquiry />} />
-          <Route path="/videocall" element={<VideoCallSolution />} />
-          <Route path="/warranty-check" element={<WarrantyCheck />} />
-          <Route path="/quotation" element={<Quotation />} />
-          <Route path="/followup" element={<FollowUp />} />
-          <Route path="/warehouse" element={<Warehouse />} />
-          <Route path="/siteplan" element={<SiteVisitPlan />} />
-          <Route path="/tada" element={<TADA />} />
-          <Route path="/tada-approval" element={<TadaApproval />} />
-          <Route path="/approval" element={<EngineerApproval />} />
-          <Route path="/crm-verification" element={<CrmVerification />} />
-          <Route path="/invoice" element={<Invoice />} />
-          <Route path="/calibration" element={<Calibration />} />
-          <Route path="/sparedispatch" element={<SpareDispatchDetails />} />
-          <Route path="/calibrationCertificate" element={<CalibrationCertificate />} />
-          <Route path="/cancel" element={<CancelledTickets />} />
-          <Route path="/report" element={<Report />} />
-          <Route
-            path="/master"
-            element={
-              <ProtectedRoute requiredRole="admin">
-                <Master />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/tat-config"
-            element={
-              <ProtectedRoute requiredRole="admin">
-                <TatConfig />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/settings"
-            element={
-              <ProtectedRoute requiredRole="admin">
-                <Settings />
-              </ProtectedRoute>
-            }
-          />
-
-          </Route>
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      {/* </Layout> */}
-    </Router>
+    <BrowserRouter>
+      <Providers>
+        <UpdateBanner />
+        {/* Routes outside Layout (/tada-decision) are lazy too; Layout has its own fallback. */}
+        <Suspense fallback={null}>
+          <AppRoutes />
+        </Suspense>
+      </Providers>
+    </BrowserRouter>
   );
 }
 

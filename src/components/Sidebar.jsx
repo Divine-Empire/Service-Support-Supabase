@@ -1,190 +1,89 @@
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import {
-  BarChart3,
-  Ticket,
-  Users,
-  Video,
-  FileText,
-  Phone,
-  MapPin,
-  Plane,
-  Wrench,
-  CheckCircle,
-  Receipt,
-  Warehouse,
-  Settings,
-  User,
-  LogOutIcon,
-  Package,
-  UserCog,
-  Database,
-  Timer,
-  Truck,
-  Mail,
-  ClipboardList,
-  UserCheck,
-} from "lucide-react";
+import { Link, NavLink, useNavigate } from "react-router-dom";
+import { LogOut, X } from "lucide-react";
 import useAuthStore from "../store/authStore";
+import { navLabel, visibleNavigation } from "../config/navigation";
 
-export const navigation = [
-  { name: "Dashboard", href: "/", icon: BarChart3 },
-  { name: "Service Installation", href: "/serviceinstallation", icon: Wrench },
-  { name: "Ticket-and-Enquiry", href: "/ticket-and-enquiry", icon: Ticket },
-  { name: "Warranty Check", href: "/warranty-check", icon: CheckCircle },
-  { name: "Video Call Solution", href: "/videocall", icon: Video },
-  { name: "Warehouse", href: "/warehouse", icon: Warehouse },
-  { name: "Quotation", href: "/quotation", icon: FileText },
-  { name: "Follow-Up", href: "/followup", icon: Phone },
-  { name: "Site Visit Plan", href: "/siteplan", icon: MapPin },
-  { name: "TADA", href: "/tada", icon: Plane },
-  { name: "TADA Approval", href: "/tada-approval", icon: Mail },
-  {
-    name: "Site Visit (Verification OTP)",
-    href: "/approval",
-    icon: CheckCircle,
-  },
-  { name: "CRM Verification", href: "/crm-verification", icon: UserCheck },
-  { name: "Invoice", href: "/invoice", icon: Receipt },
-  { name: "Calibration", href: "/calibration", icon: Settings },
-  {
-    name: "Calibration Certificate",
-    href: "/calibrationCertificate",
-    icon: Settings,
-  },
-  { name: "Spare Dispatch Details", href: "/sparedispatch", icon: Truck },
-  { name: "Cancel", href: "/cancel", icon: Settings },
-  { name: "Report", href: "/report", icon: ClipboardList },
-  { name: "Master", href: "/master", icon: Database },
-  { name: "TAT Config", href: "/tat-config", icon: Timer },
-  { name: "Settings", href: "/settings", icon: UserCog },
-];
+const ROLE_LABELS = { admin: "Administrator", engineer: "Engineer" };
 
-export default function Sidebar({ onClose, isMobile = false }) {
-  const location = useLocation();
+export default function Sidebar({ isOpen, onClose }) {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
 
   const handleLogout = () => {
     logout();
-    navigate("/login");
+    navigate("/login", { replace: true });
   };
 
-  const allowedPages = Array.isArray(user?.page)
-    ? user.page.map((page) => page.trim()).map((page) => (page === "Client Details" || page === "Ticket & Enquiry" ? "Ticket-and-Enquiry" : page))
-    : [];
-
-  const isAdmin = user?.role === "admin";
-
-  const filteredMenuItems = navigation.filter((item) => {
-    // Admin role = full access, independent of the page-access list.
-    if (isAdmin) return true;
-    if (item.name === "Settings" || item.name === "Master" || item.name === "TAT Config") return false;
-    return (
-      allowedPages.includes(item.name) ||
-      item.name === "Service Installation"
-    );
-  });
+  const items = visibleNavigation(user);
 
   return (
-    <div
-      className={`${isMobile ? "fixed inset-0 z-40 flex" : "hidden lg:flex"}`}
-    >
-      {/* Overlay for mobile */}
-      {isMobile && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40"
-          onClick={onClose}
-        />
+    <>
+      {/* Mobile overlay */}
+      {isOpen && (
+        <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-40 lg:hidden" onClick={onClose} />
       )}
 
-      <div className="w-64 bg-gradient-to-b from-indigo-900 via-purple-900 to-blue-900 text-white flex-shrink-0 h-screen overflow-y-auto z-50 relative flex flex-col">
-        <div className="p-6 border-b border-purple-700 bg-gradient-to-r from-indigo-800 to-purple-800">
-          <h1 className="text-2xl font-bold text-white" data-testid="app-title">
-            Service Support
-          </h1>
-          <p className="text-purple-200 text-sm mt-1">Management System</p>
+      <aside
+        className={`fixed top-0 left-0 h-full w-64 lg:w-60 bg-white border-r border-slate-200 z-50 flex flex-col transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${isOpen ? "translate-x-0" : "-translate-x-full"}`}
+      >
+        <div className="p-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
+          <Link to="/" onClick={onClose} className="flex min-w-0 items-center gap-3">
+            <img src="/divine-logo.svg" alt="Divine" className="h-8 w-auto shrink-0" />
+            <div className="min-w-0 leading-tight">
+              <p className="text-base font-bold text-slate-800 tracking-tight" data-testid="app-title">Service Support</p>
+              <p className="text-xs text-slate-500">Divine Empire</p>
+            </div>
+          </Link>
+          <button type="button" aria-label="Close menu" onClick={onClose} className="lg:hidden p-1.5 hover:bg-slate-100 rounded-lg transition-colors">
+            <X size={18} className="text-slate-500" aria-hidden="true" />
+          </button>
         </div>
 
-        <nav className="flex flex-col flex-1 overflow-hidden">
-          <div className="px-4 py-4 overflow-y-auto scrollbar-hide flex-1">
-            <div className="space-y-1">
-              {filteredMenuItems.map((item) => {
-                const isActive = location.pathname === item.href;
-                const Icon = item.icon;
-                const colors = [
-                  "from-pink-500 to-pink-600",
-                  "from-purple-500 to-purple-600",
-                  "from-blue-500 to-blue-600",
-                  "from-green-500 to-green-600",
-                  "from-yellow-500 to-yellow-600",
-                  "from-red-500 to-red-600",
-                  "from-indigo-500 to-indigo-600",
-                  "from-teal-500 to-teal-600",
-                  "from-amber-500 to-amber-600",
-                  "from-cyan-500 to-cyan-600",
-                  "from-fuchsia-500 to-fuchsia-600",
-                  "from-rose-500 to-rose-600",
-                  "from-emerald-500 to-emerald-600",
-                  "from-violet-500 to-violet-600",
-                  "from-sky-500 to-sky-600",
-                ];
-                // const randomColor = colors[Math.floor(Math.random() * colors.length)];
-                const randomColor = "from-blue-500 to-blue-600";
-
-                return (
-                  <NavLink
-                    key={item.name}
-                    to={item.href}
-                    className={({ isActive }) =>
-                      `flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-all mb-1 ${isActive
-                        ? `bg-gradient-to-r ${randomColor} text-white shadow-lg`
-                        : "text-blue-100 hover:text-white hover:bg-blue-700/50 hover:shadow-md"
-                      }`
-                    }
-                    data-testid={`nav-${item.href.replace("/", "") || "dashboard"
-                      }`}
-                  >
-                    <Icon className="mr-3 h-5 w-5" />
-                    {item.label || item.name}
-                  </NavLink>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Footer - fixed at bottom */}
-          <div className="p-4 border-t border-purple-700/50 bg-gradient-to-r from-blue-900/80 to-indigo-900/80 backdrop-blur-sm mt-auto">
-            <button
-              onClick={() => {
-                handleLogout();
-                onClose?.();
-              }}
-              className="flex items-center py-2 px-4 rounded-lg text-white hover:bg-red-600/80 hover:text-white w-full transition-colors mb-3"
+        <nav aria-label="Main" className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5 scrollbar-hide">
+          {items.map((item) => (
+            <NavLink
+              key={item.href}
+              to={item.href}
+              end
+              onClick={onClose}
+              data-testid={`nav-${item.href.replace("/", "") || "dashboard"}`}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors duration-150 group ${isActive
+                  ? "bg-indigo-50 text-indigo-700 font-semibold"
+                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-800 font-medium"}`
+              }
             >
-              <LogOutIcon className="mr-2" size={18} />
-              <span>Logout</span>
-            </button>
+              {({ isActive }) => (
+                <>
+                  <item.icon size={17} className={isActive ? "text-indigo-600" : "text-slate-400 group-hover:text-slate-600"} aria-hidden="true" />
+                  <span className="text-sm truncate">{navLabel(item)}</span>
+                  {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-500 flex-shrink-0" />}
+                </>
+              )}
+            </NavLink>
+          ))}
+        </nav>
 
-            <div className="flex items-center text-sm text-white">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-r from-purple-500 to-blue-500 flex items-center justify-center mr-2">
-                <User size={16} className="text-white" />
-              </div>
-              <div>
-                <p className="font-medium leading-none">
-                  {user?.name || "Guest"}
-                </p>
-                <p className="text-xs text-blue-200">
-                  {user?.role === "admin"
-                    ? "Administrator"
-                    : user?.role === "engineer"
-                      ? "Engineer"
-                      : "User"}
-                </p>
-              </div>
+        <div className="p-3 border-t border-slate-100 flex-shrink-0">
+          <div className="flex items-center gap-3 px-2 mb-3">
+            <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
+              <span className="text-xs font-bold text-indigo-600">{(user?.name || "U")[0].toUpperCase()}</span>
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-700 truncate">{user?.name || "Guest"}</p>
+              <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wide">{ROLE_LABELS[user?.role] || "User"}</p>
             </div>
           </div>
-        </nav>
-      </div>
-    </div>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="flex items-center justify-center gap-2 w-full px-3 py-2 rounded-lg bg-rose-50 text-rose-700 border border-rose-100 hover:bg-rose-600 hover:text-white transition-colors font-semibold text-xs"
+          >
+            <LogOut size={14} aria-hidden="true" />
+            <span>Sign Out</span>
+          </button>
+        </div>
+      </aside>
+    </>
   );
 }

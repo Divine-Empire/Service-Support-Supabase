@@ -3,23 +3,23 @@ import { useNavigate } from "react-router-dom";
 import { User, Lock, Eye, EyeOff, Loader2Icon } from "lucide-react";
 import useAuthStore from "../store/authStore";
 import toast from "react-hot-toast";
-import divineLogo from "../assests/divine-logo.svg";
+import { landingPath } from "../config/navigation";
 
 const Login = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const login = useAuthStore((state) => state.login);
-  const [loading, setLaoding] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    setLaoding(true);
+    setLoading(true);
     const success = await login(username, password);
-    setLaoding(false);
+    setLoading(false);
 
     if (success) {
       const user = useAuthStore.getState().user;
@@ -27,70 +27,8 @@ const Login = () => {
 
         localStorage.setItem('currentUsername', user.username);
 
-      const pages = (user.page || [])
-        .map((item) => item.trim())
-        .map((item) => (item === "Client Details" || item === "Ticket & Enquiry" ? "Ticket-and-Enquiry" : item));
-
-      // console.log("pages", pages);
-
-      const mainPages = [
-        "Dashboard",
-        "Ticket-and-Enquiry",
-        "Video Call Solution",
-        "Quotation",
-        "Follow-Up",
-        "Site Visit Plan",
-        "TADA",
-        "Site Visit (Verification OTP)",
-        "CRM Verification",
-        "Invoice",
-        "Calibration",
-        "Calibration Certificate",
-        "Spare Dispatch Details",
-        "Cancel"
-      ];
-
-      let pagesss = "";
-      for (let key of mainPages) {
-        if (pages.includes(key)) {
-          pagesss = key;
-          break;
-        }
-      }
-
-      if (pagesss === "Dashboard") {
-        navigate("/");
-      } else if (pagesss === "Ticket-and-Enquiry") {
-        navigate("/ticket-and-enquiry");
-      } else if (pagesss === "Video Call Solution") {
-        navigate("/videocall");
-      } else if (pagesss === "Quotation") {
-        navigate("/quotation");
-      } else if (pagesss === "Follow-Up") {
-        navigate("/followup");
-      } else if (pagesss === "Site Visit Plan") {
-        navigate("/siteplan");
-      }else if (pagesss === "TADA") {
-        navigate("/tada");
-      }  else if (pagesss === "Site Visit (Verification OTP)") {
-        navigate("/approval");
-      } else if (pagesss === "CRM Verification") {
-        navigate("/crm-verification");
-      } else if (pagesss === "Invoice") {
-        navigate("/invoice");
-      } else if (pagesss === "Calibration") {
-        navigate("/calibration");
-      }else if (pagesss === "Calibration Certificate") {
-        navigate("/calibrationCertificate");
-      }else if (pagesss === "Spare Dispatch Details") {
-        navigate("/sparedispatch");
-      }else if (pagesss === "Cancel") {
-        navigate("/cancel");
-      }
-
-      // Admin = full access; land on the Dashboard if none of the listed
-      // pages matched (e.g. an admin whose page list is empty/limited).
-      if (!pagesss && user.role === "admin") navigate("/");
+      // First page in menu order the user was given (admin -> Dashboard).
+      navigate(landingPath(user), { replace: true });
     } else {
       toast.error("Invalid credentials");
     }
@@ -114,7 +52,7 @@ const Login = () => {
               <div className="relative">
                 <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-sky-400 to-lime-400 blur-lg opacity-40" />
                 <div className="relative h-20 w-20 bg-white rounded-2xl flex items-center justify-center shadow-lg ring-1 ring-slate-200 p-3">
-                  <img src={divineLogo} alt="Divine" className="h-full w-full object-contain" />
+                  <img src="/divine-logo.svg" alt="Divine" className="h-full w-full object-contain" />
                 </div>
               </div>
             </div>

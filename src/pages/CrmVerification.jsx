@@ -1,11 +1,10 @@
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader } from "../components/ui/card";
+import { Loader2Icon } from "lucide-react";
 import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Modal } from "../components/ui/modal";
+import { ListToolbar, ListTable, StatusBadge } from "../components/shared";
+import { useClientList } from "../hooks/useClientList";
 import { useToast } from "../hooks/use-toast";
-import { Loader2Icon, LoaderIcon } from "lucide-react";
 import { supabase } from "../lib/supabase/client";
 import { computeStagePlanned } from "../lib/supabase/stagePlanning";
 
@@ -15,12 +14,69 @@ import { computeStagePlanned } from "../lib/supabase/stagePlanning";
 //   History: a sss_crm_verification row exists.
 // Submitting generates invoice_planned (Invoice TAT), except for FOC orders
 // (follow-up 'Order Received' row payment_mode = 'FOC'), which stop here.
+
+// Not the lib/format versions: these keep an unparseable value as-is and omit seconds.
+const formatDate = (value) => {
+  if (!value) return "";
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return String(value);
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+};
+
+const formatDateTime = (value) => {
+  if (!value) return "";
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return String(value);
+  return `${formatDate(value)} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
+
+const fileLink = (url) =>
+  url ? (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="font-medium text-primary hover:underline"
+    >
+      View
+    </a>
+  ) : (
+    <span className="text-muted-foreground">-</span>
+  );
+
+const COLUMNS = [
+  { key: "select", label: "Select", fixed: true, tabs: ["pending"], cell: (r, { selectedIds, onToggle }) => (
+    <input
+      type="checkbox"
+      checked={selectedIds.includes(r.ticketId)}
+      onChange={() => onToggle(r.ticketId)}
+      aria-label={`Select ${r.ticketId}`}
+      className="h-4 w-4"
+      data-testid={`checkbox-crm-${r.ticketId}`}
+    />
+  ) },
+  { key: "ticketId", label: "Ticket-ID", defaultVisible: true, strong: true, text: (r) => r.ticketId },
+  { key: "clientName", label: "Client Name", defaultVisible: true, text: (r) => r.clientName },
+  { key: "companyName", label: "Company Name", defaultVisible: true, wrap: true, width: 180, text: (r) => r.companyName },
+  { key: "engineerAssign", label: "Engineer Name", defaultVisible: true, text: (r) => r.engineerAssign },
+  { key: "siteVisitDate", label: "Site Visit Date", defaultVisible: true, text: (r) => formatDate(r.siteVisitDate) },
+  { key: "serviceReportFile", label: "Service Report", defaultVisible: true, cell: (r) => fileLink(r.serviceReportFile) },
+  { key: "quotationReceiveFile", label: "Quotation Receive", defaultVisible: true, cell: (r) => fileLink(r.quotationReceiveFile) },
+  { key: "videoLink", label: "Video", defaultVisible: false, cell: (r) => fileLink(r.videoLink) },
+  { key: "locallyPurchasedSpares", label: "Locally Purchased Spares", defaultVisible: false, text: (r) => r.locallyPurchasedSpares },
+  { key: "remarks", label: "Remarks", defaultVisible: false, wrap: true, width: 200, text: (r) => r.remarks },
+  { key: "planned", label: "Planned", defaultVisible: true, tabs: ["pending"], text: (r) => formatDateTime(r.planned) },
+  { key: "verifiedBy", label: "Verified By", defaultVisible: true, tabs: ["history"], text: (r) => r.verifiedBy },
+  { key: "verifiedAt", label: "Verified On", defaultVisible: true, tabs: ["history"], text: (r) => formatDateTime(r.verifiedAt) },
+  { key: "invoicePlanned", label: "Invoice Planned", defaultVisible: true, tabs: ["history"], cell: (r) =>
+    r.invoicePlanned ? formatDateTime(r.invoicePlanned) : <StatusBadge tone="warning">No invoice (FOC)</StatusBadge> },
+];
+
 export default function CrmVerification() {
-  const [activeTab, setActiveTab] = useState("pending");
   const [pendingData, setPendingData] = useState([]);
   const [historyData, setHistoryData] = useState([]);
   const [fetchLoading, setFetchLoading] = useState(false);
-  const [searchItem, setSearchItem] = useState("");
+  const [loadError, setLoadError] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
   const [showConfirm, setShowConfirm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -28,6 +84,7 @@ export default function CrmVerification() {
 
   const fetchData = async () => {
     setFetchLoading(true);
+    setLoadError(null);
     try {
       const { data: otpRows, error: otpError } = await supabase
         .from("sss_otp_verification")
@@ -111,6 +168,7 @@ export default function CrmVerification() {
       setSelectedIds([]);
     } catch (error) {
       console.error("Error fetching data:", error);
+      setLoadError(error.message || "Failed to load data");
       toast({
         title: "Error",
         description: "Failed to load data",
@@ -123,31 +181,54 @@ export default function CrmVerification() {
 
   useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const matchesSearch = (item) => {
-    const q = searchItem.toLowerCase();
-    return (
-      String(item.ticketId || "").toLowerCase().includes(q) ||
-      String(item.clientName || "").toLowerCase().includes(q) ||
-      String(item.companyName || "").toLowerCase().includes(q) ||
-      String(item.engineerAssign || "").toLowerCase().includes(q) ||
-      String(item.phoneNumber || "").toLowerCase().includes(q)
-    );
-  };
+  const list = useClientList({
+    key: "crm-verification",
+    data: { pending: pendingData, history: historyData },
+    loading: fetchLoading,
+    error: loadError,
+    onRetry: fetchData,
+    searchKeys: ["ticketId", "clientName", "companyName", "engineerAssign", "phoneNumber"],
+    filters: [
+      { key: "engineer", label: "Engineer", allLabel: "All Engineers", get: (r) => r.engineerAssign },
+      { key: "payment", label: "Payment Mode", allLabel: "All Payment Modes", get: (r) => r.paymentMode },
+    ],
+    columns: COLUMNS,
+    sort: "none", // pending: oldest planned first; history is already reversed above
+  });
 
-  const filteredPendingData = pendingData.filter(matchesSearch);
-  const filteredHistoryData = historyData.filter(matchesSearch);
-
-  const allSelected =
-    filteredPendingData.length > 0 &&
-    filteredPendingData.every((p) => selectedIds.includes(p.ticketId));
+  // Select-all covers every pending row matching the search/filters, across pages.
+  const selectableIds = list.tab === "pending" ? list.allFiltered.map((p) => p.ticketId) : [];
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedIds.includes(id));
 
   const toggleSelected = (id) =>
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
-  const toggleAll = () =>
-    setSelectedIds(allSelected ? [] : filteredPendingData.map((p) => p.ticketId));
+  const toggleAll = () => setSelectedIds(allSelected ? [] : selectableIds);
+
+  // The Select column header carries the select-all checkbox.
+  const tableList = {
+    ...list,
+    activeColumns: list.activeColumns.map((c) =>
+      c.key === "select"
+        ? {
+            ...c,
+            label: (
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={toggleAll}
+                aria-label="Select all pending tickets"
+                className="h-4 w-4"
+                data-testid="checkbox-crm-all"
+              />
+            ),
+          }
+        : c
+    ),
+  };
 
   const handleSubmit = async () => {
     const rows = pendingData.filter((p) => selectedIds.includes(p.ticketId));
@@ -190,300 +271,31 @@ export default function CrmVerification() {
     }
   };
 
-  const formatDate = (value) => {
-    if (!value) return "";
-    const d = new Date(value);
-    if (isNaN(d.getTime())) return String(value);
-    return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
-  };
-
-  const formatDateTime = (value) => {
-    if (!value) return "";
-    const d = new Date(value);
-    if (isNaN(d.getTime())) return String(value);
-    return `${formatDate(value)} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-  };
-
-  const fileLink = (url) =>
-    url ? (
-      <a
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
-      >
-        View
-      </a>
-    ) : (
-      <span className="text-gray-400">-</span>
-    );
-
-  const th = "text-white border-b border-blue-500 px-4 py-3 text-left whitespace-nowrap";
-  const td = "px-4 py-3 text-blue-900";
-
-  // Columns shared by both tabs.
-  const commonHeaders = [
-    "Ticket-ID",
-    "Client Name",
-    "Company Name",
-    "Engineer Name",
-    "Site Visit Date",
-    "Service Report",
-    "Quotation Receive",
-    "Video",
-    "Locally Purchased Spares",
-    "Remarks",
-  ];
-
-  const commonCells = (r) => (
-    <>
-      <td className={`${td} font-medium text-blue-800`}>{r.ticketId}</td>
-      <td className={td}>{r.clientName}</td>
-      <td className={`${td} max-w-[200px] truncate`} title={r.companyName}>
-        {r.companyName}
-      </td>
-      <td className={td}>{r.engineerAssign}</td>
-      <td className={td}>{formatDate(r.siteVisitDate)}</td>
-      <td className={td}>{fileLink(r.serviceReportFile)}</td>
-      <td className={td}>{fileLink(r.quotationReceiveFile)}</td>
-      <td className={td}>{fileLink(r.videoLink)}</td>
-      <td className={td}>{r.locallyPurchasedSpares}</td>
-      <td className={`${td} max-w-[200px] truncate`} title={r.remarks}>
-        {r.remarks}
-      </td>
-    </>
-  );
-
-  const emptyRow = (colSpan, text) => (
-    <tr>
-      <td colSpan={colSpan} className="text-center py-8 bg-white">
-        {fetchLoading ? (
-          <div className="flex justify-center items-center text-blue-700">
-            <LoaderIcon className="animate-spin w-8 h-8" />
-          </div>
-        ) : (
-          <h1 className="text-blue-700">{text}</h1>
-        )}
-      </td>
-    </tr>
-  );
-
-  const mobileCard = (r, ind, extra) => (
-    <Card
-      key={r.ticketId}
-      className={`${ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"} border-l-4 border-l-blue-500`}
-    >
-      <CardContent className="p-4 flex gap-3 items-start">
-        {extra.checkbox}
-        <div className="text-sm space-y-1 min-w-0">
-          <h3 className="font-bold text-blue-800 text-base">{r.ticketId}</h3>
-          <p className="text-gray-700">{r.clientName || "N/A"}</p>
-          <p className="text-gray-600 truncate" title={r.companyName}>
-            {r.companyName || "N/A"}
-          </p>
-          <p className="text-gray-600">Engineer: {r.engineerAssign || "N/A"}</p>
-          <p className="text-gray-600">Site Visit: {formatDate(r.siteVisitDate) || "N/A"}</p>
-          <p className="text-gray-600 flex gap-3">
-            <span>Report: {fileLink(r.serviceReportFile)}</span>
-            <span>Quotation: {fileLink(r.quotationReceiveFile)}</span>
-            <span>Video: {fileLink(r.videoLink)}</span>
-          </p>
-          <p className="text-gray-600">Spares: {r.locallyPurchasedSpares || "N/A"}</p>
-          {r.remarks && <p className="text-gray-600 line-clamp-2">Remarks: {r.remarks}</p>}
-          {extra.footer}
-        </div>
-      </CardContent>
-    </Card>
-  );
-
   return (
-    <div className="space-y-2">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <Card className="border-0 shadow-lg bg-gradient-to-br from-blue-50 to-indigo-50">
-          <CardHeader className="bg-gradient-to-r from-blue-50/50 to-indigo-50/50 rounded-t-lg border-b border-blue-100 px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
-            <TabsList className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200">
-              <TabsTrigger
-                value="pending"
-                data-testid="tab-pending"
-                className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-              >
-                Pending ({filteredPendingData.length})
-              </TabsTrigger>
-              <TabsTrigger
-                value="history"
-                data-testid="tab-history"
-                className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-              >
-                History ({filteredHistoryData.length})
-              </TabsTrigger>
-            </TabsList>
-
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
-              <Input
-                placeholder="Search by ticket ID, client, company, engineer or phone..."
-                className="w-full sm:w-80 rounded-md border-blue-200 bg-white"
-                value={searchItem}
-                onChange={(e) => setSearchItem(e.target.value)}
-                data-testid="input-search-filter"
-              />
-              {activeTab === "pending" && (
-                <Button
-                  type="button"
-                  onClick={() => setShowConfirm(true)}
-                  disabled={selectedIds.length === 0 || isSubmitting}
-                  data-testid="button-submit-crm"
-                  className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white disabled:opacity-60"
-                >
-                  Submit ({selectedIds.length})
-                </Button>
-              )}
-            </div>
-          </CardHeader>
-
-          <CardContent>
-            <div className="mt-2">
-              <TabsContent value="pending" className="mt-0">
-                <div className="relative overflow-x-auto">
-                  <div className="max-h-[calc(103vh-200px)] overflow-y-auto">
-                    <table className="hidden sm:table w-full">
-                      <thead className="sticky top-0 z-10">
-                        <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                          <th className={`${th} w-[60px]`}>
-                            <input
-                              type="checkbox"
-                              checked={allSelected}
-                              onChange={toggleAll}
-                              className="h-4 w-4"
-                              data-testid="checkbox-crm-all"
-                            />
-                          </th>
-                          {commonHeaders.map((h) => (
-                            <th key={h} className={th}>
-                              {h}
-                            </th>
-                          ))}
-                          <th className={th}>Planned</th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-blue-100">
-                        {filteredPendingData.length === 0
-                          ? emptyRow(commonHeaders.length + 2, "No pending CRM verifications.")
-                          : filteredPendingData.map((r, ind) => (
-                              <tr key={r.ticketId} className={ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"}>
-                                <td className="px-4 py-3">
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedIds.includes(r.ticketId)}
-                                    onChange={() => toggleSelected(r.ticketId)}
-                                    className="h-4 w-4"
-                                    data-testid={`checkbox-crm-${r.ticketId}`}
-                                  />
-                                </td>
-                                {commonCells(r)}
-                                <td className={`${td} whitespace-nowrap`}>{formatDateTime(r.planned)}</td>
-                              </tr>
-                            ))}
-                      </tbody>
-                    </table>
-
-                    <div className="sm:hidden space-y-3">
-                      {filteredPendingData.length === 0 ? (
-                        <div className="text-center py-8 text-blue-700">
-                          {fetchLoading ? (
-                            <LoaderIcon className="animate-spin w-8 h-8 mx-auto" />
-                          ) : (
-                            "No pending CRM verifications."
-                          )}
-                        </div>
-                      ) : (
-                        filteredPendingData.map((r, ind) =>
-                          mobileCard(r, ind, {
-                            checkbox: (
-                              <input
-                                type="checkbox"
-                                checked={selectedIds.includes(r.ticketId)}
-                                onChange={() => toggleSelected(r.ticketId)}
-                                className="h-4 w-4 mt-1"
-                              />
-                            ),
-                            footer: <p className="text-gray-500">Planned: {formatDateTime(r.planned)}</p>,
-                          })
-                        )
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="history" className="mt-0">
-                <div className="relative overflow-x-auto">
-                  <div className="max-h-[calc(103vh-200px)] overflow-y-auto">
-                    <table className="hidden sm:table w-full">
-                      <thead className="sticky top-0 z-10">
-                        <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                          {commonHeaders.map((h) => (
-                            <th key={h} className={th}>
-                              {h}
-                            </th>
-                          ))}
-                          <th className={th}>Verified By</th>
-                          <th className={th}>Verified On</th>
-                          <th className={th}>Invoice Planned</th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-blue-100">
-                        {filteredHistoryData.length === 0
-                          ? emptyRow(commonHeaders.length + 3, "No CRM verification history found.")
-                          : filteredHistoryData.map((r, ind) => (
-                              <tr key={r.ticketId} className={ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"}>
-                                {commonCells(r)}
-                                <td className={td}>{r.verifiedBy}</td>
-                                <td className={`${td} whitespace-nowrap`}>{formatDateTime(r.verifiedAt)}</td>
-                                <td className={`${td} whitespace-nowrap`}>
-                                  {r.invoicePlanned ? (
-                                    formatDateTime(r.invoicePlanned)
-                                  ) : (
-                                    <span className="text-amber-600">No invoice (FOC)</span>
-                                  )}
-                                </td>
-                              </tr>
-                            ))}
-                      </tbody>
-                    </table>
-
-                    <div className="sm:hidden space-y-3">
-                      {filteredHistoryData.length === 0 ? (
-                        <div className="text-center py-8 text-blue-700">
-                          {fetchLoading ? (
-                            <LoaderIcon className="animate-spin w-8 h-8 mx-auto" />
-                          ) : (
-                            "No CRM verification history found."
-                          )}
-                        </div>
-                      ) : (
-                        filteredHistoryData.map((r, ind) =>
-                          mobileCard(r, ind, {
-                            footer: (
-                              <>
-                                <p className="text-gray-500">
-                                  Verified: {r.verifiedBy || "N/A"} · {formatDateTime(r.verifiedAt)}
-                                </p>
-                                <p className="text-gray-500">
-                                  Invoice: {r.invoicePlanned ? formatDateTime(r.invoicePlanned) : "No invoice (FOC)"}
-                                </p>
-                              </>
-                            ),
-                          })
-                        )
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </TabsContent>
-            </div>
-          </CardContent>
-        </Card>
-      </Tabs>
+    <div className="space-y-3">
+      <ListToolbar
+        list={list}
+        searchPlaceholder="Search by ticket ID, client, company, engineer or phone..."
+        actions={
+          list.tab === "pending" && (
+            <Button
+              type="button"
+              onClick={() => setShowConfirm(true)}
+              disabled={selectedIds.length === 0 || isSubmitting}
+              data-testid="button-submit-crm"
+            >
+              Submit ({selectedIds.length})
+            </Button>
+          )
+        }
+      />
+      <ListTable
+        list={tableList}
+        ctx={{ selectedIds, onToggle: toggleSelected }}
+        rowKey={(r) => r.ticketId}
+        emptyTitle={{ pending: "No pending CRM verifications.", history: "No CRM verification history found." }}
+        ariaLabel="CRM verification"
+      />
 
       <Modal
         isOpen={showConfirm}
@@ -492,20 +304,19 @@ export default function CrmVerification() {
         size="md"
       >
         <div className="space-y-4">
-          <p className="text-gray-700">
+          <p className="text-foreground">
             Verify <span className="font-semibold">{selectedIds.length}</span> ticket(s)? This moves
             them to History and generates their Invoice planned date (FOC orders get no invoice).
           </p>
-          <p className="text-sm text-gray-500 break-words">{selectedIds.join(", ")}</p>
-          <div className="flex space-x-4 pt-2">
+          <p className="break-words text-sm text-muted-foreground">{selectedIds.join(", ")}</p>
+          <div className="flex gap-3 pt-2">
             <Button
               type="button"
               onClick={handleSubmit}
               disabled={isSubmitting}
               data-testid="button-confirm-crm"
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
             >
-              {isSubmitting && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
+              {isSubmitting && <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />}
               Confirm
             </Button>
             <Button

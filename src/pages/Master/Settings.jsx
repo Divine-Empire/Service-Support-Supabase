@@ -22,6 +22,7 @@ import {
   DialogDescription,
 } from "../../components/ui/dialog";
 import { Badge } from "../../components/ui/badge";
+import StatusBadge from "../../components/shared/StatusBadge";
 import { Checkbox } from "../../components/ui/checkbox";
 import {
   Table,
@@ -49,9 +50,10 @@ import {
   Lock,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase/client";
-import { navigation } from "../../components/Sidebar";
+import { navigation } from "../../config/navigation";
 
 const ROLES = ["admin", "user", "engineer"];
+const ROLE_TONE = { admin: "info", engineer: "success", user: "neutral" };
 
 // Pages that are always visible regardless of the page-access list, so
 // offering them as toggles here wouldn't do anything — leave them out.
@@ -319,7 +321,7 @@ export default function Settings() {
                 />
               </div>
               {authError && (
-                <p role="alert" className="text-sm text-red-600">
+                <p role="alert" className="text-sm text-destructive">
                   {authError}
                 </p>
               )}
@@ -346,7 +348,7 @@ export default function Settings() {
                 </TabsTrigger>
               </TabsList>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button onClick={() => fetchUsers()} variant="outline" size="sm">
                   <RefreshCw className="h-4 w-4 mr-2" />
                   Refresh
@@ -354,7 +356,6 @@ export default function Settings() {
                 <Button
                   size="sm"
                   onClick={openCreateModal}
-                  className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:from-violet-700 hover:to-indigo-700"
                 >
                   <Plus className="h-4 w-4 mr-2" />
                   Add User
@@ -366,7 +367,7 @@ export default function Settings() {
           <CardContent className="p-0">
             <TabsContent value="users" className="mt-0">
               {/* Sub-header */}
-              <div className="flex items-center justify-between px-4 py-3 border-b bg-slate-50/50">
+              <div className="flex flex-col gap-2 border-b bg-secondary/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm text-muted-foreground">
                   Manage application accounts, credentials, and stage access permissions
                 </p>
@@ -377,13 +378,13 @@ export default function Settings() {
 
               {fetchLoading ? (
                 <div className="flex items-center justify-center h-48">
-                  <RefreshCw className="h-6 w-6 animate-spin text-indigo-600" />
+                  <RefreshCw className="h-6 w-6 animate-spin text-primary" />
                   <span className="ml-2 text-muted-foreground">Loading users...</span>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
                   <Table>
-                    <TableHeader className="bg-slate-50">
+                    <TableHeader>
                       <TableRow>
                         <TableHead className="w-[100px]">Actions</TableHead>
                         <TableHead className="w-[180px]">Full Name</TableHead>
@@ -395,7 +396,7 @@ export default function Settings() {
                     </TableHeader>
                     <TableBody>
                       {users.map((user) => (
-                        <TableRow key={user.uuid} className="hover:bg-slate-50/70 transition-colors">
+                        <TableRow key={user.uuid} className="transition-colors">
                           <TableCell>
                             <div className="flex gap-1">
                               <Button
@@ -403,23 +404,25 @@ export default function Settings() {
                                 variant="ghost"
                                 className="h-8 w-8 p-0"
                                 onClick={() => openEditModal(user)}
+                                aria-label={`Edit ${user.username}`}
                               >
-                                <Edit className="h-4 w-4 text-slate-600 hover:text-indigo-600" />
+                                <Edit className="h-4 w-4 text-muted-foreground" />
                               </Button>
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="h-8 w-8 p-0 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                                className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
                                 onClick={() => setDeleteTarget(user)}
+                                aria-label={`Delete ${user.username}`}
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             </div>
                           </TableCell>
-                          <TableCell className="font-semibold text-slate-800">
+                          <TableCell className="whitespace-nowrap font-semibold text-foreground">
                             {user.full_name}
                           </TableCell>
-                          <TableCell className="text-slate-700">
+                          <TableCell className="text-foreground">
                             {user.username}
                           </TableCell>
                           <TableCell>
@@ -432,8 +435,9 @@ export default function Settings() {
                               <button
                                 type="button"
                                 onClick={() => togglePasswordVisibility(user.uuid)}
-                                className="text-gray-400 hover:text-gray-600"
+                                className="text-muted-foreground hover:text-foreground"
                                 tabIndex={-1}
+                                aria-label={visiblePasswords.has(user.uuid) ? "Hide password" : "Show password"}
                               >
                                 {visiblePasswords.has(user.uuid) ? (
                                   <EyeOff className="h-3.5 w-3.5" />
@@ -444,23 +448,15 @@ export default function Settings() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <Badge
-                              variant={user.role === "admin" ? "default" : "secondary"}
-                              className="capitalize text-xs font-semibold"
-                            >
+                            <StatusBadge tone={ROLE_TONE[user.role] || "neutral"} className="capitalize">
                               {user.role}
-                            </Badge>
+                            </StatusBadge>
                           </TableCell>
                           <TableCell>
                             <div className="flex flex-wrap gap-1">
                               {user.role === "admin" ||
                               (Array.isArray(user.page) && user.page.length >= ASSIGNABLE_PAGES.length) ? (
-                                <Badge
-                                  variant="outline"
-                                  className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs"
-                                >
-                                  All Steps (Full Access)
-                                </Badge>
+                                <StatusBadge tone="success">All Steps (Full Access)</StatusBadge>
                               ) : !Array.isArray(user.page) || user.page.length === 0 ? (
                                 <span className="text-xs text-muted-foreground italic">
                                   No pages assigned
@@ -470,7 +466,7 @@ export default function Settings() {
                                   <Badge
                                     key={p}
                                     variant="outline"
-                                    className="text-xs bg-slate-50 text-slate-700 border-slate-200"
+                                    className="bg-secondary text-xs font-normal text-foreground"
                                   >
                                     {p.trim()}
                                   </Badge>
@@ -498,7 +494,7 @@ export default function Settings() {
 
       {/* DIALOG: User Create / Edit */}
       <Dialog open={isUserDialogOpen} onOpenChange={setIsUserDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto bg-white">
+        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto bg-card">
           <DialogHeader>
             <DialogTitle>
               {isEditMode ? "Edit User Account" : "Add New User"}
@@ -512,7 +508,7 @@ export default function Settings() {
 
           <div className="space-y-4 pt-2">
             {/* Row 1: Username + Full Name */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="username">Username *</Label>
                 <Input
@@ -534,7 +530,7 @@ export default function Settings() {
             </div>
 
             {/* Row 2: Password + Role */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="password">Password {isEditMode ? "" : "*"}</Label>
                 <div className="relative">
@@ -549,8 +545,9 @@ export default function Settings() {
                   <button
                     type="button"
                     onClick={() => setShowPassword((prev) => !prev)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                     tabIndex={-1}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -562,7 +559,7 @@ export default function Settings() {
                   <SelectTrigger id="role">
                     <SelectValue placeholder="Select role" />
                   </SelectTrigger>
-                  <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
+                  <SelectContent className="rounded-md border border-input bg-popover shadow-lg">
                     {ROLES.map((role) => (
                       <SelectItem key={role} value={role} className="capitalize">
                         {role === "admin"
@@ -580,9 +577,9 @@ export default function Settings() {
             {/* Page Access */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label>Page Access</Label>
+                <Label id="page-access-label">Page Access</Label>
                 {formData.role === "admin" ? (
-                  <span className="flex items-center gap-1 text-xs text-indigo-600 font-medium">
+                  <span className="flex items-center gap-1 text-xs font-medium text-primary">
                     <Lock className="h-3 w-3" />
                     Auto-granted (Admin)
                   </span>
@@ -591,7 +588,7 @@ export default function Settings() {
                     type="button"
                     variant="link"
                     size="sm"
-                    className="p-0 h-auto text-xs text-indigo-600"
+                    className="p-0 h-auto text-xs text-primary"
                     onClick={() => {
                       if (formData.page.length === ASSIGNABLE_PAGES.length) {
                         setFormData((prev) => ({ ...prev, page: [] }));
@@ -611,7 +608,7 @@ export default function Settings() {
                   Admins automatically get access to every page — the list below is locked and informational only.
                 </p>
               )}
-              <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto border rounded-md p-3 bg-slate-50/50">
+              <div role="group" aria-labelledby="page-access-label" className="grid max-h-48 grid-cols-1 gap-2 overflow-y-auto rounded-md border bg-secondary/40 p-3 sm:grid-cols-2">
                 {ASSIGNABLE_PAGES.map((pageName) => (
                   <div key={pageName} className="flex items-center space-x-2">
                     <Checkbox
@@ -648,7 +645,6 @@ export default function Settings() {
                   !formData.fullName ||
                   (!isEditMode && !formData.password)
                 }
-                className="bg-indigo-600 hover:bg-indigo-700 text-white"
               >
                 {isSubmitting && <RefreshCw className="animate-spin w-4 h-4 mr-2" />}
                 {isEditMode ? "Update User" : "Create User"}
@@ -660,7 +656,7 @@ export default function Settings() {
 
       {/* DIALOG: Delete Confirmation */}
       <Dialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
-        <DialogContent className="max-w-sm bg-white">
+        <DialogContent className="max-w-sm bg-card">
           <DialogHeader>
             <DialogTitle>Delete User</DialogTitle>
             <DialogDescription>
@@ -678,7 +674,7 @@ export default function Settings() {
             <Button
               onClick={handleDelete}
               disabled={isDeleting}
-              className="bg-rose-600 hover:bg-rose-700 text-white"
+              variant="destructive"
             >
               {isDeleting && <RefreshCw className="animate-spin w-4 h-4 mr-2" />}
               Delete

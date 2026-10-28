@@ -1,18 +1,7 @@
 import { useState, useEffect } from "react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-} from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "../components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -26,13 +15,79 @@ import { Loader2Icon, LoaderIcon } from "lucide-react";
 import { supabase } from "../lib/supabase/client";
 import { computeCrmVerificationPlanned } from "../lib/supabase/stagePlanning";
 import { sendSiteVisitOtpNotification } from "../lib/notifications/whatsapp";
+import { ListToolbar, ListTable, StatusBadge } from "../components/shared";
+import { useClientList } from "../hooks/useClientList";
+import { formatDelay, delayTone } from "../lib/format";
+
+// Kept local: passes dd/mm/yyyy strings through and shows unparseable values as-is,
+// which lib/format.formatDate does not.
+const formatDate = (dateString) => {
+  if (!dateString) return "";
+
+  const dateStr = String(dateString).trim();
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+    return dateStr;
+  }
+
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return dateStr;
+
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+
+  return `${day}/${month}/${year}`;
+};
+
+const fileLink = (url) =>
+  url ? (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-primary hover:underline text-xs font-semibold"
+    >
+      View
+    </a>
+  ) : (
+    ""
+  );
+
+// Pending: Verify action + ticket/trip columns. History: what was verified + delay.
+const COLUMNS = [
+  { key: "action", label: "Action", fixed: true, tabs: ["pending"], cell: (r, { onVerify }) => (
+    <Button size="sm" variant="outline" onClick={() => onVerify(r)} data-testid={`button-approval-${r.ticketId}`}>
+      Verify
+    </Button>
+  ) },
+  { key: "date", label: "Date", defaultVisible: true, strong: true, text: (r) => formatDate(r.timeStemp) },
+  { key: "ticketId", label: "Ticket ID", defaultVisible: true, strong: true, text: (r) => r.ticketId },
+  { key: "clientName", label: "Client Name", defaultVisible: true, text: (r) => r.clientName },
+  { key: "companyName", label: "Company Name", defaultVisible: true, tabs: ["pending"], text: (r) => r.companyName },
+  { key: "phoneNumber", label: "Phone Number", defaultVisible: true, text: (r) => r.phoneNumber },
+  { key: "machineName", label: "Machine Name", defaultVisible: false, tabs: ["pending"], text: (r) => r.machineName },
+  { key: "engineerAssign", label: "Engineer Assign", defaultVisible: true, tabs: ["pending"], text: (r) => r.engineerAssign },
+  { key: "travelDate", label: "Travel Date", defaultVisible: true, tabs: ["pending"], text: (r) => formatDate(r.travelDate) },
+  { key: "returnDate", label: "Return Date", defaultVisible: true, tabs: ["pending"], text: (r) => formatDate(r.returnDate) },
+  { key: "siteVisitDate", label: "Site Visit Date", defaultVisible: true, tabs: ["history"], text: (r) => formatDate(r.siteVisitDate) },
+  { key: "verificationStatus", label: "Verification Status", defaultVisible: true, tabs: ["history"], cell: () => (
+    <StatusBadge tone="success">Verified</StatusBadge>
+  ) },
+  { key: "serviceReportFile", label: "Service Report", defaultVisible: true, tabs: ["history"], cell: (r) => fileLink(r.serviceReportFile) },
+  { key: "remarks", label: "Remarks", defaultVisible: false, tabs: ["history"], wrap: true, width: 200, text: (r) => r.remarks },
+  { key: "quatationReceive", label: "Quatation Receive", defaultVisible: true, tabs: ["history"], cell: (r) => fileLink(r.quatationReceive) },
+  { key: "video", label: "Video", defaultVisible: true, tabs: ["history"], cell: (r) => fileLink(r.video) },
+  { key: "locallyPurchasedSpares", label: "Locally Purchased Spares", defaultVisible: false, tabs: ["history"], text: (r) => r.locallyPurchasedSpares },
+  // Minutes late, never negative (same convention as tada.delay_minutes).
+  { key: "delay", label: "Delay", defaultVisible: true, tabs: ["history"], cell: (r) => (
+    <StatusBadge tone={delayTone(r.delayMinutes, { lateOnly: true })}>{formatDelay(r.delayMinutes, { lateOnly: true })}</StatusBadge>
+  ) },
+];
 
 export default function SiteVisitOTPVerification() {
-  const [activeTab, setActiveTab] = useState("pending");
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [formData, setFormData] = useState({});
-  const [searchItem, setSearchItem] = useState("");
   // Files are only HELD here on selection — actual upload happens at submit
   // time in handleSubmit (all three in parallel), so cancelling the form or
   // switching tickets never leaves an orphaned upload behind, and nothing
@@ -45,10 +100,12 @@ export default function SiteVisitOTPVerification() {
   const [pendingData, setPendingData] = useState([]);
   const [historyData, setHistoryData] = useState([]);
   const [fetchLoading, setFetchLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fetchData = async () => {
     setFetchLoading(true);
+    setLoadError(null);
     try {
       // Tickets ready for OTP Verification (tada.otp_verification_planned set).
       const { data: tadaRows, error: tadaError } = await supabase
@@ -131,6 +188,7 @@ export default function SiteVisitOTPVerification() {
       setHistoryData(history);
     } catch (error) {
       console.error("Error fetching data:", error);
+      setLoadError(error.message || "Failed to load data");
       toast({
         title: "Error",
         description: "Failed to load data",
@@ -143,6 +201,7 @@ export default function SiteVisitOTPVerification() {
 
   useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleApprovalClick = (ticket) => {
@@ -203,7 +262,7 @@ export default function SiteVisitOTPVerification() {
 
     const MAX_SIZE = 100 * 1024 * 1024; // 100MB
     if (file.size > MAX_SIZE) {
-      alert("Video file size exceeds the 100MB limit.");
+      toast({ title: "Validation Error", description: "Video file size exceeds the 100MB limit.", variant: "destructive" });
       e.target.value = null;
       return;
     }
@@ -215,7 +274,7 @@ export default function SiteVisitOTPVerification() {
     e.preventDefault();
 
     if (!formData.siteVisitDate) {
-      alert("Please Select Site Visit Date");
+      toast({ title: "Validation Error", description: "Please Select Site Visit Date", variant: "destructive" });
       return;
     }
 
@@ -223,7 +282,7 @@ export default function SiteVisitOTPVerification() {
     const liveOtp = (selectedTicket?.siteVisitOtp || "").toString().trim();
 
     if (!enteredOtp) {
-      alert("Please Enter the OTP");
+      toast({ title: "Validation Error", description: "Please Enter the OTP", variant: "destructive" });
       return;
     }
 
@@ -233,22 +292,22 @@ export default function SiteVisitOTPVerification() {
     // could otherwise match an accidentally-empty comparison; this makes
     // "no OTP sent yet" its own explicit, unambiguous error instead.
     if (!liveOtp) {
-      alert("No OTP has been sent for this ticket yet. Please click Send OTP first.");
+      toast({ title: "Validation Error", description: "No OTP has been sent for this ticket yet. Please click Send OTP first.", variant: "destructive" });
       return;
     }
 
     if (enteredOtp !== liveOtp) {
-      alert("Wrong OTP, Please Enter Right OTP");
+      toast({ title: "Validation Error", description: "Wrong OTP, Please Enter Right OTP", variant: "destructive" });
       return;
     }
 
     if (!serviceReportFile) {
-      alert("Please select a Service Report file first");
+      toast({ title: "Validation Error", description: "Please select a Service Report file first", variant: "destructive" });
       return;
     }
 
     if (!formData.locallyPurchasedSpares) {
-      alert("Please select Locally purchased spares option");
+      toast({ title: "Validation Error", description: "Please select Locally purchased spares option", variant: "destructive" });
       return;
     }
 
@@ -371,618 +430,30 @@ export default function SiteVisitOTPVerification() {
     }
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return "";
-
-    const dateStr = String(dateString).trim();
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
-      return dateStr;
-    }
-
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return dateStr;
-
-    const day = String(date.getDate()).padStart(2, "0");
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const year = date.getFullYear();
-
-    return `${day}/${month}/${year}`;
-  };
-
-  // Minutes late, always >= 0 (or blank when no delay was computed). See
-  // otp_verification.delay_minutes / migration 0032 — same non-negative
-  // convention as tada.delay_minutes.
-  const formatDelay = (minutes) => {
-    if (minutes === null || minutes === undefined) return "-";
-    return `${minutes} min`;
-  };
-
-  const filteredPendingDataa = pendingData
-    .filter((item) => {
-      const phoneNumberStr = String(item.phoneNumber || "");
-      return (
-        item.ticketId?.toLowerCase().includes(searchItem.toLowerCase()) ||
-        item.clientName?.toLowerCase().includes(searchItem.toLowerCase()) ||
-        item.companyName?.toLowerCase().includes(searchItem.toLowerCase()) ||
-        phoneNumberStr?.toLowerCase().includes(searchItem.toLowerCase())
-      );
-    })
-    .reverse();
-
-  const filteredHistoryDataa = historyData
-    .filter((item) => {
-      const phoneNumberStr = String(item.phoneNumber || "");
-      return (
-        item.ticketId?.toLowerCase().includes(searchItem.toLowerCase()) ||
-        item.clientName?.toLowerCase().includes(searchItem.toLowerCase()) ||
-        item.companyName?.toLowerCase().includes(searchItem.toLowerCase()) ||
-        phoneNumberStr?.toLowerCase().includes(searchItem.toLowerCase())
-      );
-    })
-    .reverse();
-
-  const userName = localStorage.getItem("currentUsername");
-
-  const roleStorage = localStorage.getItem("o2d-auth-storage");
-  const parsedData = JSON.parse(roleStorage);
-  const role = parsedData.state.user.role;
-
-  const filteredPendingData = filteredPendingDataa;
-
-  const filteredHistoryData = filteredHistoryDataa;
+  const list = useClientList({
+    key: "site-visit-otp",
+    data: { pending: pendingData, history: historyData },
+    loading: fetchLoading,
+    error: loadError,
+    onRetry: fetchData,
+    searchKeys: ["ticketId", "clientName", "companyName", "phoneNumber"],
+    filters: [
+      { key: "engineer", label: "Engineer", allLabel: "All Engineers", get: (r) => r.engineerAssign, tabs: ["pending"] },
+      { key: "spares", label: "Locally Purchased Spares", allLabel: "All Spares", get: (r) => r.locallyPurchasedSpares, tabs: ["history"] },
+    ],
+    columns: COLUMNS,
+  });
 
   return (
-    <div className="space-y-2">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <Card className="border-0 shadow-lg bg-gradient-to-br from-blue-50 to-indigo-50">
-          <CardHeader className="bg-gradient-to-r from-blue-50/50 to-indigo-50/50 rounded-t-lg border-b border-blue-100 px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
-            <div className="flex flex-wrap items-center gap-4">
-              <TabsList className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200">
-                <TabsTrigger
-                  value="pending"
-                  data-testid="tab-pending"
-                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-                >
-                  Pending ({filteredPendingData.length})
-                </TabsTrigger>
-                <TabsTrigger
-                  value="history"
-                  data-testid="tab-history"
-                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-                >
-                  History ({filteredHistoryData.length})
-                </TabsTrigger>
-              </TabsList>
-            </div>
-
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 flex-1 md:justify-end w-full md:w-auto">
-              <div className="relative flex-1 max-w-md w-full">
-                <Input
-                  id="searchFilter"
-                  placeholder="Search by ticket ID, client, company or phone..."
-                  className="pl-10 py-2 w-full rounded-md border-blue-200 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white"
-                  data-testid="input-search-filter"
-                  onChange={(e) => setSearchItem(e.target.value)}
-                />
-              </div>
-            </div>
-          </CardHeader>
-
-          <CardContent>
-            <div className="mt-2">
-              <TabsContent value="pending" className="mt-0">
-                <div className="relative overflow-x-auto">
-                  <div className="max-h-[calc(103vh-200px)] overflow-y-auto">
-                    <table className="hidden sm:block w-full">
-                      <thead className="sticky top-0 z-10">
-                        <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
-                            Action
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                            Date
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
-                            Ticket ID
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                            Client Name
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
-                            Company Name
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                            Phone Number
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                            Machine Name
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                            Engineer Assign
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
-                            Travel Date
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
-                            Return Date
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-blue-100">
-                        {filteredPendingData.length === 0 ? (
-                          <tr>
-                            <td
-                              colSpan={10}
-                              className="text-center py-8 bg-white"
-                              data-testid="text-no-pending"
-                            >
-                              {fetchLoading ? (
-                                <div className="flex justify-center items-center text-blue-700">
-                                  <LoaderIcon className="animate-spin w-8 h-8" />
-                                </div>
-                              ) : (
-                                <h1 className="text-blue-700">
-                                  No pending site visit verifications found.
-                                </h1>
-                              )}
-                            </td>
-                          </tr>
-                        ) : (
-                          filteredPendingData.map((ticket, ind) => (
-                            <tr
-                              key={ticket.ticketId}
-                              className={
-                                ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"
-                              }
-                            >
-                              <td className="px-4 py-3">
-                                <Button
-                                  size="sm"
-                                  onClick={() => handleApprovalClick(ticket)}
-                                  variant="outline"
-                                  className="bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 hover:from-blue-100 hover:to-indigo-100 hover:text-blue-700 transition-all duration-300 border border-blue-200 hover:border-blue-300 rounded-lg px-3 py-1.5 shadow-sm hover:shadow-md group"
-                                  data-testid={`button-approval-${ticket.ticketId}`}
-                                >
-                                  <span className="font-medium">Verify</span>
-                                </Button>
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {formatDate(ticket.timeStemp)}
-                              </td>
-                              <td className="px-4 py-3 font-medium text-blue-800">
-                                {ticket.ticketId}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.clientName}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.companyName || "-"}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.phoneNumber}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.machineName || ""}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.engineerAssign || ""}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {formatDate(ticket.travelDate) || ""}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {formatDate(ticket.returnDate) || ""}
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-
-                    {/* Mobile Card View */}
-                    <div className="sm:hidden space-y-4">
-                      {filteredPendingData.length === 0 ? (
-                        <div
-                          className="text-center py-8 bg-white"
-                          data-testid="text-no-pending"
-                        >
-                          {fetchLoading ? (
-                            <div className="flex justify-center items-center text-blue-700">
-                              <LoaderIcon className="animate-spin w-8 h-8" />
-                            </div>
-                          ) : (
-                            <h1 className="text-blue-700">
-                              No pending site visit verifications found.
-                            </h1>
-                          )}
-                        </div>
-                      ) : (
-                        filteredPendingData.map((ticket, ind) => (
-                          <Card
-                            key={ticket.ticketId}
-                            className={`${ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"
-                              } border-l-4 border-l-blue-500`}
-                          >
-                            <CardContent className="p-4 space-y-3">
-                              <div className="flex justify-between items-start">
-                                <div>
-                                  <h3 className="font-bold text-blue-800 text-lg">
-                                    {ticket.ticketId}
-                                  </h3>
-                                  <p className="text-sm text-gray-600">
-                                    {ticket.clientName}
-                                  </p>
-                                  <p className="text-sm text-gray-600 font-medium">
-                                    Company: {ticket.companyName || "N/A"}
-                                  </p>
-                                </div>
-                                <Button
-                                  size="sm"
-                                  onClick={() => handleApprovalClick(ticket)}
-                                  variant="outline"
-                                  className="bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 hover:from-blue-100 hover:to-indigo-100 border border-blue-200"
-                                >
-                                  Verify
-                                </Button>
-                              </div>
-
-                              <div className="grid grid-cols-2 gap-3 text-sm">
-                                <div>
-                                  <p className="text-gray-500 font-medium">
-                                    Phone
-                                  </p>
-                                  <p className="text-blue-900">
-                                    {ticket.phoneNumber}
-                                  </p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-500 font-medium">
-                                    Machine
-                                  </p>
-                                  <p className="text-blue-900">
-                                    {ticket.machineName || "N/A"}
-                                  </p>
-                                </div>
-                              </div>
-
-                              <div className="grid grid-cols-2 gap-3 text-sm">
-                                <div>
-                                  <p className="text-gray-500 font-medium">
-                                    Engineer
-                                  </p>
-                                  <p className="text-blue-900">
-                                    {ticket.engineerAssign || "N/A"}
-                                  </p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-500 font-medium">
-                                    Travel Date
-                                  </p>
-                                  <p className="text-blue-900">
-                                    {formatDate(ticket.travelDate) || "N/A"}
-                                  </p>
-                                </div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="history" className="mt-0">
-                <div className="relative overflow-x-auto">
-                  <div className="max-h-[calc(103vh-200px)] overflow-y-auto">
-                    <table className="hidden sm:block w-full">
-                      <thead className="sticky top-0 z-10">
-                        <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                            Date
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
-                            Ticket ID
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                            Client Name
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                            Phone Number
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                            Site Visit Date
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                            Verification Status
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                            Service Report
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                            Remarks
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                            Quatation Receive
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
-                            Video
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[180px] sticky top-0">
-                            Locally Purchased Spares
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
-                            Delay
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-blue-100">
-                        {filteredHistoryData.length === 0 ? (
-                          <tr>
-                            <td
-                              colSpan={12}
-                              className="text-center py-8 bg-white"
-                              data-testid="text-no-history"
-                            >
-                              {fetchLoading ? (
-                                <div className="flex justify-center items-center text-blue-700">
-                                  <LoaderIcon className="animate-spin w-8 h-8" />
-                                </div>
-                              ) : (
-                                <h1 className="text-blue-700">
-                                  No site visit verification history found.
-                                </h1>
-                              )}
-                            </td>
-                          </tr>
-                        ) : (
-                          filteredHistoryData.map((ticket, ind) => (
-                            <tr
-                              key={ind}
-                              className={
-                                ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"
-                              }
-                            >
-                              <td className="px-4 py-3 text-blue-900">
-                                {formatDate(ticket.timeStemp)}
-                              </td>
-                              <td className="px-4 py-3 font-medium text-blue-800">
-                                {ticket.ticketId}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.clientName}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.phoneNumber}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {formatDate(ticket.siteVisitDate) || ""}
-                              </td>
-                              <td className="px-4 py-3">
-                                <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                                  Verified
-                                </span>
-                              </td>
-                              <td className="px-4 py-3">
-                                {ticket.serviceReportFile ? (
-                                  <a
-                                    href={ticket.serviceReportFile}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
-                                  >
-                                    View
-                                  </a>
-                                ) : (
-                                  ""
-                                )}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.remarks || ""}
-                              </td>
-                              <td className="px-4 py-3">
-                                {ticket.quatationReceive ? (
-                                  <a
-                                    href={ticket.quatationReceive}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
-                                  >
-                                    View
-                                  </a>
-                                ) : (
-                                  ""
-                                )}
-                              </td>
-                              <td className="px-4 py-3">
-                                {ticket.video ? (
-                                  <a
-                                    href={ticket.video}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
-                                  >
-                                    View
-                                  </a>
-                                ) : (
-                                  ""
-                                )}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.locallyPurchasedSpares || ""}
-                              </td>
-                              <td className="px-4 py-3">
-                                <span
-                                  className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                    ticket.delayMinutes > 0
-                                      ? "bg-red-100 text-red-800"
-                                      : "bg-emerald-100 text-emerald-800"
-                                  }`}
-                                >
-                                  {formatDelay(ticket.delayMinutes)}
-                                </span>
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-
-                    {/* Mobile Card View */}
-                    <div className="sm:hidden space-y-4">
-                      {filteredHistoryData.length === 0 ? (
-                        <div
-                          className="text-center py-8 bg-white"
-                          data-testid="text-no-history"
-                        >
-                          {fetchLoading ? (
-                            <div className="flex justify-center items-center text-blue-700">
-                              <LoaderIcon className="animate-spin w-8 h-8" />
-                            </div>
-                          ) : (
-                            <h1 className="text-blue-700">
-                              No site visit verification history found.
-                            </h1>
-                          )}
-                        </div>
-                      ) : (
-                        filteredHistoryData.map((ticket, ind) => (
-                          <Card
-                            key={ind}
-                            className={`${ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"
-                              } border-l-4 border-l-blue-500`}
-                          >
-                            <CardContent className="p-4 space-y-3">
-                              <div>
-                                <h3 className="font-bold text-blue-800 text-lg">
-                                  {ticket.ticketId}
-                                </h3>
-                                <p className="text-sm text-gray-600">
-                                  {ticket.clientName}
-                                </p>
-                              </div>
-
-                              <div className="grid grid-cols-2 gap-3 text-sm">
-                                <div>
-                                  <p className="text-gray-500 font-medium">
-                                    Site Visit Date
-                                  </p>
-                                  <p className="text-blue-900">
-                                    {formatDate(ticket.siteVisitDate) || "N/A"}
-                                  </p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-500 font-medium">
-                                    Verification Status
-                                  </p>
-                                  <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                                    Verified
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="grid grid-cols-2 gap-3 text-sm">
-                                <div>
-                                  <p className="text-gray-500 font-medium">
-                                    Service Report
-                                  </p>
-                                  {ticket.serviceReportFile ? (
-                                    <a
-                                      href={ticket.serviceReportFile}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-blue-600 hover:text-blue-800 text-sm font-semibold"
-                                    >
-                                      View
-                                    </a>
-                                  ) : (
-                                    <p className="text-blue-900">N/A</p>
-                                  )}
-                                </div>
-                                <div>
-                                  <p className="text-gray-500 font-medium">
-                                    Video
-                                  </p>
-                                  {ticket.video ? (
-                                    <a
-                                      href={ticket.video}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-blue-600 hover:text-blue-800 text-sm font-semibold"
-                                    >
-                                      View
-                                    </a>
-                                  ) : (
-                                    <p className="text-blue-900">N/A</p>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div className="grid grid-cols-2 gap-3 text-sm">
-                                <div>
-                                  <p className="text-gray-500 font-medium">
-                                    Quatation Receive
-                                  </p>
-                                  {ticket.quatationReceive ? (
-                                    <a
-                                      href={ticket.quatationReceive}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-blue-600 hover:text-blue-800 text-sm font-semibold"
-                                    >
-                                      View
-                                    </a>
-                                  ) : (
-                                    <p className="text-blue-900">N/A</p>
-                                  )}
-                                </div>
-                                <div>
-                                  <p className="text-gray-500 font-medium">
-                                    Locally Purchased Spares
-                                  </p>
-                                  <p className="text-blue-900">
-                                    {ticket.locallyPurchasedSpares || "N/A"}
-                                  </p>
-                                </div>
-                              </div>
-
-                              <div className="grid grid-cols-2 gap-3 text-sm">
-                                <div>
-                                  <p className="text-gray-500 font-medium">
-                                    Delay
-                                  </p>
-                                  <span
-                                    className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                                      ticket.delayMinutes > 0
-                                        ? "bg-red-100 text-red-800"
-                                        : "bg-emerald-100 text-emerald-800"
-                                    }`}
-                                  >
-                                    {formatDelay(ticket.delayMinutes)}
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div>
-                                <p className="text-gray-500 font-medium text-sm">
-                                  Remarks
-                                </p>
-                                <p className="text-blue-900 line-clamp-3">
-                                  {ticket.remarks || "N/A"}
-                                </p>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </TabsContent>
-            </div>
-          </CardContent>
-        </Card>
-      </Tabs>
+    <div className="space-y-3">
+      <ListToolbar list={list} searchPlaceholder="Search by ticket ID, client, company or phone..." />
+      <ListTable
+        list={list}
+        ctx={{ onVerify: handleApprovalClick }}
+        rowKey={(r) => r.ticketId}
+        emptyTitle={{ pending: "No pending site visit verifications found.", history: "No site visit verification history found." }}
+        ariaLabel="Site visit OTP verifications"
+      />
 
       {/* Site Visit Verification Modal */}
       <Modal
@@ -996,59 +467,66 @@ export default function SiteVisitOTPVerification() {
           className="grid grid-cols-1 md:grid-cols-2 gap-4"
         >
           <div>
-            <Label>Ticket ID</Label>
+            <Label htmlFor="otp-ticketId">Ticket ID</Label>
             <Input
+              id="otp-ticketId"
               value={formData.ticketId || ""}
               disabled
-              className="bg-slate-50"
+              className="bg-muted"
             />
           </div>
           <div>
-            <Label>Client Name</Label>
+            <Label htmlFor="otp-clientName">Client Name</Label>
             <Input
+              id="otp-clientName"
               value={formData.clientName || ""}
               disabled
-              className="bg-slate-50"
+              className="bg-muted"
             />
           </div>
           <div>
-            <Label>Phone Number</Label>
+            <Label htmlFor="otp-phoneNumber">Phone Number</Label>
             <Input
+              id="otp-phoneNumber"
               value={formData.phoneNumber || ""}
               disabled
-              className="bg-slate-50"
+              className="bg-muted"
             />
           </div>
           <div>
-            <Label>Machine Name</Label>
+            <Label htmlFor="otp-machineName">Machine Name</Label>
             <Input
+              id="otp-machineName"
               value={formData.machineName || ""}
               disabled
-              className="bg-slate-50"
+              className="bg-muted"
             />
           </div>
 
           <div>
-            <Label>Travel Date</Label>
+            <Label htmlFor="otp-travelDate">Travel Date</Label>
             <Input
+              id="otp-travelDate"
               value={formData.travelDate || ""}
               disabled
-              className="bg-slate-50"
+              className="bg-muted"
             />
           </div>
           <div>
-            <Label>Return Date</Label>
+            <Label htmlFor="otp-returnDate">Return Date</Label>
             <Input
+              id="otp-returnDate"
               value={formData.returnDate || ""}
               disabled
-              className="bg-slate-50"
+              className="bg-muted"
             />
           </div>
 
           {/* Editable fields */}
           <div>
-            <Label>Site Visit Date *</Label>
+            <Label htmlFor="otp-siteVisitDate">Site Visit Date *</Label>
             <Input
+              id="otp-siteVisitDate"
               type="date"
               value={formData.siteVisitDate || ""}
               onChange={(e) =>
@@ -1058,8 +536,9 @@ export default function SiteVisitOTPVerification() {
             />
           </div>
           <div>
-            <Label>OTP Verification *</Label>
+            <Label htmlFor="otp-otpVerification">OTP Verification *</Label>
             <Input
+              id="otp-otpVerification"
               required
               maxLength={6}
               placeholder={selectedTicket?.siteVisitOtp ? "Enter 6-digit OTP" : "Send OTP to the client first"}
@@ -1078,7 +557,7 @@ export default function SiteVisitOTPVerification() {
                   onClick={handleSendOtp}
                   disabled={isSendingOtp}
                   data-testid="button-send-otp"
-                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg"
+                  className="w-full"
                 >
                   {isSendingOtp ? (
                     <span className="flex items-center">
@@ -1094,68 +573,66 @@ export default function SiteVisitOTPVerification() {
           </div>
 
           <div>
-            <Label>Service Report (upload file) *</Label>
+            <Label htmlFor="otp-serviceReport">Service Report (upload file) *</Label>
             <Input
+              id="otp-serviceReport"
               type="file"
               onChange={handleServiceReportChange}
               disabled={isSubmitting}
               data-testid="input-serviceReport-file"
             />
             {serviceReportFile && (
-              <p className="text-xs text-emerald-700 mt-1 truncate">Selected: {serviceReportFile.name}</p>
+              <p className="text-xs text-success mt-1 truncate">Selected: {serviceReportFile.name}</p>
             )}
           </div>
 
           <div className="space-y-1">
-            <Label className="text-gray-600 font-medium">Quatation Receive</Label>
+            <Label htmlFor="otp-quatationReceive">Quatation Receive</Label>
             <Input
+              id="otp-quatationReceive"
               type="file"
               onChange={handleQuotationChange}
               disabled={isSubmitting}
               data-testid="input-quatation-receive"
             />
             {quotationReceiveFile && (
-              <p className="text-xs text-emerald-700 mt-1 truncate">Selected: {quotationReceiveFile.name}</p>
+              <p className="text-xs text-success mt-1 truncate">Selected: {quotationReceiveFile.name}</p>
             )}
           </div>
 
           <div className="space-y-1">
-            <Label className="text-gray-600 font-medium font-sans">
-              Video (max 100MB)
-            </Label>
+            <Label htmlFor="otp-video">Video (max 100MB)</Label>
             {videoFile ? (
-              <div className="flex items-center justify-between border border-blue-200 rounded-md p-2 bg-blue-50 text-blue-800 text-sm h-10">
+              <div className="flex items-center justify-between border border-input rounded-md p-2 bg-muted text-foreground text-sm h-10">
                 <span className="font-semibold truncate max-w-[200px]">{videoFile.name}</span>
                 <Button
                   type="button"
                   variant="ghost"
                   onClick={() => setVideoFile(null)}
                   disabled={isSubmitting}
-                  className="text-red-500 hover:text-red-700 h-8 px-2 py-1 text-xs font-semibold hover:bg-red-50"
+                  className="text-destructive hover:text-destructive h-8 px-2 py-1 text-xs font-semibold"
                 >
                   Remove
                 </Button>
               </div>
             ) : (
               <Input
+                id="otp-video"
                 type="file"
                 accept="video/*"
                 onChange={handleVideoChange}
                 disabled={isSubmitting}
-                className="border-gray-300 rounded-lg"
               />
             )}
           </div>
 
           <div className="space-y-1">
-            <Label className="text-gray-600 font-medium font-sans">
-              Locally purchased spares *
-            </Label>
+            <Label htmlFor="otp-spares">Locally purchased spares *</Label>
             <Select
               value={formData.locallyPurchasedSpares || ""}
               onValueChange={(value) => handleInputChange("locallyPurchasedSpares", value)}
             >
-              <SelectTrigger className="border-gray-300 rounded-lg">
+              <SelectTrigger id="otp-spares">
                 <SelectValue placeholder="Select option" />
               </SelectTrigger>
               <SelectContent className="bg-white rounded-lg border-gray-200 shadow-lg">
@@ -1166,8 +643,9 @@ export default function SiteVisitOTPVerification() {
           </div>
 
           <div className="space-y-1">
-            <Label>Remarks</Label>
+            <Label htmlFor="otp-remarks">Remarks</Label>
             <Input
+              id="otp-remarks"
               type="text"
               placeholder="Enter Remarks"
               value={formData.remarks || ""}
@@ -1181,7 +659,7 @@ export default function SiteVisitOTPVerification() {
               type="submit"
               disabled={isSubmitting}
               data-testid="button-submit-approval"
-              className="px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-70 disabled:transform-none"
+              className="px-6"
             >
               {isSubmitting ? (
                 <span className="flex items-center">

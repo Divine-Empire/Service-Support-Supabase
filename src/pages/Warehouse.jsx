@@ -1,10 +1,4 @@
 import { useState, useEffect } from "react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -16,64 +10,56 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../components/ui/table";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "../components/ui/tabs";
 import { Modal } from "../components/ui/modal";
+import { ListToolbar, ListTable, StatusBadge } from "../components/shared";
+import { useClientList } from "../hooks/useClientList";
 import { useToast } from "../hooks/use-toast";
-import { LoaderIcon } from "lucide-react";
 import { supabase } from "../lib/supabase/client";
 import { fetchEngineerNames } from "../lib/supabase/engineers";
 import { computeStagePlanned } from "../lib/supabase/stagePlanning";
+import { formatDate, formatDelayLabel, delayTone } from "../lib/format";
+
+const PRIORITY_TONE = { high: "danger", medium: "warning" };
+
+// Pending: Action + ticket/enquiry columns. History: what was booked + delay.
+const COLUMNS = [
+  { key: "action", label: "Action", fixed: true, tabs: ["pending"], cell: (r, { onProcess }) => (
+    <Button onClick={() => onProcess(r)} size="sm" className="font-semibold">PROCESS</Button>
+  ) },
+  { key: "date", label: "Date", defaultVisible: true, strong: true, text: (r) => formatDate(r.timeStemp) },
+  { key: "ticketId", label: "Ticket-ID", defaultVisible: true, strong: true, text: (r) => r.ticketId },
+  { key: "sourceOfEnquiry", label: "Source of enquiry", defaultVisible: true, tabs: ["pending"], text: (r) => r.sourceOfEnquiry },
+  { key: "callType", label: "Call type", defaultVisible: true, tabs: ["pending"], text: (r) => r.callType },
+  { key: "enquiryReceiverName", label: "Receiver Name", defaultVisible: true, tabs: ["pending"], text: (r) => r.enquiryReceiverName },
+  { key: "companyName", label: "Company Name", defaultVisible: true, text: (r) => r.companyName },
+  { key: "clientName", label: "Client Name", defaultVisible: true, text: (r) => r.clientName },
+  { key: "machineName", label: "Machine Name", defaultVisible: true, text: (r) => r.machineName },
+  { key: "assignedEngineer", label: "Assigned Engineer", defaultVisible: true, tabs: ["history"], text: (r) => r.assignedEngineer },
+  { key: "priority", label: "Priority", defaultVisible: true, tabs: ["history"], cell: (r) => (
+    <StatusBadge tone={PRIORITY_TONE[r.priority?.toLowerCase()] || "success"}>{r.priority || "Low"}</StatusBadge>
+  ) },
+  { key: "dateOfRepair", label: "Date of Repair", defaultVisible: true, tabs: ["history"], text: (r) => formatDate(r.dateOfRepair) },
+  { key: "remarks", label: "Remarks", defaultVisible: true, tabs: ["history"], wrap: true, width: 200, text: (r) => r.remarks },
+  { key: "actualDate", label: "Actual Date", defaultVisible: true, tabs: ["history"], text: (r) => formatDate(r.actual7) },
+  { key: "delay", label: "Delay", defaultVisible: true, tabs: ["history"], cell: (r) => (
+    <StatusBadge tone={delayTone(r.delayMinutes)}>{formatDelayLabel(r.delayMinutes)}</StatusBadge>
+  ) },
+];
+
+const EMPTY_FORM = { assignedEngineer: "", priority: "", dateOfRepair: "", remarks: "" };
 
 export default function Warehouse() {
-  const [activeTab, setActiveTab] = useState("pending");
   const [showModal, setShowModal] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
-  const [formData, setFormData] = useState({
-    assignedEngineer: "",
-    priority: "",
-    dateOfRepair: "",
-    remarks: "",
-  });
+  const [formData, setFormData] = useState(EMPTY_FORM);
 
   const [pendingData, setPendingData] = useState([]);
   const [historyData, setHistoryData] = useState([]);
   const [fetchLoading, setFetchLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [searchItem, setSearchItem] = useState("");
   const [engineers, setEngineers] = useState([]);
   const { toast } = useToast();
-
-  const formatDate = (dateString) => {
-    if (!dateString) return "";
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return dateString;
-    const day = String(date.getDate()).padStart(2, "0");
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const year = date.getFullYear();
-    return `${day}/${month}/${year}`;
-  };
-
-  // Minutes late (negative) or early (positive) — the ORIGINAL delay
-  // convention, matching predecessor Warranty-Check. See
-  // warehouse.delay_minutes / migration 0035.
-  const formatDelay = (minutes) => {
-    if (minutes === null || minutes === undefined) return "N/A";
-    if (minutes < 0) return `${Math.abs(minutes)} min late`;
-    return `${minutes} min early`;
-  };
 
   // Engineer names now come from Master > Engineer Contacts, not the old
   // 'engineer_assign_name' dropdown category — see engineers.js.
@@ -88,6 +74,7 @@ export default function Warehouse() {
 
   const fetchData = async () => {
     setFetchLoading(true);
+    setLoadError(null);
     try {
       // Tickets ready for Warehouse (warranty_check.warehouse_planned set —
       // only true when tickets.video_call != 'Yes').
@@ -162,6 +149,7 @@ export default function Warehouse() {
       setHistoryData(history);
     } catch (error) {
       console.error("Error fetching data:", error);
+      setLoadError(error.message || "Failed to load data");
       toast({
         title: "Error",
         description: "Failed to load data",
@@ -175,16 +163,26 @@ export default function Warehouse() {
   useEffect(() => {
     fetchEngineers();
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const list = useClientList({
+    key: "warehouse",
+    data: { pending: pendingData, history: historyData },
+    loading: fetchLoading,
+    error: loadError,
+    onRetry: fetchData,
+    searchKeys: ["ticketId", "clientName", "companyName", "phoneNumber"],
+    filters: [
+      { key: "priority", label: "Priority", allLabel: "All Priorities", get: (r) => r.priority, tabs: ["history"] },
+      { key: "engineer", label: "Engineer", allLabel: "All Engineers", get: (r) => r.assignedEngineer, tabs: ["history"] },
+    ],
+    columns: COLUMNS,
+  });
 
   const handleProcessClick = (ticket) => {
     setSelectedTicket(ticket);
-    setFormData({
-      assignedEngineer: "",
-      priority: "",
-      dateOfRepair: "",
-      remarks: "",
-    });
+    setFormData(EMPTY_FORM);
     setShowModal(true);
   };
 
@@ -245,213 +243,16 @@ export default function Warehouse() {
     }
   };
 
-  const userName = localStorage.getItem("currentUsername");
-  const roleStorage = localStorage.getItem("o2d-auth-storage");
-  let role = "admin";
-  try {
-    if (roleStorage) {
-      const parsedData = JSON.parse(roleStorage);
-      role = parsedData.state.user.role;
-    }
-  } catch (e) {
-    console.error("Error parsing role storage", e);
-  }
-
-  const filteredPendingDataa = pendingData
-    .filter((item) => {
-      const q = searchItem.toLowerCase();
-      return (
-        String(item.ticketId || "").toLowerCase().includes(q) ||
-        String(item.clientName || "").toLowerCase().includes(q) ||
-        String(item.companyName || "").toLowerCase().includes(q) ||
-        String(item.phoneNumber || "").toLowerCase().includes(q)
-      );
-    })
-    .reverse();
-
-  const filteredHistoryDataa = historyData
-    .filter((item) => {
-      const q = searchItem.toLowerCase();
-      return (
-        String(item.ticketId || "").toLowerCase().includes(q) ||
-        String(item.clientName || "").toLowerCase().includes(q) ||
-        String(item.companyName || "").toLowerCase().includes(q) ||
-        String(item.phoneNumber || "").toLowerCase().includes(q)
-      );
-    })
-    .reverse();
-
-  const filteredPendingData = filteredPendingDataa;
-
-  const filteredHistoryData = filteredHistoryDataa;
-
   return (
-    <div className="space-y-4">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <Card className="border-0 shadow-lg bg-gradient-to-br from-blue-50 to-indigo-50">
-          <CardHeader className="bg-gradient-to-r from-blue-50/50 to-indigo-50/50 rounded-t-lg border-b border-blue-100 px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
-            <div className="flex flex-wrap items-center gap-4">
-              <TabsList className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200">
-                <TabsTrigger
-                  value="pending"
-                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-                >
-                  Pending ({filteredPendingData.length})
-                </TabsTrigger>
-                <TabsTrigger
-                  value="history"
-                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-                >
-                  History ({filteredHistoryData.length})
-                </TabsTrigger>
-              </TabsList>
-              <CardTitle className="text-xl font-bold bg-gradient-to-r from-blue-800 to-indigo-800 bg-clip-text text-transparent">
-                Warehouse stage
-              </CardTitle>
-            </div>
-            <div className="flex items-center gap-2 w-full md:w-auto">
-              <Input
-                placeholder="Search by Ticket, Client, Company..."
-                value={searchItem}
-                onChange={(e) => setSearchItem(e.target.value)}
-                className="bg-white border-blue-200 focus:border-blue-500 focus:ring-blue-500 rounded-lg shadow-sm"
-              />
-            </div>
-          </CardHeader>
-
-          <CardContent className="p-6">
-            <TabsContent value="pending" className="mt-0">
-              <div className="overflow-x-auto rounded-xl border border-blue-100 shadow-sm bg-white">
-                <Table>
-                  <TableHeader className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                    <TableRow>
-                      <TableHead className="text-white font-bold w-[100px]">Actions</TableHead>
-                      <TableHead className="text-white font-bold">Date</TableHead>
-                      <TableHead className="text-white font-bold">Ticket-ID</TableHead>
-                      <TableHead className="text-white font-bold">Source of enquiry</TableHead>
-                      <TableHead className="text-white font-bold">Call type</TableHead>
-                      <TableHead className="text-white font-bold">Receiver Name</TableHead>
-                      <TableHead className="text-white font-bold">Company Name</TableHead>
-                      <TableHead className="text-white font-bold">Client Name</TableHead>
-                      <TableHead className="text-white font-bold">Machine Name</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {fetchLoading ? (
-                      <TableRow>
-                        <TableCell colSpan={9} className="text-center py-8">
-                          <LoaderIcon className="animate-spin w-8 h-8 text-blue-600 mx-auto" />
-                        </TableCell>
-                      </TableRow>
-                    ) : filteredPendingData.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={9} className="text-center py-8 text-blue-800 font-medium">
-                          No pending warehouse repair bookings found.
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      filteredPendingData.map((ticket) => (
-                        <TableRow key={ticket.ticketId} className="hover:bg-blue-50/50 transition-colors">
-                          <TableCell className="py-2">
-                            <Button
-                              onClick={() => handleProcessClick(ticket)}
-                              size="sm"
-                              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-sm"
-                            >
-                              PROCESS
-                            </Button>
-                          </TableCell>
-                          <TableCell className="font-semibold text-blue-900">{formatDate(ticket.timeStemp)}</TableCell>
-                          <TableCell className="font-bold text-indigo-700">{ticket.ticketId}</TableCell>
-                          <TableCell>{ticket.sourceOfEnquiry}</TableCell>
-                          <TableCell>{ticket.callType}</TableCell>
-                          <TableCell>{ticket.enquiryReceiverName}</TableCell>
-                          <TableCell className="font-medium text-slate-800">{ticket.companyName}</TableCell>
-                          <TableCell>{ticket.clientName}</TableCell>
-                          <TableCell className="font-medium text-slate-800">{ticket.machineName}</TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="history" className="mt-0">
-              <div className="overflow-x-auto rounded-xl border border-blue-100 shadow-sm bg-white">
-                <Table>
-                  <TableHeader className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                    <TableRow>
-                      <TableHead className="text-white font-bold">Date</TableHead>
-                      <TableHead className="text-white font-bold">Ticket-ID</TableHead>
-                      <TableHead className="text-white font-bold">Company Name</TableHead>
-                      <TableHead className="text-white font-bold">Client Name</TableHead>
-                      <TableHead className="text-white font-bold">Machine Name</TableHead>
-                      <TableHead className="text-white font-bold">Assigned Engineer</TableHead>
-                      <TableHead className="text-white font-bold">Priority</TableHead>
-                      <TableHead className="text-white font-bold">Date of Repair</TableHead>
-                      <TableHead className="text-white font-bold">Remarks</TableHead>
-                      <TableHead className="text-white font-bold">Actual Date</TableHead>
-                      <TableHead className="text-white font-bold">Delay</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {fetchLoading ? (
-                      <TableRow>
-                        <TableCell colSpan={11} className="text-center py-8">
-                          <LoaderIcon className="animate-spin w-8 h-8 text-blue-600 mx-auto" />
-                        </TableCell>
-                      </TableRow>
-                    ) : filteredHistoryData.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={11} className="text-center py-8 text-blue-800 font-medium">
-                          No warehouse history entries found.
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      filteredHistoryData.map((ticket, ind) => (
-                        <TableRow key={ind} className="hover:bg-blue-50/50 transition-colors">
-                          <TableCell className="font-semibold text-blue-900">{formatDate(ticket.timeStemp)}</TableCell>
-                          <TableCell className="font-bold text-indigo-700">{ticket.ticketId}</TableCell>
-                          <TableCell className="font-medium text-slate-800">{ticket.companyName}</TableCell>
-                          <TableCell>{ticket.clientName}</TableCell>
-                          <TableCell className="font-medium text-slate-800">{ticket.machineName}</TableCell>
-                          <TableCell className="font-semibold text-indigo-900">{ticket.assignedEngineer}</TableCell>
-                          <TableCell>
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                              ticket.priority?.toLowerCase() === "high"
-                                ? "bg-red-100 text-red-800"
-                                : ticket.priority?.toLowerCase() === "medium"
-                                ? "bg-amber-100 text-amber-800"
-                                : "bg-green-100 text-green-800"
-                            }`}>
-                              {ticket.priority || "Low"}
-                            </span>
-                          </TableCell>
-                          <TableCell className="font-semibold text-slate-700">{formatDate(ticket.dateOfRepair)}</TableCell>
-                          <TableCell className="max-w-[200px] truncate" title={ticket.remarks}>{ticket.remarks}</TableCell>
-                          <TableCell className="font-semibold text-emerald-800">{formatDate(ticket.actual7)}</TableCell>
-                          <TableCell>
-                            <span
-                              className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                                ticket.delayMinutes < 0
-                                  ? "bg-red-100 text-red-800"
-                                  : "bg-emerald-100 text-emerald-800"
-                              }`}
-                            >
-                              {formatDelay(ticket.delayMinutes)}
-                            </span>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </TabsContent>
-          </CardContent>
-        </Card>
-      </Tabs>
+    <div className="space-y-3">
+      <ListToolbar list={list} searchPlaceholder="Search by ticket, client, company or phone..." />
+      <ListTable
+        list={list}
+        ctx={{ onProcess: handleProcessClick }}
+        rowKey={(r) => r.ticketId}
+        emptyTitle={{ pending: "No pending warehouse repair bookings.", history: "No warehouse history entries." }}
+        ariaLabel="Warehouse tickets"
+      />
 
       {/* Warehouse processing modal form */}
       <Modal
@@ -467,7 +268,7 @@ export default function Warehouse() {
               value={formData.assignedEngineer || undefined}
               onValueChange={(val) => handleInputChange("assignedEngineer", val)}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger id="assignedEngineer" className="w-full">
                 <SelectValue placeholder="Select Engineer" />
               </SelectTrigger>
               <SelectContent className="bg-white border border-slate-200 shadow-md">
@@ -486,7 +287,7 @@ export default function Warehouse() {
               value={formData.priority}
               onValueChange={(val) => handleInputChange("priority", val)}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger id="priority" className="w-full">
                 <SelectValue placeholder="Select Priority" />
               </SelectTrigger>
               <SelectContent className="bg-white border border-slate-200 shadow-md">
@@ -528,11 +329,7 @@ export default function Warehouse() {
             >
               Cancel
             </Button>
-            <Button
-              type="submit"
-              disabled={isSubmitting}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-            >
+            <Button type="submit" disabled={isSubmitting}>
               {isSubmitting ? "Submitting..." : "Submit"}
             </Button>
           </div>

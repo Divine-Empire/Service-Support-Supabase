@@ -1,10 +1,4 @@
 import { useState, useEffect, useMemo } from "react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -16,18 +10,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "../components/ui/tabs";
 import { Modal } from "../components/ui/modal";
 import { useToast } from "../hooks/use-toast";
-import { LoaderIcon, Loader2Icon } from "lucide-react";
+import { LoaderIcon, Loader2Icon, Download } from "lucide-react";
 import { supabase } from "../lib/supabase/client";
 import { fetchDropdownRows } from "../lib/supabase/dropdown";
 import { computeStagePlanned } from "../lib/supabase/stagePlanning";
+import { exportCsv } from "../lib/exportCsv";
+import { ColumnSelector } from "../components/shared/ColumnSelector";
+import StatusTabs from "../components/shared/StatusTabs";
+import { FilterSearch } from "../components/shared/FilterBar";
+import ListTable from "../components/shared/ListTable";
+import { useClientList } from "../hooks/useClientList";
+import FilterDialog, { FilterSection } from "../components/shared/FilterDialog";
+import { FOLLOW_UP_COLUMNS, toCsvTable } from "./followUpColumns";
 
 // Order Received form dropdowns (same sss_dropdown categories the old
 // Order Received page used).
@@ -39,7 +35,6 @@ const DROPDOWN_CATEGORY_TO_KEY = {
 };
 
 export default function FollowUp() {
-  const [activeTab, setActiveTab] = useState("pending");
   const [dateFilterTab, setDateFilterTab] = useState("");
   // Independent of the Today/Overdue/Pending chips (combined with them via
   // AND): keeps only rows whose last call was logged today.
@@ -79,6 +74,7 @@ export default function FollowUp() {
 
   const [ticketsMap, setTicketsMap] = useState({});
   const [fetchLoading, setFetchLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCancelled, setIsCancelled] = useState(false);
   const [isUploadingClientAttachment, setIsUploadingClientAttachment] = useState(false);
@@ -88,7 +84,7 @@ export default function FollowUp() {
   // since this edits one specific sss_follow_up row (by its own id), not a
   // new follow-up submission.
   const [editingHistoryRow, setEditingHistoryRow] = useState(null);
-  const [editAttachmentFile, setEditAttachmentFile] = useState(null);
+  const [, setEditAttachmentFile] = useState(null);
   const [editAttachmentUrl, setEditAttachmentUrl] = useState("");
   const [isUploadingEditAttachment, setIsUploadingEditAttachment] = useState(false);
   const [isSavingEditAttachment, setIsSavingEditAttachment] = useState(false);
@@ -99,6 +95,7 @@ export default function FollowUp() {
 
   const fetchData = async () => {
     setFetchLoading(true);
+    setLoadError(null);
     try {
       // Tickets ready for Follow-Up (quotation.follow_up_planned set).
       const { data: quotationRows, error: quotationError } = await supabase
@@ -256,6 +253,7 @@ export default function FollowUp() {
       setFollowUpData((followUpRows || []).filter((f) => f.hold_order !== "Yes"));
     } catch (error) {
       console.error("Error fetching data:", error);
+      setLoadError(error.message || "Failed to load data");
       toast({
         title: "Error",
         description: "Failed to load data",
@@ -293,28 +291,6 @@ export default function FollowUp() {
   }, []);
 
 
-
-  const formatInputDate = (dateStr) => {
-    if (!dateStr) return "";
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
-    const cleanStr = dateStr.split(" ")[0];
-    const parts = cleanStr.split("/");
-    if (parts.length === 3) {
-      const day = parts[0].padStart(2, "0");
-      const month = parts[1].padStart(2, "0");
-      const year = parts[2];
-      if (year.length === 4) {
-        return `${year}-${month}-${day}`;
-      }
-    }
-    try {
-      const date = new Date(dateStr);
-      if (!isNaN(date.getTime())) {
-        return date.toISOString().split("T")[0];
-      }
-    } catch (e) {}
-    return "";
-  };
 
   const handleFollowUpClick = (ticket) => {
     setSelectedTicket(ticket);
@@ -822,29 +798,6 @@ export default function FollowUp() {
     }
   };
 
-  const formatDateTime = (date) => {
-    const d = new Date(date);
-    const day = String(d.getDate()).padStart(2, "0");
-    const month = String(d.getMonth() + 1).padStart(2, "0");
-    const year = d.getFullYear();
-    const hours = String(d.getHours()).padStart(2, "0");
-    const minutes = String(d.getMinutes()).padStart(2, "0");
-    const seconds = String(d.getSeconds()).padStart(2, "0");
-
-    return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return "";
-
-    const date = new Date(dateString);
-    const day = String(date.getDate()).padStart(2, "0");
-    const month = String(date.getMonth() + 1).padStart(2, "0"); // Months are 0-indexed
-    const year = date.getFullYear();
-
-    return `${day}/${month}/${year}`;
-  };
-
   const renderConditionalFields = () => {
     const stage = formData.stage;
 
@@ -1263,1174 +1216,217 @@ export default function FollowUp() {
 
   const attachmentFilteredPendingData = filteredPendingData;
 
-  const chipBase = activeTab === "history" ? filteredHistoryData : attachmentFilteredPendingData;
-
   const finalFilteredPendingDataa = filterByDateCategory(attachmentFilteredPendingData);
   const finalFilteredHistoryDataa = filterByDateCategory(filteredHistoryData);
 
+  // Rows are already searched / category- / date-chip-filtered above; the list hook only
+  // owns the tab, paging and visible columns. Tab counts are therefore the filtered counts.
+  const columns = FOLLOW_UP_COLUMNS.map((c) =>
+    c.key === "hold:select"
+      ? {
+          ...c,
+          label: (
+            <input
+              type="checkbox"
+              aria-label="Select all held orders"
+              checked={allHoldSelected}
+              onChange={toggleAllHoldSelected}
+              className="h-4 w-4"
+              data-testid="checkbox-hold-all"
+            />
+          ),
+        }
+      : c
+  );
+  const list = useClientList({
+    key: "followup",
+    data: {
+      pending: finalFilteredPendingDataa,
+      hold: filteredHoldData,
+      history: finalFilteredHistoryDataa,
+    },
+    loading: fetchLoading,
+    error: loadError,
+    onRetry: fetchData,
+    tabLabels: { pending: "Pending", hold: "Hold Orders", history: "History" },
+    columns,
+    sort: "none",
+  });
+  const activeTab = list.tab;
+  const chipBase = activeTab === "history" ? filteredHistoryData : attachmentFilteredPendingData;
+  // Search / category / chips live on the page, so send the list back to page 1 when they change.
+  const { setPage } = list;
+  useEffect(() => {
+    setPage(1);
+  }, [searchItem, categoryFilter, dateFilterTab, lastCallTodayOnly, setPage]);
 
 
-  const userName = localStorage.getItem("currentUsername");
 
-  const roleStorage = localStorage.getItem("o2d-auth-storage");
-  const parsedData = JSON.parse(roleStorage);
-  const role = parsedData.state.user.role;
+  const handleExportCsv = () => {
+    const cols = list.activeColumns;
+    const rows =
+      activeTab === "history"
+        ? finalFilteredHistoryDataa
+        : activeTab === "hold"
+        ? filteredHoldData
+        : finalFilteredPendingDataa;
+    if (rows.length === 0) {
+      toast({ title: "Nothing to export", description: "No rows match the current filters.", variant: "destructive" });
+      return;
+    }
+    const { headers, rows: body } = toCsvTable(cols, rows);
+    exportCsv(`followup_${activeTab}_${todayYmd}`, headers, body);
+  };
 
-  const finalFilteredPendingData = finalFilteredPendingDataa;
-
-  const finalFilteredHistoryData = finalFilteredHistoryDataa;
+  // Everything that narrows the list besides the search box lives in the Filters dialog.
+  const dateChipsApply = activeTab !== "hold";
+  const activeFilterCount =
+    (categoryFilter !== "all" ? 1 : 0) +
+    (dateChipsApply && dateFilterTab ? 1 : 0) +
+    (dateChipsApply && lastCallTodayOnly ? 1 : 0);
+  const clearAllFilters = () => {
+    setCategoryFilter("all");
+    setDateFilterTab("");
+    setLastCallTodayOnly(false);
+  };
+  const chipClass = (on, tone = "primary") =>
+    `rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
+      on
+        ? tone === "danger"
+          ? "border-destructive bg-destructive text-destructive-foreground"
+          : "border-primary bg-primary text-primary-foreground"
+        : "border-input bg-card text-foreground hover:bg-accent"
+    }`;
 
   // console.log("finalFilteredPendingDataa", finalFilteredPendingDataa);
   // console.log("finalFilteredHistoryDataa", finalFilteredHistoryDataa);
 
 
   return (
-    <div className="space-y-2">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <Card className="border-0 shadow-lg bg-gradient-to-br from-blue-50 to-indigo-50">
-          <CardHeader className="bg-gradient-to-r from-blue-50/50 to-indigo-50/50 rounded-t-lg border-b border-blue-100 px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
-            
-            {/* Left Side: Tabs buttons and Date Category Filters */}
-            <div className="flex flex-wrap items-center gap-4">
-              <TabsList className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200">
-                <TabsTrigger
-                  value="pending"
-                  data-testid="tab-pending"
-                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-                >
-                  Pending ({finalFilteredPendingData.length})
-                </TabsTrigger>
-                <TabsTrigger
-                  value="hold"
-                  data-testid="tab-hold"
-                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-                >
-                  Hold Orders ({filteredHoldData.length})
-                </TabsTrigger>
-                <TabsTrigger
-                  value="history"
-                  data-testid="tab-history"
-                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-                >
-                  History ({finalFilteredHistoryData.length})
-                </TabsTrigger>
-              </TabsList>
-
-              {activeTab !== "hold" && (
-              <div className="flex flex-wrap gap-2 bg-gradient-to-r from-green-50 to-teal-50 border border-green-200 p-1 rounded-lg w-fit">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDateFilterTab("");
-                    setLastCallTodayOnly(false);
-                  }}
-                  className="px-4 py-2 rounded-md text-sm transition-all bg-transparent text-gray-700 hover:bg-green-100 border border-red-500"
-                >
-                  Reset
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDateFilterTab("today")}
-                  className={`px-3 py-2 rounded-md text-sm transition-all ${
-                    dateFilterTab === "today"
-                      ? "bg-green-600 text-white shadow-md"
-                      : "bg-transparent text-gray-700 hover:bg-green-100"
-                  }`}
-                >
-                  Today ({chipCount(chipBase, "today")})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDateFilterTab("overdue")}
-                  className={`px-3 py-2 rounded-md text-sm transition-all ${
-                    dateFilterTab === "overdue"
-                      ? "bg-red-600 text-white shadow-md"
-                      : "bg-transparent text-gray-700 hover:bg-red-100"
-                  }`}
-                >
-                  Overdue ({chipCount(chipBase, "overdue")})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDateFilterTab("pending")}
-                  className={`px-3 py-2 rounded-md text-sm transition-all ${
-                    dateFilterTab === "pending"
-                      ? "bg-green-600 text-white shadow-md"
-                      : "bg-transparent text-gray-700 hover:bg-green-100"
-                  }`}
-                >
-                  Pending ({chipCount(chipBase, "pending")})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setLastCallTodayOnly((v) => !v)}
-                  className={`px-3 py-2 rounded-md text-sm transition-all ${
-                    lastCallTodayOnly
-                      ? "bg-indigo-600 text-white shadow-md"
-                      : "bg-transparent text-gray-700 hover:bg-indigo-100"
-                  }`}
-                >
-                  Last Call: Today ({lastCallTodayCount(chipBase)})
-                </button>
-              </div>
-              )}
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="max-w-full overflow-x-auto scrollbar-hide">
+          <StatusTabs tabs={list.tabs} activeTab={list.tab} onChange={list.setTab} label="Follow-up views" />
+        </div>
+        <FilterSearch
+          value={searchItem}
+          onChange={setSearchItem}
+          placeholder="Search by ticket ID, client, company, phone or quotation no..."
+          className="min-w-[220px]"
+        />
+      <FilterDialog activeCount={activeFilterCount} onClear={clearAllFilters}>
+        {dateChipsApply && (
+          <FilterSection title="Follow-up date">
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                aria-pressed={dateFilterTab === "today"}
+                onClick={() => setDateFilterTab(dateFilterTab === "today" ? "" : "today")}
+                className={chipClass(dateFilterTab === "today")}
+              >
+                Today ({chipCount(chipBase, "today")})
+              </button>
+              <button
+                type="button"
+                aria-pressed={dateFilterTab === "overdue"}
+                onClick={() => setDateFilterTab(dateFilterTab === "overdue" ? "" : "overdue")}
+                className={chipClass(dateFilterTab === "overdue", "danger")}
+              >
+                Overdue ({chipCount(chipBase, "overdue")})
+              </button>
+              <button
+                type="button"
+                aria-pressed={dateFilterTab === "pending"}
+                onClick={() => setDateFilterTab(dateFilterTab === "pending" ? "" : "pending")}
+                className={chipClass(dateFilterTab === "pending")}
+              >
+                Pending ({chipCount(chipBase, "pending")})
+              </button>
             </div>
+          </FilterSection>
+        )}
 
-            {/* Right Side: Search Input, Category Filter, and Client Attachment Filter */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 flex-1 md:justify-end w-full md:w-auto">
-              <div className="relative flex-1 max-w-xs w-full">
-                <Input
-                  id="searchFilter"
-                  placeholder="Search by ticket ID, client, company, phone or quotation no..."
-                  className="pl-10 py-2 w-full rounded-md border-blue-200 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white"
-                  data-testid="input-search-filter"
-                  onChange={(e) => setSearchItem(e.target.value)}
-                />
-              </div>
+        {dateChipsApply && (
+          <FilterSection title="Last call">
+            <button
+              type="button"
+              aria-pressed={lastCallTodayOnly}
+              onClick={() => setLastCallTodayOnly((v) => !v)}
+              className={chipClass(lastCallTodayOnly)}
+            >
+              Last Call: Today ({lastCallTodayCount(chipBase)})
+            </button>
+          </FilterSection>
+        )}
 
-              <div className="w-full sm:w-44">
-                <select
-                  id="categoryFilter"
-                  value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value)}
-                  className="flex h-10 w-full rounded-md border border-blue-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  data-testid="select-category-filter"
-                >
-                  <option value="all">All Categories</option>
-                  {uniqueCategories.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
-                </select>
-              </div>
+        <FilterSection title="Category">
+          <select
+            id="categoryFilter"
+            aria-label="Category"
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm focus:border-primary focus:outline-none"
+            data-testid="select-category-filter"
+          >
+            <option value="all">All Categories</option>
+            {uniqueCategories.map((cat) => (
+              <option key={cat} value={cat}>
+                {cat}
+              </option>
+            ))}
+          </select>
+        </FilterSection>
 
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="mt-2">
+        <FilterSection title="Export">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleExportCsv}
+            className="gap-2"
+            data-testid="button-export-csv"
+          >
+            <Download className="w-4 h-4" aria-hidden="true" />
+            Export CSV
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            Downloads the current tab with the filters above and the visible columns.
+          </p>
+        </FilterSection>
+      </FilterDialog>
+        {activeTab !== "hold" && <ColumnSelector {...list.columnPanel} />}
+        {activeTab === "hold" && (
+          <Button
+            type="button"
+            onClick={handleReleaseHold}
+            disabled={selectedHoldIds.length === 0 || isReleasingHold}
+            data-testid="button-release-hold"
+          >
+            {isReleasingHold && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
+            Submit ({selectedHoldIds.length})
+          </Button>
+        )}
+      </div>
 
-              <TabsContent value="pending" className="mt-0">
-              <div className="relative overflow-x-auto">
-                <div className="max-h-[calc(103vh-200px)] overflow-y-auto">
-                  <table className="hidden sm:block w-full">
-                    <thead className="sticky top-0 z-10">
-                      <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
-                          Action
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
-                          Date
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
-                          Ticket-ID
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Enquiry Type
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Source of enquiry
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Call type
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[180px] sticky top-0">
-                          Enquiry Receiver Name
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Client Type
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
-                          Company Name
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Client Name
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Phone Number
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
-                          Site Address
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          GST No.
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Machine Name
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Category
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
-                          Mention Issue
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Service Location
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
-                          Quotation No.
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Basic Amount
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Total Amount
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Quotation PDF
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Client Approval
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Shared By
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Share Through
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Last Call Date
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
-                          Last Remarks
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Next Call Date
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
-                          Next Action
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-blue-100">
-                      {finalFilteredPendingData.length === 0 ? (
-                        <tr>
-                          <td
-                            colSpan={28}
-                            className="text-center py-8 bg-white"
-                            data-testid="text-no-pending"
-                          >
-                            {fetchLoading ? (
-                              <div className="flex justify-center items-center text-blue-700">
-                                <LoaderIcon className="animate-spin w-8 h-8" />
-                              </div>
-                            ) : (
-                              <h1 className="text-blue-700">
-                                No pending follow-ups found.
-                              </h1>
-                            )}
-                          </td>
-                        </tr>
-                      ) : (
-                        finalFilteredPendingData.map((ticket, ind) => (
-                          <tr
-                            key={ticket.ticketId}
-                            className={
-                              ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"
-                            }
-                          >
-                            <td className="px-4 py-3">
-                              <Button
-                                size="sm"
-                                onClick={() => handleFollowUpClick(ticket)}
-                                variant="outline"
-                                className="bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 hover:from-blue-100 hover:to-indigo-100 hover:text-blue-700 transition-all duration-300 border border-blue-200 hover:border-blue-300 rounded-lg px-3 py-1.5 shadow-sm hover:shadow-md group"
-                                data-testid={`button-followup-${ticket.ticketId}`}
-                              >
-                                <span className="font-medium">
-                                  {ticket.legacyOrderRow ? "Order Details" : "Follow-Up"}
-                                </span>
-                              </Button>
-                              {ticket.legacyOrderRow && (
-                                <p className="mt-1 text-xs text-amber-600 whitespace-nowrap">
-                                  Order details pending
-                                </p>
-                              )}
-                            </td>
-                            <td className="px-4 py-3 font-medium text-blue-800">
-                              {formatDate(ticket.timeStemp)}
-                            </td>
-                            <td className="px-4 py-3 font-medium text-blue-800">
-                              {ticket.ticketId}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.enquiryType || "-"}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.sourceOfEnquiry || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.callType || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.enquiryReceiverName || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.clientType || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.companyName || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.clientName || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.phoneNumber || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.siteAddress || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.gstNo || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.machineName || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.category || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.mentionIssue || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.serviceLocation || ""}
-                            </td>
-                            <td className="px-4 py-3 font-medium text-blue-800">
-                              {ticket.quotationNo || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.basicAmount || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.totalAmoutWithTex || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.quotationPdfLink ? (
-                                <button
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    window.open(
-                                      ticket.quotationPdfLink,
-                                      "_blank"
-                                    );
-                                  }}
-                                  className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer font-medium px-2 py-1 rounded transition-colors"
-                                >
-                                  Download
-                                </button>
-                              ) : (
-                                <span className="text-gray-400">No file</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.clientAttachment ? (
-                                <a
-                                  href={ticket.clientAttachment}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
-                                >
-                                  View
-                                </a>
-                              ) : (
-                                <span className="text-gray-400">No file</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.quotationShareByPersonName || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.ShareThrough || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {formatDate(ticket.lastCallDate) || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.lastRemarks || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {formatDate(ticket.nextCallDate) || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.nextAction || ""}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-
-                  {/* Mobile Card View */}
-                  <div className="sm:hidden space-y-4">
-                    {finalFilteredPendingData.length === 0 ? (
-                      <div
-                        className="text-center py-8 bg-white"
-                        data-testid="text-no-pending"
-                      >
-                        {fetchLoading ? (
-                          <div className="flex justify-center items-center text-blue-700">
-                            <LoaderIcon className="animate-spin w-8 h-8" />
-                          </div>
-                        ) : (
-                          <h1 className="text-blue-700">
-                            No pending follow-ups found.
-                          </h1>
-                        )}
-                      </div>
-                    ) : (
-                      finalFilteredPendingData.map((ticket, ind) => (
-                        <Card
-                          key={ticket.ticketId}
-                          className={`${ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"
-                            } border-l-4 border-l-blue-500`}
-                        >
-                          <CardContent className="p-4 space-y-3">
-                            {/* Header with Ticket ID and Action */}
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <h3 className="font-bold text-blue-800 text-lg">
-                                  {ticket.ticketId}
-                                </h3>
-                                {/* NEW: Quotation No in Mobile View */}
-                                <p className="text-sm text-gray-700 font-medium">
-                                  Quote: {ticket.quotationNo || "N/A"}
-                                </p>
-                                <p className="text-sm text-gray-700">
-                                  Enquiry Type: {ticket.enquiryType || "N/A"}
-                                </p>
-                                <p className="text-sm text-gray-600">
-                                  {ticket.clientName}
-                                </p>
-                              </div>
-                              <Button
-                                size="sm"
-                                onClick={() => handleFollowUpClick(ticket)}
-                                variant="outline"
-                                className="bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 hover:from-blue-100 hover:to-indigo-100 border border-blue-200"
-                              >
-                                {ticket.legacyOrderRow ? "Order Details" : "Follow-Up"}
-                              </Button>
-                            </div>
-
-                            {/* Contact & Enquiry Info */}
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Phone
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.phoneNumber}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Enquiry Receiver
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.enquiryReceiverName || "N/A"}
-                                </p>
-                              </div>
-                            </div>
-
-                            {/* Technical Details */}
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Warranty
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.warrantyCheck || "N/A"}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Machine
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.machineName || "N/A"}
-                                </p>
-                              </div>
-                            </div>
-
-                            {/* Engineer & Site */}
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Engineer
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.engineerAssign || "N/A"}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Site Name
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.siteName || "N/A"}
-                                </p>
-                              </div>
-                            </div>
-
-                            {/* Financial Details */}
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Basic Amount
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.basicAmount || "N/A"}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Total Amount
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.totalAmoutWithTex || "N/A"}
-                                </p>
-                              </div>
-                            </div>
-
-                            {/* Quotation Details */}
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Shared By
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.quotationShareByPersonName || "N/A"}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Share Through
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.ShareThrough || "N/A"}
-                                </p>
-                              </div>
-                            </div>
-
-                            {/* Quotation PDF */}
-                            <div>
-                              <p className="text-gray-500 font-medium text-sm">
-                                Quotation PDF
-                              </p>
-                              {ticket.quotationPdfLink ? (
-                                <button
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    window.open(
-                                      ticket.quotationPdfLink,
-                                      "_blank"
-                                    );
-                                  }}
-                                  className="text-blue-600 hover:text-blue-800 text-sm"
-                                >
-                                  Download PDF
-                                </button>
-                              ) : (
-                                <p className="text-blue-900">No file</p>
-                              )}
-                            </div>
-
-                            {/* Follow-up Details */}
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Last Call Date
-                                </p>
-                                <p className="text-blue-900">
-                                  {formatDate(ticket.lastCallDate) || "N/A"}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Last Remarks
-                                </p>
-                                <p className="text-blue-900 line-clamp-2">
-                                  {ticket.lastRemarks || "N/A"}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Next Call Date
-                                </p>
-                                <p className="text-blue-900">
-                                  {formatDate(ticket.nextCallDate) || "N/A"}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Next Action
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.nextAction || "N/A"}
-                                </p>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-        </TabsContent>
-
-              <TabsContent value="hold" className="mt-0">
-                <div className="flex justify-end mb-2">
-                  <Button
-                    type="button"
-                    onClick={handleReleaseHold}
-                    disabled={selectedHoldIds.length === 0 || isReleasingHold}
-                    data-testid="button-release-hold"
-                    className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white disabled:opacity-60"
-                  >
-                    {isReleasingHold && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
-                    Submit ({selectedHoldIds.length})
-                  </Button>
-                </div>
-                <div className="relative overflow-x-auto">
-                  <div className="max-h-[calc(103vh-200px)] overflow-y-auto">
-                    <table className="hidden sm:table w-full">
-                      <thead className="sticky top-0 z-10">
-                        <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[60px]">
-                            <input
-                              type="checkbox"
-                              checked={allHoldSelected}
-                              onChange={toggleAllHoldSelected}
-                              className="h-4 w-4"
-                              data-testid="checkbox-hold-all"
-                            />
-                          </th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left">Ticket-ID</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left">Company Name</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left">Client Name</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left">Quotation No.</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left">Payment Mode</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left">Hold Date</th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-blue-100">
-                        {filteredHoldData.length === 0 ? (
-                          <tr>
-                            <td colSpan={7} className="text-center py-8 bg-white">
-                              {fetchLoading ? (
-                                <div className="flex justify-center items-center text-blue-700">
-                                  <LoaderIcon className="animate-spin w-8 h-8" />
-                                </div>
-                              ) : (
-                                <h1 className="text-blue-700">No orders on hold.</h1>
-                              )}
-                            </td>
-                          </tr>
-                        ) : (
-                          filteredHoldData.map((ticket, ind) => (
-                            <tr
-                              key={ticket.orderRow.id}
-                              className={ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"}
-                            >
-                              <td className="px-4 py-3">
-                                <input
-                                  type="checkbox"
-                                  checked={selectedHoldIds.includes(ticket.orderRow.id)}
-                                  onChange={() => toggleHoldSelected(ticket.orderRow.id)}
-                                  className="h-4 w-4"
-                                  data-testid={`checkbox-hold-${ticket.ticketId}`}
-                                />
-                              </td>
-                              <td className="px-4 py-3 font-medium text-blue-800">{ticket.ticketId}</td>
-                              <td className="px-4 py-3 text-blue-900 max-w-[220px] truncate" title={ticket.companyName || ""}>
-                                {ticket.companyName || ""}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">{ticket.clientName || ""}</td>
-                              <td className="px-4 py-3 font-medium text-blue-800">{ticket.quotationNo || ""}</td>
-                              <td className="px-4 py-3 text-blue-900">{ticket.paymentMode || ""}</td>
-                              <td className="px-4 py-3 text-blue-900">{formatDate(ticket.holdDate)}</td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-
-                    {/* Mobile Card View */}
-                    <div className="sm:hidden space-y-3">
-                      {filteredHoldData.length === 0 ? (
-                        <div className="text-center py-8 bg-white text-blue-700">
-                          {fetchLoading ? (
-                            <LoaderIcon className="animate-spin w-8 h-8 mx-auto" />
-                          ) : (
-                            "No orders on hold."
-                          )}
-                        </div>
-                      ) : (
-                        filteredHoldData.map((ticket, ind) => (
-                          <Card
-                            key={ticket.orderRow.id}
-                            className={`${ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"} border-l-4 border-l-blue-500`}
-                          >
-                            <CardContent className="p-4 flex gap-3 items-start">
-                              <input
-                                type="checkbox"
-                                checked={selectedHoldIds.includes(ticket.orderRow.id)}
-                                onChange={() => toggleHoldSelected(ticket.orderRow.id)}
-                                className="h-4 w-4 mt-1"
-                              />
-                              <div className="text-sm space-y-1 min-w-0">
-                                <h3 className="font-bold text-blue-800 text-base">{ticket.ticketId}</h3>
-                                <p className="text-gray-700 truncate" title={ticket.companyName || ""}>
-                                  {ticket.companyName || "N/A"}
-                                </p>
-                                <p className="text-gray-600">{ticket.clientName || "N/A"}</p>
-                                <p className="text-gray-600">Quote: {ticket.quotationNo || "N/A"}</p>
-                                <p className="text-gray-600">Payment Mode: {ticket.paymentMode || "N/A"}</p>
-                                <p className="text-gray-500">Hold Date: {formatDate(ticket.holdDate)}</p>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="history" className="mt-0">
-              <div className="relative overflow-x-auto">
-                <div className="max-h-[calc(103vh-200px)] overflow-y-auto">
-                  <table className="hidden sm:block w-full">
-                    <thead className="sticky top-0 z-10">
-                      <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
-                          Action
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Date
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Ticket-ID
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Enquiry Type
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Source of enquiry
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Call type
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[180px] sticky top-0">
-                          Enquiry Receiver Name
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Client Type
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
-                          Company Name
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Client Name
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Phone Number
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
-                          Site Address
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          GST No.
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Machine Name
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Category
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
-                          Mention Issue
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Service Location
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Quotation No.
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Stage
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Engineer Assign
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Client Approval
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          What Did The Customer Say
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Next Action
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Next Date Of Call
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Payment Term
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Acceptance Via
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Payment Mode
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Advance Payment
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Senior Approval
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Senior Approved By
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Hold Released On
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-blue-100">
-                      {finalFilteredHistoryData.length === 0 ? (
-                        <tr>
-                          <td
-                            colSpan={31}
-                            className="text-center py-8 bg-white"
-                            data-testid="text-no-history"
-                          >
-                            {fetchLoading ? (
-                              <div className="flex justify-center items-center text-blue-700">
-                                <LoaderIcon className="animate-spin w-8 h-8" />
-                              </div>
-                            ) : (
-                              <h1 className="text-blue-700">
-                                No follow-up history found.
-                              </h1>
-                            )}
-                          </td>
-                        </tr>
-                      ) : (
-                        [...finalFilteredHistoryData]
-                          .map((ticket, ind) => (
-                            <tr
-                              key={ind}
-                              className={
-                                ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"
-                              }
-                            >
-                              <td className="px-4 py-3">
-                                <Button
-                                  size="sm"
-                                  onClick={() => handleEditHistoryAttachmentClick(ticket)}
-                                  variant="outline"
-                                  className="bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 hover:from-blue-100 hover:to-indigo-100 hover:text-blue-700 transition-all duration-300 border border-blue-200 hover:border-blue-300 rounded-lg px-3 py-1.5 shadow-sm hover:shadow-md group"
-                                  data-testid={`button-edit-history-${ind}`}
-                                >
-                                  <span className="font-medium">Edit</span>
-                                </Button>
-                              </td>
-                              <td className="px-4 py-3 font-medium text-blue-800">
-                                {formatDate(ticket.timeStemp)}
-                              </td>
-                              <td className="px-4 py-3 font-medium text-blue-800">
-                                {ticket.ticketId}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.enquiryType || "-"}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.sourceOfEnquiry || ""}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.callType || ""}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.enquiryReceiverName || ""}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.clientType || ""}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.companyName || ""}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.clientName || ""}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.phoneNumber || ""}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.siteAddress || ""}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.gstNo || ""}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.machineName || ""}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.category || ""}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.mentionIssue || ""}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.serviceLocation || ""}
-                              </td>
-                              <td className="px-4 py-3 font-medium text-blue-800">
-                                {ticket.quotationNo || ""}
-                              </td>
-                              <td className="px-4 py-3 font-medium text-blue-800">
-                                {ticket.stage || ""}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.engineer_assign || ""}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket["client-attachment"] ? (
-                                  <a
-                                    href={ticket["client-attachment"]}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-blue-600 hover:text-blue-800 hover:underline"
-                                  >
-                                    View
-                                  </a>
-                                ) : (
-                                  ""
-                                )}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.what_did_the_customer_say || ""}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.next_action || ""}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {formatDate(ticket.next_date_of_call) || ""}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.payment_term || ""}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.acceptance_via || ""}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.payment_mode || ""}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.advance_payment_attachment ? (
-                                  <a
-                                    href={ticket.advance_payment_attachment}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-blue-600 hover:text-blue-800 hover:underline"
-                                  >
-                                    View
-                                  </a>
-                                ) : (
-                                  ""
-                                )}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.senior_approval ? (
-                                  <a
-                                    href={ticket.senior_approval}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-blue-600 hover:text-blue-800 hover:underline"
-                                  >
-                                    View
-                                  </a>
-                                ) : (
-                                  ""
-                                )}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {ticket.senior_approved_by || ""}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">
-                                {formatDate(ticket.hold_released_at) || ""}
-                              </td>
-                            </tr>
-                          ))
-                      )}
-                    </tbody>
-                  </table>
-
-                  {/* Mobile Card View */}
-                  <div className="md:hidden space-y-4">
-                    {finalFilteredHistoryData.length === 0 ? (
-                      <div
-                        className="text-center py-8 bg-white"
-                        data-testid="text-no-history"
-                      >
-                        {fetchLoading ? (
-                          <div className="flex justify-center items-center text-blue-700">
-                            <LoaderIcon className="animate-spin w-8 h-8" />
-                          </div>
-                        ) : (
-                          <h1 className="text-blue-700">
-                            No follow-up history found.
-                          </h1>
-                        )}
-                      </div>
-                    ) : (
-                      [...finalFilteredHistoryData].map((ticket, ind) => (
-                        <Card
-                          key={ind}
-                          className={`${ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"
-                            } border-l-4 border-l-blue-500`}
-                        >
-                          <CardContent className="p-4 space-y-3">
-                            {/* Header */}
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <h3 className="font-bold text-blue-800 text-lg">
-                                  {ticket.ticket_id}
-                                </h3>
-                                <p className="text-sm text-gray-700 font-medium">
-                                  Quote: {ticket.quotationNo || "N/A"}
-                                </p>
-                                <p className="text-sm text-gray-700">
-                                  Enquiry Type: {ticket.enquiryType || "N/A"}
-                                </p>
-                                <p className="text-sm text-gray-500">
-                                  {formatDate(ticket.timestamp)}
-                                </p>
-                              </div>
-                              <Button
-                                size="sm"
-                                onClick={() => handleEditHistoryAttachmentClick(ticket)}
-                                variant="outline"
-                                className="bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 hover:from-blue-100 hover:to-indigo-100 border border-blue-200"
-                              >
-                                Edit
-                              </Button>
-                            </div>
-
-                            {/* Stage & Engineer */}
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Stage
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.stage || "N/A"}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Engineer Assign
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.engineer_assign || "N/A"}
-                                </p>
-                              </div>
-                            </div>
-
-                            {/* Client Approval */}
-                            <div>
-                              <p className="text-gray-500 font-medium text-sm">
-                                Client Approval
-                              </p>
-                              {ticket["client-attachment"] ? (
-                                <a
-                                  href={ticket["client-attachment"]}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-blue-600 hover:text-blue-800 text-sm"
-                                >
-                                  View
-                                </a>
-                              ) : (
-                                <p className="text-blue-900">N/A</p>
-                              )}
-                            </div>
-
-                            {ticket.payment_mode && (
-                              <div className="grid grid-cols-2 gap-3 text-sm">
-                                <div>
-                                  <p className="text-gray-500 font-medium">Payment Term</p>
-                                  <p className="text-blue-900">{ticket.payment_term || "N/A"}</p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-500 font-medium">Payment Mode</p>
-                                  <p className="text-blue-900">{ticket.payment_mode}</p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-500 font-medium">Acceptance Via</p>
-                                  <p className="text-blue-900">{ticket.acceptance_via || "N/A"}</p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-500 font-medium">Senior Approved By</p>
-                                  <p className="text-blue-900">{ticket.senior_approved_by || "N/A"}</p>
-                                </div>
-                                {ticket.hold_released_at && (
-                                  <div>
-                                    <p className="text-gray-500 font-medium">Hold Released On</p>
-                                    <p className="text-blue-900">{formatDate(ticket.hold_released_at)}</p>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
-                            {/* Customer Feedback */}
-                            <div>
-                              <p className="text-gray-500 font-medium text-sm">
-                                Customer Feedback
-                              </p>
-                              <p className="text-blue-900 line-clamp-2">
-                                {ticket.what_did_the_customer_say || "N/A"}
-                              </p>
-                            </div>
-
-                            {/* Next Steps */}
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Next Action
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.next_action || "N/A"}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Next Call Date
-                                </p>
-                                <p className="text-blue-900">
-                                  {formatDate(ticket.next_date_of_call) ||
-                                    "N/A"}
-                                </p>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-        </TabsContent>
-            </div>
-          </CardContent>
-        </Card>
-      </Tabs>
+      <ListTable
+        list={list}
+        ctx={{
+          onFollowUp: handleFollowUpClick,
+          onEditHistory: handleEditHistoryAttachmentClick,
+          selectedHoldIds,
+          onToggleHold: toggleHoldSelected,
+        }}
+        rowKey={(r, tab) =>
+          tab === "hold" ? r.orderRow.id : tab === "pending" ? r.ticketId : r.id ?? r.ticket_id + "-" + r.created_at
+        }
+        cardTitle={(r) => r.ticketId}
+        emptyTitle={{
+          pending: "No pending follow-ups found.",
+          hold: "No orders on hold.",
+          history: "No follow-up history found.",
+        }}
+        ariaLabel="Follow-ups"
+      />
 
       {/* Follow-Up Modal */}
       <Modal

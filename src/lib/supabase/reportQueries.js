@@ -338,3 +338,135 @@ export function summarizeByEngineer(rows) {
     .map((e) => ({ ...e, pending: e.assigned - e.completed }))
     .sort((a, b) => b.assigned - a.assigned || a.engineer.localeCompare(b.engineer));
 }
+
+// ───────────────────────── Follow-Up ─────────────────────────
+// Section 1 "planned": tickets whose sss_quotation.follow_up_planned falls in
+//   the range, with their order status (Resolved ever / On Hold / Pending).
+// Section 2 "resolvedOutside": Order Received resolved inside the range
+//   (sss_follow_up.order_resolved_at) but planned outside it.
+// Cancelled tickets are excluded from both (cancelling also nulls
+// follow_up_planned, so they never reach section 1 anyway).
+
+export async function fetchFollowUpReport(supabase, { from, to }) {
+  const { start, end } = rangeBounds(from, to);
+  const startIso = start.toISOString();
+  const endIso = end.toISOString();
+
+  const [plannedQuotes, resolvedRows] = await Promise.all([
+    fetchAll(() =>
+      supabase
+        .from("sss_quotation")
+        .select("ticket_id, quotation_no, follow_up_planned")
+        .gte("follow_up_planned", startIso)
+        .lte("follow_up_planned", endIso)
+        .order("follow_up_planned", { ascending: true })
+        .order("ticket_id", { ascending: true })
+    ),
+    fetchAll(() =>
+      supabase
+        .from("sss_follow_up")
+        .select("ticket_id, order_resolved_at, payment_mode, payment_term, hold_order, hold_released_at")
+        .eq("stage", "Order Received")
+        .gte("order_resolved_at", startIso)
+        .lte("order_resolved_at", endIso)
+        .order("order_resolved_at", { ascending: true })
+        .order("id", { ascending: true })
+    ),
+  ]);
+
+  const plannedIds = plannedQuotes.map((q) => q.ticket_id);
+  const resolvedOnlyIds = resolvedRows
+    .map((r) => r.ticket_id)
+    .filter((id) => !plannedIds.includes(id));
+
+  // Order Received rows for the planned tickets (ever resolved, any date).
+  const [plannedOrderRows, outsideQuotes] = await Promise.all([
+    fetchByIds(
+      supabase,
+      "sss_follow_up",
+      "ticket_id, order_resolved_at, payment_mode, hold_order, hold_released_at, created_at, stage",
+      "ticket_id",
+      plannedIds
+    ),
+    fetchByIds(
+      supabase,
+      "sss_quotation",
+      "ticket_id, quotation_no, follow_up_planned",
+      "ticket_id",
+      resolvedOnlyIds
+    ),
+  ]);
+
+  const allIds = [...new Set([...plannedIds, ...resolvedOnlyIds])];
+  const [tickets, cancelled] = await Promise.all([
+    fetchByIds(
+      supabase,
+      "sss_tickets",
+      "ticket_id, company_name, client_name, engineer_assign",
+      "ticket_id",
+      allIds
+    ),
+    fetchByIds(supabase, "sss_cancelled_tickets", "ticket_id", "ticket_id", allIds),
+  ]);
+
+  const ticketById = new Map(tickets.map((t) => [t.ticket_id, t]));
+  const cancelledIds = new Set(cancelled.map((c) => c.ticket_id));
+
+  // One Order Received row per ticket: prefer a resolved one, else newest.
+  const orderByTicket = new Map();
+  plannedOrderRows
+    .filter((r) => r.stage === "Order Received")
+    .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
+    .forEach((r) => {
+      const prev = orderByTicket.get(r.ticket_id);
+      if (!prev || r.order_resolved_at || !prev.order_resolved_at) orderByTicket.set(r.ticket_id, r);
+    });
+
+  const base = (id) => {
+    const t = ticketById.get(id) || {};
+    return {
+      ticketId: id,
+      companyName: t.company_name || "",
+      clientName: t.client_name || "",
+      engineer: t.engineer_assign || "",
+    };
+  };
+
+  const planned = plannedQuotes
+    .filter((q) => !cancelledIds.has(q.ticket_id))
+    .map((q) => {
+      const o = orderByTicket.get(q.ticket_id);
+      const status = o?.order_resolved_at
+        ? "Resolved"
+        : o?.hold_order === "Yes"
+          ? "On Hold"
+          : "Pending";
+      return {
+        ...base(q.ticket_id),
+        quotationNo: q.quotation_no || "",
+        followUpPlanned: q.follow_up_planned,
+        status,
+        resolvedOn: o?.order_resolved_at || "",
+        paymentMode: o?.payment_mode || "",
+      };
+    });
+
+  const quoteById = new Map(outsideQuotes.map((q) => [q.ticket_id, q]));
+  const seen = new Set();
+  const resolvedOutside = resolvedRows
+    .filter((r) => !plannedIds.includes(r.ticket_id) && !cancelledIds.has(r.ticket_id))
+    .filter((r) => (seen.has(r.ticket_id) ? false : (seen.add(r.ticket_id), true)))
+    .map((r) => {
+      const q = quoteById.get(r.ticket_id) || {};
+      return {
+        ...base(r.ticket_id),
+        quotationNo: q.quotation_no || "",
+        followUpPlanned: q.follow_up_planned || "",
+        resolvedOn: r.order_resolved_at,
+        paymentMode: r.payment_mode || "",
+        released: r.hold_released_at ? "Yes" : "No",
+      };
+    });
+
+  return { planned, resolvedOutside };
+}

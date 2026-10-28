@@ -1,17 +1,6 @@
 import { useState, useEffect } from "react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-} from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "../../components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -20,8 +9,10 @@ import {
   SelectValue,
 } from "../../components/ui/select";
 import { Modal } from "../../components/ui/modal";
+import { DataTable, FilterSearch, ListTable, ListToolbar, StatusBadge, StatusTabs } from "../../components/shared";
+import { useClientList } from "../../hooks/useClientList";
 import { useToast } from "../../hooks/use-toast";
-import { Loader2Icon, LoaderIcon, Plus, Pencil, Trash2 } from "lucide-react";
+import { Loader2Icon, Plus, Pencil, Trash2 } from "lucide-react";
 import { supabase } from "../../lib/supabase/client";
 import { ltoSupabase } from "../../lib/supabase/ltoClient";
 import { fetchDropdownRows } from "../../lib/supabase/dropdown";
@@ -49,6 +40,35 @@ const CATEGORY_LABELS = {
   service_location: "Service Location",
   machine_name: "Machine Name",
 };
+
+const PAGE_TABS = [
+  { id: "dropdown", label: "Dropdown" },
+  { id: "company", label: "Company Details" },
+  { id: "items", label: "Items" },
+  { id: "engineerContacts", label: "Engineer Contacts" },
+  { id: "approvalRecipients", label: "Approval Recipients" },
+];
+
+const DASH = <span className="text-muted-foreground">-</span>;
+
+const formatRate = (rate) =>
+  rate !== null && rate !== undefined
+    ? `₹${Number(rate).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : DASH;
+
+// Edit / delete icon buttons shared by every row; `name` makes the labels unique per row.
+function RowActions({ name, onEdit, onDelete }) {
+  return (
+    <div className="flex justify-end gap-1">
+      <Button variant="outline" size="sm" onClick={onEdit} aria-label={`Edit ${name}`} title="Edit" className="h-7 px-2 text-primary hover:bg-accent">
+        <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+      </Button>
+      <Button variant="outline" size="sm" onClick={onDelete} aria-label={`Delete ${name}`} title="Delete" className="h-7 px-2 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive">
+        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+      </Button>
+    </div>
+  );
+}
 
 export default function Master() {
   const [activeTab, setActiveTab] = useState("dropdown");
@@ -90,7 +110,6 @@ export default function Master() {
   // project — see [[servicesupport_migration_project]] memory.
   const [companies, setCompanies] = useState([]);
   const [companyLoading, setCompanyLoading] = useState(false);
-  const [companySearch, setCompanySearch] = useState("");
 
   const fetchCompanies = async () => {
     setCompanyLoading(true);
@@ -198,12 +217,12 @@ export default function Master() {
     e.preventDefault();
     const name = itemFormData.item_name.trim();
     if (!name) {
-      alert("Item Name is required");
+      toast({ title: "Missing item name", description: "Item Name is required", variant: "destructive" });
       return;
     }
     const code = itemFormData.item_code.trim();
     if (!code) {
-      alert("Item Code is required");
+      toast({ title: "Missing item code", description: "Item Code is required", variant: "destructive" });
       return;
     }
     if (itemModalMode === "edit" && !editingItem?.uuid) {
@@ -381,7 +400,6 @@ export default function Master() {
 
   useEffect(() => {
     setItemPage(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedItemSearch]);
 
   useEffect(() => {
@@ -398,11 +416,11 @@ export default function Master() {
     const category = showNewCategoryInput ? newCategoryName.trim() : selectedCategory;
     const value = newValue.trim();
     if (!category) {
-      alert("Please select or enter a category");
+      toast({ title: "Missing category", description: "Please select or enter a category", variant: "destructive" });
       return;
     }
     if (!value) {
-      alert("Please enter a value");
+      toast({ title: "Missing value", description: "Please enter a value", variant: "destructive" });
       return;
     }
 
@@ -433,7 +451,7 @@ export default function Master() {
     if (!editingRow) return;
     const value = editingValue.trim();
     if (!value) {
-      alert("Value cannot be empty");
+      toast({ title: "Missing value", description: "Value cannot be empty", variant: "destructive" });
       return;
     }
     setIsSavingEdit(true);
@@ -482,15 +500,15 @@ export default function Master() {
     const name = newEngineerName.trim();
     const phone = newEngineerPhone.trim();
     if (!name) {
-      alert("Please enter the engineer's name");
+      toast({ title: "Missing engineer name", description: "Please enter the engineer's name", variant: "destructive" });
       return;
     }
     if (!phone) {
-      alert("Please enter a WhatsApp number");
+      toast({ title: "Missing WhatsApp number", description: "Please enter a WhatsApp number", variant: "destructive" });
       return;
     }
     if (engineerContacts.some((c) => c.engineer_name.toLowerCase() === name.toLowerCase())) {
-      alert("An engineer with this name already exists");
+      toast({ title: "Duplicate engineer", description: "An engineer with this name already exists", variant: "destructive" });
       return;
     }
 
@@ -552,7 +570,7 @@ export default function Master() {
   const handleSaveDetails = async () => {
     if (!detailsTarget) return;
     if (!detailsForm.phoneNumber?.trim()) {
-      alert("WhatsApp number cannot be empty");
+      toast({ title: "Missing WhatsApp number", description: "WhatsApp number cannot be empty", variant: "destructive" });
       return;
     }
     setIsSavingDetails(true);
@@ -587,7 +605,7 @@ export default function Master() {
     e.preventDefault();
     const email = newRecipientEmail.trim().toLowerCase();
     if (!email) {
-      alert("Please enter an email address");
+      toast({ title: "Missing email", description: "Please enter an email address", variant: "destructive" });
       return;
     }
 
@@ -654,529 +672,363 @@ export default function Master() {
     }
   };
 
-  // ── Company Details tab handlers ────────────────────────────────────
-  const filteredCompanies = companies.filter((c) => {
-    const q = companySearch.toLowerCase();
-    return (
-      String(c.company_name || "").toLowerCase().includes(q) ||
-      String(c.gst_number || "").toLowerCase().includes(q)
-    );
+  // ── Lists (kit) ─────────────────────────────────────────────────────
+  // Each non-Items tab is its own client-side list with a single "all" tab.
+  const dropdownList = useClientList({
+    key: "master-dropdown",
+    data: { all: showNewCategoryInput ? [] : valuesForCategory },
+    loading: dropdownLoading,
+    tabLabels: { all: "Values" },
+    searchKeys: ["value"],
+    sort: "none",
+    columns: [
+      { key: "value", label: "Value", fixed: true, strong: true, cell: (row) => (
+        editingRow?.uuid === row.uuid ? (
+          <Input
+            aria-label="Edit value"
+            value={editingValue}
+            onChange={(e) => setEditingValue(e.target.value)}
+            className="h-8 min-w-[160px]"
+            autoFocus
+          />
+        ) : row.value
+      ) },
+      { key: "actions", label: "Actions", fixed: true, headerClassName: "text-right w-28", cellClassName: "text-right", cell: (row) => (
+        editingRow?.uuid === row.uuid ? (
+          <div className="flex justify-end gap-1">
+            <Button size="sm" onClick={handleSaveEdit} disabled={isSavingEdit} className="h-7 px-2">
+              {isSavingEdit ? <Loader2Icon className="animate-spin w-3 h-3" /> : "Save"}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setEditingRow(null)} className="h-7 px-2">Cancel</Button>
+          </div>
+        ) : (
+          <RowActions name={row.value} onEdit={() => startEditRow(row)} onDelete={() => setDeleteDropdownTarget(row)} />
+        )
+      ) },
+    ],
   });
 
+  const companyList = useClientList({
+    key: "master-company",
+    data: { all: companies },
+    loading: companyLoading,
+    tabLabels: { all: "Companies" },
+    searchKeys: ["company_name", "gst_number"],
+    sort: "none",
+    columns: [
+      { key: "company_name", label: "Company Name", strong: true },
+      { key: "state", label: "State" },
+      { key: "state_code", label: "State Code" },
+      { key: "gst_number", label: "GST Number" },
+      { key: "billing_address", label: "Billing Address", wrap: true, width: 240 },
+      { key: "company_group_name", label: "Company Group Name" },
+    ],
+  });
+
+  const engineerList = useClientList({
+    key: "master-engineers",
+    data: { all: engineerContacts },
+    loading: engineerContactsLoading,
+    tabLabels: { all: "Engineers" },
+    searchKeys: ["engineer_name", "phone_number", "email"],
+    sort: "none",
+    columns: [
+      { key: "engineer_name", label: "Engineer Name", strong: true },
+      { key: "phone_number", label: "WhatsApp Number" },
+      { key: "email", label: "Email" },
+      { key: "bank_name", label: "Bank Name" },
+      { key: "account_holder_name", label: "Account Holder" },
+      { key: "account_number", label: "Account Number" },
+      { key: "ifsc_code", label: "IFSC Code" },
+      { key: "branch", label: "Branch" },
+      { key: "actions", label: "Actions", fixed: true, headerClassName: "text-right w-24", cellClassName: "text-right", cell: (c) => (
+        <RowActions name={c.engineer_name} onEdit={() => openDetailsModal(c)} onDelete={() => setDeleteEngineerTarget(c)} />
+      ) },
+    ],
+  });
+
+  const recipientList = useClientList({
+    key: "master-recipients",
+    data: { all: approvalRecipients },
+    loading: recipientsLoading,
+    tabLabels: { all: "Recipients" },
+    searchKeys: ["email"],
+    sort: "none",
+    columns: [
+      { key: "email", label: "Email", fixed: true, strong: true },
+      { key: "recipient_type", label: "Type", headerClassName: "w-32", cell: (r) => (
+        editingRecipient?.email === r.email ? (
+          <Select value={editingRecipientType} onValueChange={setEditingRecipientType}>
+            <SelectTrigger className="h-8 w-24" aria-label={`Type for ${r.email}`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="to">To</SelectItem>
+              <SelectItem value="cc">Cc</SelectItem>
+            </SelectContent>
+          </Select>
+        ) : (
+          <StatusBadge tone={r.recipient_type === "to" ? "info" : "neutral"}>
+            {r.recipient_type === "to" ? "To" : "Cc"}
+          </StatusBadge>
+        )
+      ) },
+      { key: "actions", label: "Actions", fixed: true, headerClassName: "text-right w-28", cellClassName: "text-right", cell: (r) => (
+        editingRecipient?.email === r.email ? (
+          <div className="flex justify-end gap-1">
+            <Button size="sm" onClick={handleSaveRecipientEdit} disabled={isSavingRecipientEdit} className="h-7 px-2">
+              {isSavingRecipientEdit ? <Loader2Icon className="animate-spin w-3 h-3" /> : "Save"}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setEditingRecipient(null)} className="h-7 px-2">Cancel</Button>
+          </div>
+        ) : (
+          <RowActions name={r.email} onEdit={() => startEditRecipient(r)} onDelete={() => setDeleteRecipientTarget(r)} />
+        )
+      ) },
+    ],
+  });
+
+  const itemsTotalPages = Math.ceil(itemsTotalCount / itemsPerPage) || 1;
+
   return (
-    <div className="space-y-2">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <Card className="border-0 shadow-lg bg-gradient-to-br from-blue-50 to-indigo-50">
-          <CardHeader className="bg-gradient-to-r from-blue-50/50 to-indigo-50/50 rounded-t-lg border-b border-blue-100 px-6 py-4">
-            <TabsList className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200">
-              <TabsTrigger
-                value="dropdown"
-                className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-              >
-                Dropdown
-              </TabsTrigger>
-              <TabsTrigger
-                value="company"
-                className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-              >
-                Company Details
-              </TabsTrigger>
-              <TabsTrigger
-                value="items"
-                className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-              >
-                Items
-              </TabsTrigger>
-              <TabsTrigger
-                value="engineerContacts"
-                className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-              >
-                Engineer Contacts
-              </TabsTrigger>
-              <TabsTrigger
-                value="approvalRecipients"
-                className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-              >
-                Approval Recipients
-              </TabsTrigger>
-            </TabsList>
-          </CardHeader>
+    <div className="space-y-4">
+      <div className="overflow-x-auto scrollbar-hide">
+        <StatusTabs variant="underline" label="Master data sections" tabs={PAGE_TABS} activeTab={activeTab} onChange={setActiveTab} className="min-w-max" />
+      </div>
 
-          <CardContent>
-            {/* ── Dropdown Tab ─────────────────────────────────────── */}
-            <TabsContent value="dropdown" className="mt-0">
-              <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-4">
-                <div className="border border-gray-200 rounded-lg p-3 space-y-1 max-h-[70vh] overflow-y-auto">
-                  <p className="text-xs font-semibold text-gray-500 uppercase px-2 pb-2">Categories</p>
-                  {categories.map((cat) => (
-                    <button
-                      key={cat}
-                      type="button"
-                      onClick={() => {
-                        setSelectedCategory(cat);
-                        setShowNewCategoryInput(false);
-                      }}
-                      className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                        selectedCategory === cat && !showNewCategoryInput
-                          ? "bg-blue-600 text-white font-medium"
-                          : "text-gray-700 hover:bg-blue-50"
-                      }`}
-                    >
-                      {CATEGORY_LABELS[cat] || cat}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => setShowNewCategoryInput(true)}
-                    className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-1 ${
-                      showNewCategoryInput
-                        ? "bg-blue-600 text-white font-medium"
-                        : "text-blue-700 hover:bg-blue-50"
-                    }`}
-                  >
-                    <Plus className="w-4 h-4" /> New Category
-                  </button>
-                </div>
+      {/* ── Dropdown Tab ─────────────────────────────────────── */}
+      {activeTab === "dropdown" && (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-[240px_1fr]">
+          <div className="max-h-48 space-y-1 md:max-h-[70vh] overflow-y-auto rounded-lg border bg-card p-3">
+            <p className="px-2 pb-2 text-xs font-semibold uppercase text-muted-foreground">Categories</p>
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => {
+                  setSelectedCategory(cat);
+                  setShowNewCategoryInput(false);
+                }}
+                className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${
+                  selectedCategory === cat && !showNewCategoryInput
+                    ? "bg-primary font-medium text-primary-foreground"
+                    : "text-foreground hover:bg-accent"
+                }`}
+              >
+                {CATEGORY_LABELS[cat] || cat}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setShowNewCategoryInput(true)}
+              className={`flex w-full items-center gap-1 rounded-md px-3 py-2 text-left text-sm transition-colors ${
+                showNewCategoryInput
+                  ? "bg-primary font-medium text-primary-foreground"
+                  : "text-primary hover:bg-accent"
+              }`}
+            >
+              <Plus className="h-4 w-4" aria-hidden="true" /> New Category
+            </button>
+          </div>
 
-                <div className="border border-gray-200 rounded-lg p-4">
-                  <form onSubmit={handleAddValue} className="flex flex-col sm:flex-row gap-2 mb-4">
-                    {showNewCategoryInput && (
-                      <Input
-                        placeholder="New category key (e.g. payment_mode)"
-                        value={newCategoryName}
-                        onChange={(e) => setNewCategoryName(e.target.value)}
-                        className="sm:w-64"
-                      />
-                    )}
-                    <Input
-                      placeholder="Enter new value"
-                      value={newValue}
-                      onChange={(e) => setNewValue(e.target.value)}
-                      className="flex-1"
-                    />
-                    <Button
-                      type="submit"
-                      disabled={isAddingValue}
-                      className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shrink-0"
-                    >
-                      {isAddingValue && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
-                      Add
-                    </Button>
-                  </form>
-
-                  <div className="max-h-[55vh] overflow-y-auto">
-                    {dropdownLoading ? (
-                      <div className="flex justify-center items-center text-blue-700 py-8">
-                        <LoaderIcon className="animate-spin w-8 h-8" />
-                      </div>
-                    ) : !showNewCategoryInput && valuesForCategory.length === 0 ? (
-                      <p className="text-gray-500 text-center py-8">No values yet for this category.</p>
-                    ) : showNewCategoryInput ? (
-                      <p className="text-gray-500 text-center py-8">Add the first value for your new category above.</p>
-                    ) : (
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="bg-gray-50 text-gray-600">
-                            <th className="px-3 py-2 text-left font-semibold">Value</th>
-                            <th className="px-3 py-2 text-right font-semibold w-28">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                          {valuesForCategory.map((row, ind) => (
-                            <tr key={row.uuid} className={ind % 2 === 0 ? "bg-white" : "bg-gray-50/50"}>
-                              <td className="px-3 py-2">
-                                {editingRow?.uuid === row.uuid ? (
-                                  <Input
-                                    value={editingValue}
-                                    onChange={(e) => setEditingValue(e.target.value)}
-                                    className="h-8"
-                                    autoFocus
-                                  />
-                                ) : (
-                                  row.value
-                                )}
-                              </td>
-                              <td className="px-3 py-2 text-right">
-                                {editingRow?.uuid === row.uuid ? (
-                                  <div className="flex justify-end gap-1">
-                                    <Button size="sm" onClick={handleSaveEdit} disabled={isSavingEdit} className="h-7 px-2 bg-blue-600 hover:bg-blue-700 text-white">
-                                      {isSavingEdit ? <Loader2Icon className="animate-spin w-3 h-3" /> : "Save"}
-                                    </Button>
-                                    <Button size="sm" variant="outline" onClick={() => setEditingRow(null)} className="h-7 px-2">
-                                      Cancel
-                                    </Button>
-                                  </div>
-                                ) : (
-                                  <div className="flex justify-end gap-1">
-                                    <Button variant="outline" size="sm" onClick={() => startEditRow(row)} className="h-7 px-2 border-blue-200 text-blue-700 hover:bg-blue-50">
-                                      <Pencil className="w-3.5 h-3.5" />
-                                    </Button>
-                                    <Button variant="outline" size="sm" onClick={() => setDeleteDropdownTarget(row)} className="h-7 px-2 border-red-200 text-red-600 hover:bg-red-50">
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </Button>
-                                  </div>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </TabsContent>
-
-            {/* ── Company Details Tab ──────────────────────────────── */}
-            {/* Read-only — sourced live from the production
-                Lead-To-Order-Supabase-New project's client master. */}
-            <TabsContent value="company" className="mt-0">
-              <div className="flex flex-col sm:flex-row justify-between items-center gap-3 mb-4">
+          <div className="min-w-0 space-y-3">
+            <form onSubmit={handleAddValue} className="flex flex-col gap-2 sm:flex-row">
+              {showNewCategoryInput && (
                 <Input
-                  placeholder="Search by company name or GST number..."
-                  value={companySearch}
-                  onChange={(e) => setCompanySearch(e.target.value)}
-                  className="sm:w-80"
+                  aria-label="New category key"
+                  placeholder="New category key (e.g. payment_mode)"
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  className="sm:w-64"
                 />
-              </div>
-
-              <div className="relative overflow-x-auto">
-                <div className="max-h-[65vh] overflow-y-auto border border-gray-200 rounded-lg">
-                  <table className="w-full text-sm">
-                    <thead className="sticky top-0 z-10">
-                      <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                        <th className="text-white px-4 py-3 text-left">Company Name</th>
-                        <th className="text-white px-4 py-3 text-left">State</th>
-                        <th className="text-white px-4 py-3 text-left">State Code</th>
-                        <th className="text-white px-4 py-3 text-left">GST Number</th>
-                        <th className="text-white px-4 py-3 text-left">Billing Address</th>
-                        <th className="text-white px-4 py-3 text-left">Company Group Name</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-blue-100">
-                      {companyLoading ? (
-                        <tr>
-                          <td colSpan={6} className="text-center py-8">
-                            <div className="flex justify-center items-center text-blue-700">
-                              <LoaderIcon className="animate-spin w-8 h-8" />
-                            </div>
-                          </td>
-                        </tr>
-                      ) : filteredCompanies.length === 0 ? (
-                        <tr>
-                          <td colSpan={6} className="text-center py-8 text-blue-700">
-                            No companies found.
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredCompanies.map((company, ind) => (
-                          <tr key={company.company_name} className={ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"}>
-                            <td className="px-4 py-3 text-blue-900 font-medium">{company.company_name}</td>
-                            <td className="px-4 py-3 text-blue-900">{company.state || "—"}</td>
-                            <td className="px-4 py-3 text-blue-900">{company.state_code || "—"}</td>
-                            <td className="px-4 py-3 text-blue-900">{company.gst_number || "—"}</td>
-                            <td className="px-4 py-3 text-blue-900">{company.billing_address || "—"}</td>
-                            <td className="px-4 py-3 text-blue-900">{company.company_group_name || "—"}</td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </TabsContent>
-
-            {/* ── Items Tab ────────────────────────────────────────── */}
-            {/* Full CRUD on `lto_items` — the SAME shared item catalog
-                Lead-To-Order-Supabase-New reads/writes (see ltoClient.js).
-                Every add/edit stamps user_who_updated + updated_at. */}
-            <TabsContent value="items" className="mt-0">
-              <div className="flex flex-col sm:flex-row justify-between items-center gap-3 mb-4">
-                <Input
-                  placeholder="Search items by name or code..."
-                  value={itemSearch}
-                  onChange={(e) => setItemSearch(e.target.value)}
-                  className="sm:w-80"
-                />
-                <Button
-                  type="button"
-                  onClick={() => handleOpenItemModal("add")}
-                  className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shrink-0"
-                >
-                  <Plus className="w-4 h-4 mr-1" /> Add Item
-                </Button>
-              </div>
-
-              <div className="relative overflow-x-auto">
-                <div className="max-h-[60vh] overflow-y-auto border border-gray-200 rounded-lg">
-                  <table className="w-full text-sm">
-                    <thead className="sticky top-0 z-10">
-                      <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                        <th className="text-white px-4 py-3 text-right w-24">Actions</th>
-                        <th className="text-white px-4 py-3 text-left">Item Name</th>
-                        <th className="text-white px-4 py-3 text-left">Item Code</th>
-                        <th className="text-white px-4 py-3 text-left">Rate (₹)</th>
-                        <th className="text-white px-4 py-3 text-left">Description</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-blue-100">
-                      {itemsLoading ? (
-                        <tr>
-                          <td colSpan={5} className="text-center py-8">
-                            <div className="flex justify-center items-center text-blue-700">
-                              <LoaderIcon className="animate-spin w-8 h-8" />
-                            </div>
-                          </td>
-                        </tr>
-                      ) : items.length === 0 ? (
-                        <tr>
-                          <td colSpan={5} className="text-center py-8 text-blue-700">
-                            No items found.
-                          </td>
-                        </tr>
-                      ) : (
-                        items.map((item, ind) => (
-                          <tr key={item.uuid} className={ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"}>
-                            <td className="px-4 py-3 text-right">
-                              <div className="flex justify-end gap-1">
-                                <Button variant="outline" size="sm" onClick={() => handleOpenItemModal("edit", item)} className="h-7 px-2 border-blue-200 text-blue-700 hover:bg-blue-50">
-                                  <Pencil className="w-3.5 h-3.5" />
-                                </Button>
-                                <Button variant="outline" size="sm" onClick={() => setDeleteItemTarget(item)} className="h-7 px-2 border-red-200 text-red-600 hover:bg-red-50">
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </Button>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 text-blue-900 font-medium">{item.item_name}</td>
-                            <td className="px-4 py-3 text-blue-900">{item.item_code || "—"}</td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {item.rate !== null && item.rate !== undefined
-                                ? `₹${Number(item.rate).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                                : "—"}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900 max-w-xs truncate" title={item.description || ""}>{item.description || "—"}</td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {itemsTotalCount > itemsPerPage && (
-                <div className="flex items-center justify-between mt-3 text-sm text-gray-600">
-                  <span>
-                    Showing {items.length === 0 ? 0 : (itemPage - 1) * itemsPerPage + 1}–{(itemPage - 1) * itemsPerPage + items.length} of {itemsTotalCount}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" disabled={itemPage <= 1} onClick={() => setItemPage((p) => Math.max(1, p - 1))}>
-                      Previous
-                    </Button>
-                    <span>Page {itemPage} of {Math.ceil(itemsTotalCount / itemsPerPage) || 1}</span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={itemPage >= Math.ceil(itemsTotalCount / itemsPerPage)}
-                      onClick={() => setItemPage((p) => p + 1)}
-                    >
-                      Next
-                    </Button>
-                  </div>
-                </div>
               )}
-            </TabsContent>
+              <Input
+                aria-label="New value"
+                placeholder="Enter new value"
+                value={newValue}
+                onChange={(e) => setNewValue(e.target.value)}
+                className="flex-1"
+              />
+              <Button type="submit" disabled={isAddingValue} className="shrink-0">
+                {isAddingValue && <Loader2Icon className="animate-spin w-4 h-4" />}
+                Add
+              </Button>
+            </form>
+            <ListToolbar list={dropdownList} searchPlaceholder="Search values..." showColumns={false} />
+            <ListTable
+              list={dropdownList}
+              rowKey={(r) => r.uuid}
+              emptyTitle={showNewCategoryInput ? "Add the first value for your new category above." : "No values yet for this category."}
+              ariaLabel="Dropdown values"
+              minWidth="min-w-0"
+            />
+          </div>
+        </div>
+      )}
 
-            {/* ── Engineer Contacts Tab ────────────────────────────── */}
-            {/* Single source of truth for engineers app-wide — every page's
-                "Engineer Assign" field reads from this table (see
-                engineers.js). Add/remove an engineer here, nowhere else. */}
-            <TabsContent value="engineerContacts" className="mt-0">
-              <div className="border border-gray-200 rounded-lg p-4">
-                <form onSubmit={handleAddEngineerContact} className="flex flex-col sm:flex-row gap-2 mb-4">
-                  <Input
-                    placeholder="Engineer name"
-                    value={newEngineerName}
-                    onChange={(e) => setNewEngineerName(e.target.value)}
-                    className="sm:w-64"
-                  />
-                  <Input
-                    placeholder="Enter WhatsApp number"
-                    value={newEngineerPhone}
-                    onChange={(e) => setNewEngineerPhone(e.target.value)}
-                    className="flex-1"
-                  />
-                  <Button
-                    type="submit"
-                    disabled={isAddingEngineerContact}
-                    className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shrink-0"
-                  >
-                    {isAddingEngineerContact && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
-                    Add
-                  </Button>
-                </form>
+      {/* ── Company Details Tab ──────────────────────────────── */}
+      {/* Read-only — sourced live from the production
+          Lead-To-Order-Supabase-New project's client master. */}
+      {activeTab === "company" && (
+        <div className="space-y-3">
+          <ListToolbar list={companyList} searchPlaceholder="Search by company name or GST number..." />
+          <ListTable
+            list={companyList}
+            rowKey={(c) => `${c.company_name}|${c.gst_number}|${c.state}|${c.billing_address}`}
+            emptyTitle="No companies found."
+            ariaLabel="Companies"
+            minWidth="min-w-[1100px]"
+          />
+        </div>
+      )}
 
-                <div className="max-h-[55vh] overflow-auto">
-                  {engineerContactsLoading ? (
-                    <div className="flex justify-center items-center text-blue-700 py-8">
-                      <LoaderIcon className="animate-spin w-8 h-8" />
-                    </div>
-                  ) : engineerContacts.length === 0 ? (
-                    <p className="text-gray-500 text-center py-8">No engineer contacts yet.</p>
-                  ) : (
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-gray-50 text-gray-600">
-                          <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Engineer Name</th>
-                          <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">WhatsApp Number</th>
-                          <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Email</th>
-                          <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Bank Name</th>
-                          <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Account Holder</th>
-                          <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Account Number</th>
-                          <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">IFSC Code</th>
-                          <th className="px-3 py-2 text-left font-semibold whitespace-nowrap">Branch</th>
-                          <th className="px-3 py-2 text-right font-semibold w-24 whitespace-nowrap">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {engineerContacts.map((contact, ind) => (
-                          <tr key={contact.engineer_name} className={ind % 2 === 0 ? "bg-white" : "bg-gray-50/50"}>
-                            <td className="px-3 py-2 whitespace-nowrap">{contact.engineer_name}</td>
-                            <td className="px-3 py-2 whitespace-nowrap">{contact.phone_number}</td>
-                            <td className="px-3 py-2 whitespace-nowrap text-gray-700">{contact.email || "-"}</td>
-                            <td className="px-3 py-2 whitespace-nowrap text-gray-700">{contact.bank_name || "-"}</td>
-                            <td className="px-3 py-2 whitespace-nowrap text-gray-700">{contact.account_holder_name || "-"}</td>
-                            <td className="px-3 py-2 whitespace-nowrap text-gray-700">{contact.account_number || "-"}</td>
-                            <td className="px-3 py-2 whitespace-nowrap text-gray-700">{contact.ifsc_code || "-"}</td>
-                            <td className="px-3 py-2 whitespace-nowrap text-gray-700">{contact.branch || "-"}</td>
-                            <td className="px-3 py-2 text-right">
-                              <div className="flex justify-end gap-1">
-                                <Button variant="outline" size="sm" onClick={() => openDetailsModal(contact)} className="h-7 px-2 border-blue-200 text-blue-700 hover:bg-blue-50" title="Edit">
-                                  <Pencil className="w-3.5 h-3.5" />
-                                </Button>
-                                <Button variant="outline" size="sm" onClick={() => setDeleteEngineerTarget(contact)} className="h-7 px-2 border-red-200 text-red-600 hover:bg-red-50">
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
+      {/* ── Items Tab ────────────────────────────────────────── */}
+      {/* Full CRUD on `lto_items` — the SAME shared item catalog
+          Lead-To-Order-Supabase-New reads/writes (see ltoClient.js).
+          Every add/edit stamps user_who_updated + updated_at. */}
+      {activeTab === "items" && (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <FilterSearch value={itemSearch} onChange={setItemSearch} placeholder="Search items by name or code..." className="min-w-[220px]" />
+            <Button type="button" onClick={() => handleOpenItemModal("add")} className="shrink-0">
+              <Plus className="h-4 w-4" aria-hidden="true" /> Add Item
+            </Button>
+          </div>
+          <DataTable
+            headers={[
+              { label: "Actions", className: "text-right w-24" },
+              "Item Name",
+              "Item Code",
+              "Rate (₹)",
+              "Description",
+            ]}
+            data={items}
+            loading={itemsLoading}
+            minWidth="min-w-[800px]"
+            ariaLabel="Items"
+            emptyTitle="No items found."
+            currentPage={itemPage}
+            totalPages={itemsTotalPages}
+            itemsPerPage={itemsPerPage}
+            totalResults={itemsTotalCount}
+            onPageChange={(p) => setItemPage(Math.min(Math.max(1, p), itemsTotalPages))}
+            onItemsPerPageChange={() => {}}
+            itemsPerPageOptions={[itemsPerPage]}
+            renderRow={(item) => (
+              <tr key={item.uuid} className="transition-colors">
+                <td className="px-3.5 py-2.5 text-right align-top">
+                  <RowActions name={item.item_name} onEdit={() => handleOpenItemModal("edit", item)} onDelete={() => setDeleteItemTarget(item)} />
+                </td>
+                <td className="px-3.5 py-2.5 align-top text-sm font-semibold text-foreground">{item.item_name}</td>
+                <td className="whitespace-nowrap px-3.5 py-2.5 align-top text-sm text-foreground">{item.item_code || DASH}</td>
+                <td className="whitespace-nowrap px-3.5 py-2.5 align-top text-sm text-foreground">{formatRate(item.rate)}</td>
+                <td className="max-w-xs truncate px-3.5 py-2.5 align-top text-sm text-foreground" title={item.description || ""}>{item.description || DASH}</td>
+              </tr>
+            )}
+            renderCard={(item) => (
+              <div key={item.uuid} className="rounded-lg border bg-card p-3 shadow-sm">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="min-w-0 break-words text-sm font-semibold text-foreground">{item.item_name}</p>
+                  <RowActions name={item.item_name} onEdit={() => handleOpenItemModal("edit", item)} onDelete={() => setDeleteItemTarget(item)} />
                 </div>
+                <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                  <div className="min-w-0">
+                    <dt className="text-muted-foreground">Item Code</dt>
+                    <dd className="break-words text-foreground">{item.item_code || DASH}</dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-muted-foreground">Rate (₹)</dt>
+                    <dd className="text-foreground">{formatRate(item.rate)}</dd>
+                  </div>
+                  <div className="col-span-2 min-w-0">
+                    <dt className="text-muted-foreground">Description</dt>
+                    <dd className="break-words text-foreground">{item.description || DASH}</dd>
+                  </div>
+                </dl>
               </div>
-            </TabsContent>
+            )}
+          />
+        </div>
+      )}
 
-            {/* ── TADA Approval Recipients Tab ─────────────────────── */}
-            {/* To/CC list for the Senior Approval email (sss-send-tada-
-                approval-email), read live at send time — no code change
-                needed to add/remove a recipient. The assigned engineer's
-                own email (Engineer Contacts tab) is added to CC on top of
-                whatever's listed here automatically. */}
-            <TabsContent value="approvalRecipients" className="mt-0">
-              <div className="border border-gray-200 rounded-lg p-4">
-                <form onSubmit={handleAddRecipient} className="flex flex-col sm:flex-row gap-2 mb-4">
-                  <Input
-                    type="email"
-                    placeholder="Enter email address"
-                    value={newRecipientEmail}
-                    onChange={(e) => setNewRecipientEmail(e.target.value)}
-                    className="flex-1"
-                  />
-                  <Select value={newRecipientType} onValueChange={setNewRecipientType}>
-                    <SelectTrigger className="sm:w-32">
-                      <SelectValue placeholder="Type" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
-                      <SelectItem value="to">To</SelectItem>
-                      <SelectItem value="cc">Cc</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    type="submit"
-                    disabled={isAddingRecipient}
-                    className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shrink-0"
-                  >
-                    {isAddingRecipient && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
-                    Add
-                  </Button>
-                </form>
+      {/* ── Engineer Contacts Tab ────────────────────────────── */}
+      {/* Single source of truth for engineers app-wide — every page's
+          "Engineer Assign" field reads from this table (see
+          engineers.js). Add/remove an engineer here, nowhere else. */}
+      {activeTab === "engineerContacts" && (
+        <div className="space-y-3">
+          <form onSubmit={handleAddEngineerContact} className="flex flex-col gap-2 sm:flex-row">
+            <Input
+              aria-label="Engineer name"
+              placeholder="Engineer name"
+              value={newEngineerName}
+              onChange={(e) => setNewEngineerName(e.target.value)}
+              className="sm:w-64"
+            />
+            <Input
+              aria-label="WhatsApp number"
+              placeholder="Enter WhatsApp number"
+              value={newEngineerPhone}
+              onChange={(e) => setNewEngineerPhone(e.target.value)}
+              className="flex-1"
+            />
+            <Button type="submit" disabled={isAddingEngineerContact} className="shrink-0">
+              {isAddingEngineerContact && <Loader2Icon className="animate-spin w-4 h-4" />}
+              Add
+            </Button>
+          </form>
+          <ListToolbar list={engineerList} searchPlaceholder="Search engineers..." />
+          <ListTable
+            list={engineerList}
+            rowKey={(c) => c.engineer_name}
+            emptyTitle="No engineer contacts yet."
+            ariaLabel="Engineer contacts"
+            minWidth="min-w-[1000px]"
+          />
+        </div>
+      )}
 
-                <div className="max-h-[55vh] overflow-y-auto">
-                  {recipientsLoading ? (
-                    <div className="flex justify-center items-center text-blue-700 py-8">
-                      <LoaderIcon className="animate-spin w-8 h-8" />
-                    </div>
-                  ) : approvalRecipients.length === 0 ? (
-                    <p className="text-gray-500 text-center py-8">No recipients configured yet.</p>
-                  ) : (
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-gray-50 text-gray-600">
-                          <th className="px-3 py-2 text-left font-semibold">Email</th>
-                          <th className="px-3 py-2 text-left font-semibold w-24">Type</th>
-                          <th className="px-3 py-2 text-right font-semibold w-28">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {approvalRecipients.map((recipient, ind) => (
-                          <tr key={recipient.email} className={ind % 2 === 0 ? "bg-white" : "bg-gray-50/50"}>
-                            <td className="px-3 py-2">{recipient.email}</td>
-                            <td className="px-3 py-2">
-                              {editingRecipient?.email === recipient.email ? (
-                                <Select value={editingRecipientType} onValueChange={setEditingRecipientType}>
-                                  <SelectTrigger className="h-8">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
-                                    <SelectItem value="to">To</SelectItem>
-                                    <SelectItem value="cc">Cc</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              ) : (
-                                <span
-                                  className={`px-2 py-0.5 text-xs font-semibold rounded-full ${
-                                    recipient.recipient_type === "to"
-                                      ? "bg-indigo-100 text-indigo-800"
-                                      : "bg-slate-100 text-slate-700"
-                                  }`}
-                                >
-                                  {recipient.recipient_type === "to" ? "To" : "Cc"}
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-3 py-2 text-right">
-                              {editingRecipient?.email === recipient.email ? (
-                                <div className="flex justify-end gap-1">
-                                  <Button size="sm" onClick={handleSaveRecipientEdit} disabled={isSavingRecipientEdit} className="h-7 px-2 bg-blue-600 hover:bg-blue-700 text-white">
-                                    {isSavingRecipientEdit ? <Loader2Icon className="animate-spin w-3 h-3" /> : "Save"}
-                                  </Button>
-                                  <Button size="sm" variant="outline" onClick={() => setEditingRecipient(null)} className="h-7 px-2">
-                                    Cancel
-                                  </Button>
-                                </div>
-                              ) : (
-                                <div className="flex justify-end gap-1">
-                                  <Button variant="outline" size="sm" onClick={() => startEditRecipient(recipient)} className="h-7 px-2 border-blue-200 text-blue-700 hover:bg-blue-50">
-                                    <Pencil className="w-3.5 h-3.5" />
-                                  </Button>
-                                  <Button variant="outline" size="sm" onClick={() => setDeleteRecipientTarget(recipient)} className="h-7 px-2 border-red-200 text-red-600 hover:bg-red-50">
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </Button>
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              </div>
-            </TabsContent>
-          </CardContent>
-        </Card>
-      </Tabs>
+      {/* ── TADA Approval Recipients Tab ─────────────────────── */}
+      {/* To/CC list for the Senior Approval email (sss-send-tada-
+          approval-email), read live at send time — no code change
+          needed to add/remove a recipient. The assigned engineer's
+          own email (Engineer Contacts tab) is added to CC on top of
+          whatever's listed here automatically. */}
+      {activeTab === "approvalRecipients" && (
+        <div className="space-y-3">
+          <form onSubmit={handleAddRecipient} className="flex flex-col gap-2 sm:flex-row">
+            <Input
+              type="email"
+              aria-label="Recipient email address"
+              placeholder="Enter email address"
+              value={newRecipientEmail}
+              onChange={(e) => setNewRecipientEmail(e.target.value)}
+              className="flex-1"
+            />
+            <Select value={newRecipientType} onValueChange={setNewRecipientType}>
+              <SelectTrigger className="sm:w-32" aria-label="Recipient type">
+                <SelectValue placeholder="Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="to">To</SelectItem>
+                <SelectItem value="cc">Cc</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button type="submit" disabled={isAddingRecipient} className="shrink-0">
+              {isAddingRecipient && <Loader2Icon className="animate-spin w-4 h-4" />}
+              Add
+            </Button>
+          </form>
+          <ListToolbar list={recipientList} searchPlaceholder="Search recipients..." showColumns={false} />
+          <ListTable
+            list={recipientList}
+            rowKey={(r) => r.email}
+            emptyTitle="No recipients configured yet."
+            ariaLabel="Approval recipients"
+            minWidth="min-w-0"
+          />
+        </div>
+      )}
 
       {/* Dropdown value delete confirmation */}
       <Modal
@@ -1186,13 +1038,13 @@ export default function Master() {
         size="sm"
       >
         <div className="p-2 space-y-4">
-          <p className="text-gray-700">
+          <p className="text-foreground">
             Delete <span className="font-semibold">{deleteDropdownTarget?.value}</span> from{" "}
             <span className="font-semibold">{CATEGORY_LABELS[deleteDropdownTarget?.category] || deleteDropdownTarget?.category}</span>?
           </p>
           <div className="flex justify-end space-x-4">
             <Button type="button" variant="outline" onClick={() => setDeleteDropdownTarget(null)}>Cancel</Button>
-            <Button type="button" onClick={handleDeleteDropdownValue} disabled={isDeletingDropdown} className="bg-red-600 hover:bg-red-700 text-white">
+            <Button type="button" onClick={handleDeleteDropdownValue} disabled={isDeletingDropdown} variant="destructive">
               {isDeletingDropdown && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
               Delete
             </Button>
@@ -1209,8 +1061,8 @@ export default function Master() {
       >
         <form onSubmit={handleSubmitItem} className="p-2 space-y-4">
           <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700">Item Name *</label>
-            <Input
+            <label htmlFor="master-f1" className="text-sm font-medium text-foreground">Item Name *</label>
+            <Input id="master-f1"
               placeholder="e.g. Solar Panel 400W"
               value={itemFormData.item_name}
               onChange={(e) => setItemFormData((prev) => ({ ...prev, item_name: e.target.value }))}
@@ -1219,8 +1071,8 @@ export default function Master() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-sm font-medium text-gray-700">Item Code *</label>
-              <Input
+              <label htmlFor="master-f2" className="text-sm font-medium text-foreground">Item Code *</label>
+              <Input id="master-f2"
                 placeholder="e.g. ITM-001"
                 value={itemFormData.item_code}
                 onChange={(e) => setItemFormData((prev) => ({ ...prev, item_code: e.target.value }))}
@@ -1228,8 +1080,8 @@ export default function Master() {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-sm font-medium text-gray-700">Rate (₹)</label>
-              <Input
+              <label htmlFor="master-f3" className="text-sm font-medium text-foreground">Rate (₹)</label>
+              <Input id="master-f3"
                 type="number"
                 step="0.01"
                 min="0"
@@ -1240,18 +1092,18 @@ export default function Master() {
             </div>
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700">Description</label>
-            <textarea
+            <label htmlFor="master-f4" className="text-sm font-medium text-foreground">Description</label>
+            <textarea id="master-f4"
               rows={3}
               placeholder="Enter additional details or specifications..."
               value={itemFormData.description}
               onChange={(e) => setItemFormData((prev) => ({ ...prev, description: e.target.value }))}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none resize-none"
+              className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
             />
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="outline" onClick={handleCloseItemModal} disabled={isSavingItem}>Cancel</Button>
-            <Button type="submit" disabled={isSavingItem} className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white">
+            <Button type="submit" disabled={isSavingItem} >
               {isSavingItem && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
               Save
             </Button>
@@ -1267,12 +1119,12 @@ export default function Master() {
         size="sm"
       >
         <div className="p-2 space-y-4">
-          <p className="text-gray-700">
+          <p className="text-foreground">
             Delete <span className="font-semibold">{deleteItemTarget?.item_name}</span>? This item also disappears from Lead-To-Order's own Items Master, since both apps share the same catalog.
           </p>
           <div className="flex justify-end space-x-4">
             <Button type="button" variant="outline" onClick={() => setDeleteItemTarget(null)}>Cancel</Button>
-            <Button type="button" onClick={handleDeleteItem} disabled={isDeletingItem} className="bg-red-600 hover:bg-red-700 text-white">
+            <Button type="button" onClick={handleDeleteItem} disabled={isDeletingItem} variant="destructive">
               {isDeletingItem && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
               Delete
             </Button>
@@ -1288,13 +1140,13 @@ export default function Master() {
         size="sm"
       >
         <div className="p-2 space-y-4">
-          <p className="text-gray-700">
+          <p className="text-foreground">
             Delete the WhatsApp number for{" "}
             <span className="font-semibold">{deleteEngineerTarget?.engineer_name}</span>?
           </p>
           <div className="flex justify-end space-x-4">
             <Button type="button" variant="outline" onClick={() => setDeleteEngineerTarget(null)}>Cancel</Button>
-            <Button type="button" onClick={handleDeleteEngineerContact} disabled={isDeletingEngineerContact} className="bg-red-600 hover:bg-red-700 text-white">
+            <Button type="button" onClick={handleDeleteEngineerContact} disabled={isDeletingEngineerContact} variant="destructive">
               {isDeletingEngineerContact && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
               Delete
             </Button>
@@ -1311,15 +1163,15 @@ export default function Master() {
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-2">
           <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700">WhatsApp Number</label>
-            <Input
+            <label htmlFor="master-f5" className="text-sm font-medium text-foreground">WhatsApp Number</label>
+            <Input id="master-f5"
               value={detailsForm.phoneNumber || ""}
               onChange={(e) => handleDetailsFormChange("phoneNumber", e.target.value)}
             />
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700">Email</label>
-            <Input
+            <label htmlFor="master-f6" className="text-sm font-medium text-foreground">Email</label>
+            <Input id="master-f6"
               type="email"
               placeholder="engineer@example.com"
               value={detailsForm.email || ""}
@@ -1327,45 +1179,45 @@ export default function Master() {
             />
           </div>
           <div className="md:col-span-2 pt-2">
-            <p className="text-xs font-semibold text-gray-500 uppercase">Bank Details for Transfer</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase">Bank Details for Transfer</p>
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700">Bank Name</label>
-            <Input
+            <label htmlFor="master-f7" className="text-sm font-medium text-foreground">Bank Name</label>
+            <Input id="master-f7"
               value={detailsForm.bankName || ""}
               onChange={(e) => handleDetailsFormChange("bankName", e.target.value)}
             />
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700">Account Holder Name</label>
-            <Input
+            <label htmlFor="master-f8" className="text-sm font-medium text-foreground">Account Holder Name</label>
+            <Input id="master-f8"
               value={detailsForm.accountHolderName || ""}
               onChange={(e) => handleDetailsFormChange("accountHolderName", e.target.value)}
             />
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700">Account Number</label>
-            <Input
+            <label htmlFor="master-f9" className="text-sm font-medium text-foreground">Account Number</label>
+            <Input id="master-f9"
               value={detailsForm.accountNumber || ""}
               onChange={(e) => handleDetailsFormChange("accountNumber", e.target.value)}
             />
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700">IFSC Code</label>
-            <Input
+            <label htmlFor="master-f10" className="text-sm font-medium text-foreground">IFSC Code</label>
+            <Input id="master-f10"
               value={detailsForm.ifscCode || ""}
               onChange={(e) => handleDetailsFormChange("ifscCode", e.target.value)}
             />
           </div>
           <div className="md:col-span-2 space-y-1">
-            <label className="text-sm font-medium text-gray-700">Branch</label>
-            <Input
+            <label htmlFor="master-f11" className="text-sm font-medium text-foreground">Branch</label>
+            <Input id="master-f11"
               value={detailsForm.branch || ""}
               onChange={(e) => handleDetailsFormChange("branch", e.target.value)}
             />
           </div>
 
-          <div className="md:col-span-2 flex justify-end gap-3 pt-4 border-t border-gray-100">
+          <div className="md:col-span-2 flex justify-end gap-3 pt-4 border-t border-border">
             <Button type="button" variant="outline" onClick={() => setDetailsTarget(null)} disabled={isSavingDetails}>
               Cancel
             </Button>
@@ -1373,7 +1225,7 @@ export default function Master() {
               type="button"
               onClick={handleSaveDetails}
               disabled={isSavingDetails}
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
+              
             >
               {isSavingDetails && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
               Save
@@ -1390,13 +1242,13 @@ export default function Master() {
         size="sm"
       >
         <div className="p-2 space-y-4">
-          <p className="text-gray-700">
+          <p className="text-foreground">
             Remove <span className="font-semibold">{deleteRecipientTarget?.email}</span> from the TADA approval email's{" "}
             {deleteRecipientTarget?.recipient_type === "to" ? "To" : "Cc"} list?
           </p>
           <div className="flex justify-end space-x-4">
             <Button type="button" variant="outline" onClick={() => setDeleteRecipientTarget(null)}>Cancel</Button>
-            <Button type="button" onClick={handleDeleteRecipient} disabled={isDeletingRecipient} className="bg-red-600 hover:bg-red-700 text-white">
+            <Button type="button" onClick={handleDeleteRecipient} disabled={isDeletingRecipient} variant="destructive">
               {isDeletingRecipient && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
               Delete
             </Button>

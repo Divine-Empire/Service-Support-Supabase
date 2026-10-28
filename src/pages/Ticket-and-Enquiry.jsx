@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Card,
   CardContent,
@@ -21,12 +21,9 @@ import { useToast } from "../hooks/use-toast";
 import {
   ClipboardList,
   Loader2Icon,
-  LoaderIcon,
   Plus,
-  Search,
   Calendar,
   RotateCcw,
-  Trash2,
 } from "lucide-react";
 import { Textarea } from "../components/ui/textarea";
 import {
@@ -44,46 +41,81 @@ import {
   sendServiceRequestRegisteredNotification,
   sendVideoCallScheduledNotifications,
 } from "../lib/notifications/whatsapp";
+import { ListToolbar, ListTable, StatusBadge } from "../components/shared";
+import { useClientList } from "../hooks/useClientList";
+import { formatDate, formatTime12hr } from "../lib/format";
+
+const EMPTY_FORM = {
+  clientType: "New",
+  sourceOfEnquiry: "",
+  callType: "",
+  enquiryReceiverName: "",
+  companyName: "",
+  clientName: "",
+  phoneNumber: "",
+  siteAddress: "",
+  gstNo: "",
+  gstAddress: "",
+  machineName: "",
+  enquiryType: "",
+  category: "",
+  mentionIssue: "",
+  serviceLocation: "",
+  challanCopy: "",
+  machinePhoto: "",
+  videoCall: "",
+  subCategory: "",
+  videoCallTime: "",
+  engineerAssign: "",
+  enquiryItemList: "",
+  remarks: "",
+};
+
+// Once a ticket reaches one of these stages, editing it here no longer
+// makes sense (billing/downstream paperwork has already started on it) —
+// it's dropped from this page's list entirely, not just its Edit button.
+// "Cancelled" is set by the sss_cancelled_tickets trigger (migration 0054).
+const EDIT_EXCLUDED_STAGES = ["Invoice", "Calibration", "Calibration Certificate", "Spare Dispatch Details", "Cancelled"];
+
+const COLUMNS = [
+  { key: "actions", label: "Actions", fixed: true, cell: (r, { onEdit }) => (
+    <Button variant="outline" size="sm" onClick={() => onEdit(r)}>Edit</Button>
+  ) },
+  { key: "currentStage", label: "Current Stage", defaultVisible: true, cell: (r) => (
+    r.currentStage ? <StatusBadge tone="info">{r.currentStage}</StatusBadge> : ""
+  ) },
+  { key: "date", label: "Date", defaultVisible: true, text: (r) => formatDate(r.timeStemp) },
+  { key: "ticketId", label: "Ticket-ID", defaultVisible: true, strong: true, text: (r) => r.ticketId },
+  { key: "sourceOfEnquiry", label: "Source of enquiry", defaultVisible: false, text: (r) => r.sourceOfEnquiry },
+  { key: "callType", label: "Call type", defaultVisible: false, text: (r) => r.callType },
+  { key: "enquiryReceiverName", label: "Enquiry Receiver Name", defaultVisible: false, text: (r) => r.enquiryReceiverName },
+  { key: "clientType", label: "Client Type", defaultVisible: false, text: (r) => r.clientType },
+  { key: "companyName", label: "Company Name", defaultVisible: true, wrap: true, width: 180, text: (r) => r.companyName },
+  { key: "clientName", label: "Client Name", defaultVisible: true, text: (r) => r.clientName },
+  { key: "phoneNumber", label: "Phone Number", defaultVisible: true, text: (r) => r.phoneNumber },
+  { key: "siteAddress", label: "Site Address", defaultVisible: false, wrap: true, width: 200, text: (r) => r.siteAddress },
+  { key: "gstNo", label: "GST No.", defaultVisible: false, text: (r) => r.gstNo },
+  { key: "machineName", label: "Machine Name", defaultVisible: true, wrap: true, width: 180, text: (r) => r.machineName },
+  { key: "enquiryType", label: "Enquiry Type", defaultVisible: false, text: (r) => r.enquiryType },
+  { key: "category", label: "Category", defaultVisible: true, text: (r) => r.category },
+  { key: "mentionIssue", label: "Mention Issue", defaultVisible: true, wrap: true, width: 250, text: (r) => r.mentionIssue },
+  { key: "serviceLocation", label: "Service Location", defaultVisible: true, text: (r) => r.serviceLocation },
+];
 
 export default function TicketAndEnquiry() {
   const [pendingData, setPendingData] = useState([]);
   const [fetchLoading, setFetchLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [masterData, setMasterData] = useState({});
-  const [searchItem, setSearchItem] = useState("");
+  const [loadError, setLoadError] = useState(null);
 
   // Filter States
   const [dateRange, setDateRange] = useState({ start: "", end: "" });
   const [isDateModalOpen, setIsDateModalOpen] = useState(false);
-  const [categoryFilter, setCategoryFilter] = useState("all");
 
   // New Enquiry Form States
   const [showNewEnquiryForm, setShowNewEnquiryForm] = useState(false);
-  const [newEnquiryData, setNewEnquiryData] = useState({
-    clientType: "New",
-    sourceOfEnquiry: "",
-    callType: "",
-    enquiryReceiverName: "",
-    companyName: "",
-    clientName: "",
-    phoneNumber: "",
-    siteAddress: "",
-    gstNo: "",
-    gstAddress: "",
-    machineName: "",
-    enquiryType: "",
-    category: "",
-    mentionIssue: "",
-    serviceLocation: "",
-    challanCopy: "",
-    machinePhoto: "",
-    videoCall: "",
-    subCategory: "",
-    videoCallTime: "",
-    engineerAssign: "",
-    enquiryItemList: "",
-    remarks: "",
-  });
+  const [newEnquiryData, setNewEnquiryData] = useState(EMPTY_FORM);
   const [newFormSelectedMachines, setNewFormSelectedMachines] = useState([]);
   const [showMachineDropdown, setShowMachineDropdown] = useState(false);
   const [machineSearchQuery, setMachineSearchQuery] = useState("");
@@ -200,6 +232,7 @@ export default function TicketAndEnquiry() {
 
   const fetchData = async () => {
     setFetchLoading(true);
+    setLoadError(null);
     try {
       const { data, error } = await supabase
         .from("sss_tickets")
@@ -243,6 +276,7 @@ export default function TicketAndEnquiry() {
       setPendingData(allData);
     } catch (error) {
       console.error("Error fetching data:", error);
+      setLoadError(error.message || "Failed to load data");
       toast({
         title: "Error",
         description: "Failed to load data",
@@ -334,6 +368,7 @@ export default function TicketAndEnquiry() {
     fetchDropdown();
     fetchCompanyDetails();
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -348,41 +383,6 @@ export default function TicketAndEnquiry() {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
-
-  const formatDate = (dateString) => {
-    if (!dateString) return "";
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return dateString;
-    const day = String(date.getDate()).padStart(2, "0");
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const year = date.getFullYear();
-    return `${day}/${month}/${year}`;
-  };
-
-  const formatDateTime = (date) => {
-    const d = new Date(date);
-    const day = String(d.getDate()).padStart(2, "0");
-    const month = String(d.getMonth() + 1).padStart(2, "0");
-    const year = d.getFullYear();
-    const hours = String(d.getHours()).padStart(2, "0");
-    const minutes = String(d.getMinutes()).padStart(2, "0");
-    const seconds = String(d.getSeconds()).padStart(2, "0");
-
-    return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
-  };
-
-  // "HH:MM" (24h, as stored by TimePicker12) -> "hh:mm AM/PM" for WhatsApp messages
-  const formatTime12hr = (timeStr) => {
-    if (!timeStr || !timeStr.includes(":")) return timeStr || "";
-    const [hStr, mStr] = timeStr.split(":");
-    let h = parseInt(hStr, 10);
-    const m = parseInt(mStr, 10);
-    if (isNaN(h) || isNaN(m)) return timeStr;
-    const period = h >= 12 ? "PM" : "AM";
-    h = h % 12;
-    if (h === 0) h = 12;
-    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")} ${period}`;
-  };
 
   const generateSixDigitOTP = () => {
     let result = "";
@@ -428,82 +428,81 @@ export default function TicketAndEnquiry() {
     e.preventDefault();
 
     if (!newEnquiryData.clientName) {
-      alert("Error: Client Name is required");
+      toast({ title: "Validation Error", description: "Client Name is required", variant: "destructive" });
       return;
     }
     if (!newEnquiryData.phoneNumber) {
-      alert("Error: Phone Number is required");
+      toast({ title: "Validation Error", description: "Phone Number is required", variant: "destructive" });
       return;
     }
     if (!newEnquiryData.enquiryType) {
-      alert("Error: Enquiry Type is required");
+      toast({ title: "Validation Error", description: "Enquiry Type is required", variant: "destructive" });
       return;
     }
     if (!newEnquiryData.category) {
-      alert("Error: Category is required");
+      toast({ title: "Validation Error", description: "Category is required", variant: "destructive" });
       return;
     }
     if (newFormSelectedCategories.length === 0) {
-      alert("Error: Sub-Category is required");
+      toast({ title: "Validation Error", description: "Sub-Category is required", variant: "destructive" });
       return;
     }
     if (!newEnquiryData.videoCall) {
-      alert("Error: Video-Call is required");
+      toast({ title: "Validation Error", description: "Video-Call is required", variant: "destructive" });
       return;
     }
     if (newEnquiryData.videoCall === "Yes") {
       if (!newEnquiryData.videoCallTime) {
-        alert("Error: Video-Call Time is required");
+        toast({ title: "Validation Error", description: "Video-Call Time is required", variant: "destructive" });
         return;
       }
       if (!isValidVideoCallTime(newEnquiryData.videoCallTime)) {
-        alert("Error: Video Call time must be between 9:30 AM and 7:30 PM.");
+        toast({ title: "Validation Error", description: "Video Call time must be between 9:30 AM and 7:30 PM.", variant: "destructive" });
         return;
       }
       if (!newEnquiryData.engineerAssign) {
-        alert("Error: Engineer-Assigned is required");
+        toast({ title: "Validation Error", description: "Engineer-Assigned is required", variant: "destructive" });
         return;
       }
     }
     if (!newEnquiryData.callType) {
-      alert("Error: Call Type is required");
+      toast({ title: "Validation Error", description: "Call Type is required", variant: "destructive" });
       return;
     }
     if (!newEnquiryData.sourceOfEnquiry) {
-      alert("Error: Source of Enquiry is required");
+      toast({ title: "Validation Error", description: "Source of Enquiry is required", variant: "destructive" });
       return;
     }
     if (!newEnquiryData.enquiryReceiverName) {
-      alert("Error: Enquiry Receiver Name is required");
+      toast({ title: "Validation Error", description: "Enquiry Receiver Name is required", variant: "destructive" });
       return;
     }
     if (!newEnquiryData.serviceLocation) {
-      alert("Error: Service Location is required");
+      toast({ title: "Validation Error", description: "Service Location is required", variant: "destructive" });
       return;
     }
     if (!newEnquiryData.companyName || !newEnquiryData.companyName.trim()) {
-      alert("Error: Company Name is required");
+      toast({ title: "Validation Error", description: "Company Name is required", variant: "destructive" });
       return;
     }
     if (!newEnquiryData.gstAddress || !newEnquiryData.gstAddress.trim()) {
-      alert("Error: GST Address is required");
+      toast({ title: "Validation Error", description: "GST Address is required", variant: "destructive" });
       return;
     }
     if (!newEnquiryData.siteAddress || !newEnquiryData.siteAddress.trim()) {
-      alert("Error: Site Address is required");
+      toast({ title: "Validation Error", description: "Site Address is required", variant: "destructive" });
       return;
     }
     if (newFormSelectedMachines.length === 0) {
-      alert("Error: Machine Name is required");
+      toast({ title: "Validation Error", description: "Machine Name is required", variant: "destructive" });
       return;
     }
     if (!newEnquiryData.mentionIssue || !newEnquiryData.mentionIssue.trim()) {
-      alert("Error: Mention Issue is required");
+      toast({ title: "Validation Error", description: "Mention Issue is required", variant: "destructive" });
       return;
     }
 
     setIsSubmitting(true);
-    const currentDateTime = formatDateTime(new Date());
     const isLocWarehouse = newEnquiryData.serviceLocation?.trim() === "Warehouse";
 
     try {
@@ -570,31 +569,7 @@ export default function TicketAndEnquiry() {
             description: `Enquiry updated successfully for Ticket ID: ${editingTicket.ticketId}`,
           });
           setShowNewEnquiryForm(false);
-          setNewEnquiryData({
-            clientType: "New",
-            sourceOfEnquiry: "",
-            callType: "",
-            enquiryReceiverName: "",
-            companyName: "",
-            clientName: "",
-            phoneNumber: "",
-            siteAddress: "",
-            gstNo: "",
-            gstAddress: "",
-            machineName: "",
-            enquiryType: "",
-            category: "",
-            mentionIssue: "",
-            serviceLocation: "",
-            challanCopy: "",
-            machinePhoto: "",
-            videoCall: "",
-            subCategory: "",
-            videoCallTime: "",
-            engineerAssign: "",
-            enquiryItemList: "",
-            remarks: "",
-          });
+          setNewEnquiryData(EMPTY_FORM);
           setNewFormSelectedMachines([]);
           setNewFormSelectedCategories([]);
           setWarehouseFiles({ challanCopy: null, machinePhoto: null });
@@ -724,31 +699,7 @@ export default function TicketAndEnquiry() {
           }
 
           setShowNewEnquiryForm(false);
-          setNewEnquiryData({
-            clientType: "New",
-            sourceOfEnquiry: "",
-            callType: "",
-            enquiryReceiverName: "",
-            companyName: "",
-            clientName: "",
-            phoneNumber: "",
-            siteAddress: "",
-            gstNo: "",
-            gstAddress: "",
-            machineName: "",
-            enquiryType: "",
-            category: "",
-            mentionIssue: "",
-            serviceLocation: "",
-            challanCopy: "",
-            machinePhoto: "",
-            videoCall: "",
-            subCategory: "",
-            videoCallTime: "",
-            engineerAssign: "",
-            enquiryItemList: "",
-            remarks: "",
-          });
+          setNewEnquiryData(EMPTY_FORM);
           setNewFormSelectedMachines([]);
           setNewFormSelectedCategories([]);
           setWarehouseFiles({ challanCopy: null, machinePhoto: null });
@@ -770,375 +721,159 @@ export default function TicketAndEnquiry() {
     }
   };
 
-  const roleStorage = localStorage.getItem("o2d-auth-storage");
-  const parsedData = roleStorage ? JSON.parse(roleStorage) : null;
-  const role = parsedData?.state?.user?.role;
+  const editableData = useMemo(
+    () => pendingData.filter((item) => !EDIT_EXCLUDED_STAGES.includes(item.currentStage)),
+    [pendingData]
+  );
 
-  // Once a ticket reaches one of these stages, editing it here no longer
-  // makes sense (billing/downstream paperwork has already started on it) —
-  // it's dropped from this page's list entirely, not just its Edit button.
-  // "Cancelled" is set by the sss_cancelled_tickets trigger (migration 0054).
-  const EDIT_EXCLUDED_STAGES = ["Invoice", "Calibration", "Calibration Certificate", "Spare Dispatch Details", "Cancelled"];
-  const editableData = pendingData.filter((item) => !EDIT_EXCLUDED_STAGES.includes(item.currentStage));
-
-  const roleFilteredData = editableData;
-
-  const filteredPendingData = roleFilteredData
-    .filter((item) => {
-      const q = searchItem.toLowerCase();
-      const matchesSearch =
-        String(item.ticketId || "").toLowerCase().includes(q) ||
-        String(item.clientName || "").toLowerCase().includes(q) ||
-        String(item.companyName || "").toLowerCase().includes(q) ||
-        String(item.phoneNumber || "").toLowerCase().includes(q);
-      
-      if (!matchesSearch) return false;
-
-      if (categoryFilter !== "all" && item.category !== categoryFilter) {
-        return false;
-      }
-
-      if (item.timeStemp) {
-        let ticketDateObj = null;
-        if (typeof item.timeStemp === "string" && item.timeStemp.includes("/")) {
-          const datePart = item.timeStemp.split(" ")[0];
-          const parts = datePart.split("/");
-          if (parts.length === 3) {
-            ticketDateObj = new Date(parts[2], parts[1] - 1, parts[0]);
+  // Date range narrows the rows before the list hook (same semantics as before);
+  // search and category go through the hook.
+  const dateFilteredData = useMemo(
+    () =>
+      editableData.filter((item) => {
+        if (item.timeStemp) {
+          let ticketDateObj = null;
+          if (typeof item.timeStemp === "string" && item.timeStemp.includes("/")) {
+            const datePart = item.timeStemp.split(" ")[0];
+            const parts = datePart.split("/");
+            if (parts.length === 3) {
+              ticketDateObj = new Date(parts[2], parts[1] - 1, parts[0]);
+            }
+          } else {
+            ticketDateObj = new Date(item.timeStemp);
           }
-        } else {
-          ticketDateObj = new Date(item.timeStemp);
+
+          if (ticketDateObj && !isNaN(ticketDateObj.getTime())) {
+            ticketDateObj.setHours(0, 0, 0, 0);
+
+            if (dateRange.start) {
+              const fromDateObj = new Date(dateRange.start);
+              fromDateObj.setHours(0, 0, 0, 0);
+              if (ticketDateObj < fromDateObj) return false;
+            }
+
+            if (dateRange.end) {
+              const toDateObj = new Date(dateRange.end);
+              toDateObj.setHours(23, 59, 59, 999);
+              if (ticketDateObj > toDateObj) return false;
+            }
+          }
+        } else if (dateRange.start || dateRange.end) {
+          return false;
         }
+        return true;
+      }),
+    [editableData, dateRange]
+  );
 
-        if (ticketDateObj && !isNaN(ticketDateObj.getTime())) {
-          ticketDateObj.setHours(0, 0, 0, 0);
+  const list = useClientList({
+    key: "tickets",
+    data: { all: dateFilteredData },
+    tabLabels: { all: "All Tickets" },
+    loading: fetchLoading,
+    error: loadError,
+    onRetry: fetchData,
+    searchKeys: ["ticketId", "clientName", "companyName", "phoneNumber"],
+    filters: [{ key: "category", label: "Category", allLabel: "All Categories", get: (r) => r.category }],
+    columns: COLUMNS,
+  });
 
-          if (dateRange.start) {
-            const fromDateObj = new Date(dateRange.start);
-            fromDateObj.setHours(0, 0, 0, 0);
-            if (ticketDateObj < fromDateObj) return false;
-          }
+  const handleNewEnquiryClick = () => {
+    setIsEditMode(false);
+    setEditingTicket(null);
+    // Note: this reset has always lacked gstAddress and carried a stray serialNumOfMachines; kept as-is.
+    setNewEnquiryData({
+      clientType: "New",
+      sourceOfEnquiry: "",
+      callType: "",
+      enquiryReceiverName: "",
+      companyName: "",
+      clientName: "",
+      phoneNumber: "",
+      siteAddress: "",
+      gstNo: "",
+      machineName: "",
+      enquiryType: "",
+      category: "",
+      mentionIssue: "",
+      serviceLocation: "",
+      challanCopy: "",
+      machinePhoto: "",
+      videoCall: "",
+      subCategory: "",
+      videoCallTime: "",
+      engineerAssign: "",
+      serialNumOfMachines: "",
+      enquiryItemList: "",
+      remarks: "",
+    });
+    setNewFormSelectedMachines([]);
+    setNewFormSelectedCategories([]);
+    setWarehouseFiles({ challanCopy: null, machinePhoto: null });
+    setEnquiryItemListFile(null);
+    setShowNewEnquiryForm(true);
+  };
 
-          if (dateRange.end) {
-            const toDateObj = new Date(dateRange.end);
-            toDateObj.setHours(23, 59, 59, 999);
-            if (ticketDateObj > toDateObj) return false;
-          }
-        }
-      } else if (dateRange.start || dateRange.end) {
-        return false;
-      }
-      return true;
-    })
-    .reverse();
-
-  // Categories filter dropdown dynamically computes from the current table items
-  const availableCategories = [
-    ...new Set(roleFilteredData.map((item) => item.category).filter(Boolean)),
-  ];
+  const hasDateRange = !!(dateRange.start || dateRange.end);
 
   return (
-    <div className="space-y-2">
-      <Card className="border-0 shadow-lg bg-gradient-to-br from-blue-50 to-indigo-50">
-        <CardHeader className="bg-gradient-to-r from-blue-50/50 to-indigo-50/50 rounded-t-lg border-b border-blue-100 px-6 py-4 flex flex-col lg:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-2">
-            <h2 className="text-blue-900 text-xl font-bold flex items-center gap-2">
-              All Tickets
-              <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded-full">
-                {filteredPendingData?.length}
-              </span>
-            </h2>
-          </div>
-
-          <div className="flex flex-wrap lg:flex-nowrap items-center gap-3 w-full lg:w-auto justify-end">
-            <div className="relative w-full sm:w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-blue-500" />
-              <Input
-                placeholder="Search Ticket, Client..."
-                className="pl-9 bg-white border-blue-200 shadow-sm w-full h-9 text-sm"
-                value={searchItem}
-                onChange={(e) => setSearchItem(e.target.value)}
-              />
-            </div>
-
+    <div className="space-y-3">
+      <ListToolbar
+        list={list}
+        searchPlaceholder="Search Ticket, Client..."
+        extraFilters={
+          <div className="flex items-center gap-1">
             <Button
               variant="outline"
               size="sm"
               onClick={() => setIsDateModalOpen(true)}
-              className={`border-blue-200 text-blue-700 hover:bg-blue-50 whitespace-nowrap h-9 bg-white shadow-sm ${(dateRange.start || dateRange.end) ? "bg-indigo-50 border-indigo-300 ring-1 ring-indigo-200" : ""}`}
+              className={`whitespace-nowrap ${hasDateRange ? "border-primary bg-brand-50" : ""}`}
             >
-              <Calendar className="mr-2 h-4 w-4 text-blue-500" />
-              {(dateRange.start || dateRange.end) ? (
-                <span className="text-xs font-semibold text-blue-700">
+              <Calendar className="h-4 w-4" aria-hidden="true" />
+              {hasDateRange ? (
+                <span className="text-xs font-semibold">
                   {dateRange.start && dateRange.end
                     ? `${formatDate(dateRange.start)} - ${formatDate(dateRange.end)}`
                     : (dateRange.start ? `From ${formatDate(dateRange.start)}` : `To ${formatDate(dateRange.end)}`)}
                 </span>
               ) : "Date Range"}
             </Button>
-
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="bg-white border-blue-200 shadow-sm w-full sm:w-[150px] h-9 text-sm text-blue-800">
-                <SelectValue placeholder="All Categories" />
-              </SelectTrigger>
-              <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
-                <SelectItem value="all">All Categories</SelectItem>
-                {availableCategories.map((option) => (
-                  <SelectItem key={option} value={option}>
-                    {option}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {(searchItem || categoryFilter !== "all" || dateRange.start || dateRange.end) && (
+            {hasDateRange && (
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => {
-                  setSearchItem("");
-                  setCategoryFilter("all");
-                  setDateRange({ start: "", end: "" });
-                }}
-                className="text-red-500 hover:text-red-700 hover:bg-red-50 px-2 h-9 min-w-fit"
-                title="Clear All Filters"
+                onClick={() => setDateRange({ start: "", end: "" })}
+                className="px-2 text-xs"
+                title="Clear date range"
               >
-                <RotateCcw className="h-4 w-4 mr-1" />
-                Clear
+                <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                Clear dates
               </Button>
             )}
-
-            <Button
-              onClick={() => {
-                setIsEditMode(false);
-                setEditingTicket(null);
-                setNewEnquiryData({
-                  clientType: "New",
-                  sourceOfEnquiry: "",
-                  callType: "",
-                  enquiryReceiverName: "",
-                  companyName: "",
-                  clientName: "",
-                  phoneNumber: "",
-                  siteAddress: "",
-                  gstNo: "",
-                  machineName: "",
-                  enquiryType: "",
-                  category: "",
-                  mentionIssue: "",
-                  serviceLocation: "",
-                  challanCopy: "",
-                  machinePhoto: "",
-                  videoCall: "",
-                  subCategory: "",
-                  videoCallTime: "",
-                  engineerAssign: "",
-                  serialNumOfMachines: "",
-                  enquiryItemList: "",
-                  remarks: "",
-                });
-                setNewFormSelectedMachines([]);
-                setNewFormSelectedCategories([]);
-                setWarehouseFiles({ challanCopy: null, machinePhoto: null });
-                setEnquiryItemListFile(null);
-                setShowNewEnquiryForm(true);
-              }}
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-medium shadow-sm transition-all duration-300 rounded-lg px-4 py-2 flex items-center gap-1.5 group shrink-0 h-9"
-            >
-              <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
-              New Enquiry
-            </Button>
           </div>
-        </CardHeader>
-        <CardContent>
-          <div className="relative overflow-x-auto">
-            <div className="max-h-[calc(104vh-200px)] overflow-y-auto">
-              <table className="hidden sm:block w-full">
-                <thead className="sticky top-0 z-10">
-                  <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                    <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[100px] sticky top-0">Actions</th>
-                    <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Current Stage</th>
-                    <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Date</th>
-                    <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Ticket-ID</th>
-                    <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[180px] sticky top-0">Source of enquiry</th>
-                    <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Call type</th>
-                    <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[180px] sticky top-0">Enquiry Receiver Name</th>
-                    <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Client Type</th>
-                    <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[180px] sticky top-0">Company Name</th>
-                    <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Client Name</th>
-                    <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Phone Number</th>
-                    <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">Site Address</th>
-                    <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">GST No.</th>
-                    <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[180px] sticky top-0">Machine Name</th>
-                    <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Enquiry Type</th>
-                    <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Category</th>
-                    <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[250px] sticky top-0">Mention Issue</th>
-                    <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Service Location</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-blue-100">
-                  {filteredPendingData.length === 0 ? (
-                    <tr>
-                      <td colSpan={18} className="text-center py-8 bg-white">
-                        {fetchLoading ? (
-                          <div className="flex justify-center items-center text-blue-700">
-                            <LoaderIcon className="animate-spin w-8 h-8" />
-                          </div>
-                        ) : (
-                          <h1 className="text-blue-700">No enquiries found.</h1>
-                        )}
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredPendingData.map((ticket, ind) => (
-                      <tr key={ind} className={ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"}>
-                        <td className="px-4 py-3 text-blue-900">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleEditClick(ticket)}
-                            className="border-blue-200 text-blue-700 hover:bg-blue-50 h-8 px-3 shadow-sm font-semibold rounded"
-                          >
-                            Edit
-                          </Button>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-indigo-100 text-indigo-800">
-                            {ticket.currentStage || "—"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-blue-900">{formatDate(ticket.timeStemp)}</td>
-                        <td className="px-4 py-3 text-blue-900 font-semibold">{ticket.ticketId}</td>
-                        <td className="px-4 py-3 text-blue-900">{ticket.sourceOfEnquiry}</td>
-                        <td className="px-4 py-3 text-blue-900">{ticket.callType}</td>
-                        <td className="px-4 py-3 text-blue-900">{ticket.enquiryReceiverName}</td>
-                        <td className="px-4 py-3 text-blue-900">{ticket.clientType}</td>
-                        <td className="px-4 py-3 text-blue-900">{ticket.companyName}</td>
-                        <td className="px-4 py-3 text-blue-900">{ticket.clientName}</td>
-                        <td className="px-4 py-3 text-blue-900">{ticket.phoneNumber}</td>
-                        <td className="px-4 py-3 text-blue-900 truncate max-w-xs hover:whitespace-normal">{ticket.siteAddress}</td>
-                        <td className="px-4 py-3 text-blue-900">{ticket.gstNo}</td>
-                        <td className="px-4 py-3 text-blue-900 truncate max-w-xs hover:whitespace-normal">{ticket.machineName}</td>
-                        <td className="px-4 py-3 text-blue-900">{ticket.enquiryType}</td>
-                        <td className="px-4 py-3 text-blue-900">{ticket.category}</td>
-                        <td className="px-4 py-3 text-blue-900 max-w-xs truncate hover:whitespace-normal">{ticket.mentionIssue}</td>
-                        <td className="px-4 py-3 text-blue-900">{ticket.serviceLocation}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-
-              <div className="sm:hidden space-y-4">
-                {filteredPendingData.length === 0 ? (
-                  <div className="text-center py-8 bg-white">
-                    {fetchLoading ? (
-                      <div className="flex justify-center items-center text-blue-700">
-                        <LoaderIcon className="animate-spin w-8 h-8" />
-                      </div>
-                    ) : (
-                      <h1 className="text-blue-700">No enquiries found.</h1>
-                    )}
-                  </div>
-                ) : (
-                  filteredPendingData.map((ticket, ind) => (
-                    <Card key={ind} className={`border-l-4 border-l-blue-500 ${ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"}`}>
-                      <CardContent className="p-4 space-y-3">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-semibold bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
-                                {ticket.ticketId}
-                              </span>
-                              <span className="text-xs text-gray-500">
-                                {formatDate(ticket.timeStemp)}
-                              </span>
-                            </div>
-                            <h3 className="font-bold text-blue-800 text-lg mt-1">{ticket.companyName || "No Company"}</h3>
-                            <p className="text-sm text-gray-600">{ticket.clientName}</p>
-                            <span className="inline-block mt-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-indigo-100 text-indigo-800">
-                              {ticket.currentStage || "—"}
-                            </span>
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleEditClick(ticket)}
-                            className="border-blue-200 text-blue-700 hover:bg-blue-50 h-8 px-3 shadow-sm font-semibold rounded shrink-0"
-                          >
-                            Edit
-                          </Button>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3 text-sm">
-                          <div>
-                            <p className="text-gray-500 font-medium">Source of Enquiry</p>
-                            <p className="text-blue-900">{ticket.sourceOfEnquiry}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-500 font-medium">Call Type</p>
-                            <p className="text-blue-900">{ticket.callType}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-500 font-medium">Enquiry Receiver Name</p>
-                            <p className="text-blue-900">{ticket.enquiryReceiverName}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-500 font-medium">Client Type</p>
-                            <p className="text-blue-900">{ticket.clientType}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-500 font-medium">Phone Number</p>
-                            <p className="text-blue-900">{ticket.phoneNumber}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-500 font-medium">Enquiry Type</p>
-                            <p className="text-blue-900">{ticket.enquiryType}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-500 font-medium">Category</p>
-                            <p className="text-blue-900">{ticket.category}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-500 font-medium">Service Location</p>
-                            <p className="text-blue-900">{ticket.serviceLocation}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-500 font-medium">GST No.</p>
-                            <p className="text-blue-900">{ticket.gstNo}</p>
-                          </div>
-                        </div>
-
-                        <div className="text-sm space-y-1">
-                          <p className="text-gray-500 font-medium">Site Address</p>
-                          <p className="text-blue-900">{ticket.siteAddress}</p>
-                        </div>
-
-                        <div className="text-sm space-y-1">
-                          <p className="text-gray-500 font-medium">Machine Name</p>
-                          <p className="text-blue-900">{ticket.machineName}</p>
-                        </div>
-
-                        <div className="text-sm space-y-1">
-                          <p className="text-gray-500 font-medium">Mention Issue</p>
-                          <p className="text-blue-900">{ticket.mentionIssue}</p>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+        }
+        actions={
+          <Button size="sm" onClick={handleNewEnquiryClick} className="shrink-0">
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            New Enquiry
+          </Button>
+        }
+      />
+      <ListTable
+        list={list}
+        ctx={{ onEdit: handleEditClick }}
+        rowKey={(r) => r.ticketId}
+        cardTitle={(r) => r.companyName || "No Company"}
+        emptyTitle="No enquiries found."
+        ariaLabel="Tickets and enquiries"
+      />
 
       <Modal
         isOpen={showNewEnquiryForm}
         onClose={() => setShowNewEnquiryForm(false)}
         title={
           <div className="flex items-center space-x-2">
-            <ClipboardList className="w-5 h-5 text-blue-600" />
+            <ClipboardList className="w-5 h-5 text-brand-600" />
             <span>{isEditMode ? `Edit Enquiry: ${editingTicket?.ticketId}` : "New Enquiry"}</span>
           </div>
         }
@@ -1157,7 +892,7 @@ export default function TicketAndEnquiry() {
             </CardHeader>
             <CardContent className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1">
-                <Label className="text-sm">Client Type *</Label>
+                <Label htmlFor="tk-clientType" className="text-sm">Client Type *</Label>
                 <Select
                   onValueChange={(value) => {
                     setNewEnquiryData(prev => ({
@@ -1170,7 +905,7 @@ export default function TicketAndEnquiry() {
                   }}
                   value={newEnquiryData.clientType}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="tk-clientType">
                     <SelectValue placeholder="Select Client Type" />
                   </SelectTrigger>
                   <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
@@ -1181,10 +916,10 @@ export default function TicketAndEnquiry() {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-sm">Company Name *</Label>
+                <Label htmlFor="tk-company" className="text-sm">Company Name *</Label>
                 {newEnquiryData.clientType === "Existing" ? (
                   <div className="relative">
-                    <Input
+                    <Input id="tk-company"
                       value={newEnquiryData.companyName || ""}
                       onChange={(e) => handleNewEnquiryCompanyChange(e.target.value)}
                       placeholder="Type to search or select company name"
@@ -1198,7 +933,7 @@ export default function TicketAndEnquiry() {
                     </datalist>
                   </div>
                 ) : (
-                  <Input
+                  <Input id="tk-company"
                     value={newEnquiryData.companyName || ""}
                     onChange={(e) => setNewEnquiryData(prev => ({ ...prev, companyName: e.target.value }))}
                     placeholder="Enter company name"
@@ -1208,8 +943,8 @@ export default function TicketAndEnquiry() {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-sm">Client Name *</Label>
-                <Input
+                <Label htmlFor="tk-clientName" className="text-sm">Client Name *</Label>
+                <Input id="tk-clientName"
                   value={newEnquiryData.clientName || ""}
                   onChange={(e) => setNewEnquiryData(prev => ({ ...prev, clientName: e.target.value }))}
                   placeholder="Enter client name"
@@ -1217,8 +952,8 @@ export default function TicketAndEnquiry() {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-sm">Phone Number *</Label>
-                <Input
+                <Label htmlFor="tk-phone" className="text-sm">Phone Number *</Label>
+                <Input id="tk-phone"
                   value={newEnquiryData.phoneNumber || ""}
                   onChange={(e) => setNewEnquiryData(prev => ({ ...prev, phoneNumber: e.target.value }))}
                   placeholder="Enter phone number"
@@ -1237,12 +972,12 @@ export default function TicketAndEnquiry() {
               {/* Row 1: Call Type, Source of Enquiry, Enquiry Receiver Name */}
               <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1">
-                  <Label className="text-sm">Call Type *</Label>
+                  <Label htmlFor="tk-callType" className="text-sm">Call Type *</Label>
                   <Select
                     onValueChange={(value) => setNewEnquiryData(prev => ({ ...prev, callType: value }))}
                     value={newEnquiryData.callType}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="tk-callType">
                       <SelectValue placeholder="Select Call Type" />
                     </SelectTrigger>
                     <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
@@ -1258,12 +993,12 @@ export default function TicketAndEnquiry() {
                 </div>
 
                 <div className="space-y-1">
-                  <Label className="text-sm">Source of Enquiry *</Label>
+                  <Label htmlFor="tk-source" className="text-sm">Source of Enquiry *</Label>
                   <Select
                     onValueChange={(value) => setNewEnquiryData(prev => ({ ...prev, sourceOfEnquiry: value }))}
                     value={newEnquiryData.sourceOfEnquiry || undefined}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="tk-source">
                       <SelectValue placeholder="Select source" />
                     </SelectTrigger>
                     <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
@@ -1279,12 +1014,12 @@ export default function TicketAndEnquiry() {
                 </div>
 
                 <div className="space-y-1">
-                  <Label className="text-sm">Enquiry Receiver Name *</Label>
+                  <Label htmlFor="tk-receiver" className="text-sm">Enquiry Receiver Name *</Label>
                   <Select
                     onValueChange={(value) => setNewEnquiryData(prev => ({ ...prev, enquiryReceiverName: value }))}
                     value={newEnquiryData.enquiryReceiverName || undefined}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="tk-receiver">
                       <SelectValue placeholder="Select receiver name" />
                     </SelectTrigger>
                     <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
@@ -1303,12 +1038,12 @@ export default function TicketAndEnquiry() {
               {/* Row 2: Enquiry Type (new), Category (renamed from Enquiry-Type), Sub-Category (renamed from Category) */}
               <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1">
-                  <Label className="text-sm">Enquiry Type *</Label>
+                  <Label htmlFor="tk-enquiryType" className="text-sm">Enquiry Type *</Label>
                   <Select
                     onValueChange={(value) => setNewEnquiryData(prev => ({ ...prev, enquiryType: value }))}
                     value={newEnquiryData.enquiryType}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="tk-enquiryType">
                       <SelectValue placeholder="Select Enquiry Type" />
                     </SelectTrigger>
                     <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
@@ -1324,12 +1059,12 @@ export default function TicketAndEnquiry() {
                 </div>
 
                 <div className="space-y-1">
-                  <Label className="text-sm">Category *</Label>
+                  <Label htmlFor="tk-category" className="text-sm">Category *</Label>
                   <Select
                     onValueChange={(value) => setNewEnquiryData(prev => ({ ...prev, category: value }))}
                     value={newEnquiryData.category}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="tk-category">
                       <SelectValue placeholder="Select Category" />
                     </SelectTrigger>
                     <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
@@ -1345,15 +1080,15 @@ export default function TicketAndEnquiry() {
                 </div>
 
                 <div className="space-y-1 relative dropdown-container">
-                  <Label className="text-sm">Sub-Category *</Label>
+                  <Label htmlFor="tk-subCategory" className="text-sm">Sub-Category *</Label>
                   <div className="relative">
-                    <button
+                    <button id="tk-subCategory"
                       type="button"
                       onClick={() => {
                         setShowCategoryDropdown(!showCategoryDropdown);
                         setShowMachineDropdown(false);
                       }}
-                      className="flex h-10 w-full items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="flex h-10 w-full items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <span className="text-gray-500">Select sub-category(ies)</span>
                       <svg
@@ -1421,7 +1156,7 @@ export default function TicketAndEnquiry() {
                       {newFormSelectedCategories.map((cat) => (
                         <div
                           key={cat}
-                          className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded flex items-center"
+                          className="bg-brand-100 text-brand-800 text-xs px-2 py-1 rounded flex items-center"
                         >
                           {cat}
                           <button
@@ -1429,7 +1164,7 @@ export default function TicketAndEnquiry() {
                             onClick={() => {
                               setNewFormSelectedCategories(prev => prev.filter(c => c !== cat));
                             }}
-                            className="ml-1 text-blue-600 hover:text-blue-800 font-bold"
+                            className="ml-1 text-brand-600 hover:text-brand-800 font-bold"
                           >
                             ×
                           </button>
@@ -1442,12 +1177,12 @@ export default function TicketAndEnquiry() {
 
               <div className={`md:col-span-2 grid grid-cols-1 ${newEnquiryData.videoCall === "Yes" ? "md:grid-cols-3" : "md:grid-cols-2"} gap-4`}>
                 <div className="space-y-1">
-                  <Label className="text-sm">Video-Call *</Label>
+                  <Label htmlFor="tk-videoCall" className="text-sm">Video-Call *</Label>
                   <Select
                     value={newEnquiryData.videoCall || ""}
                     onValueChange={(value) => setNewEnquiryData(prev => ({ ...prev, videoCall: value }))}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="tk-videoCall">
                       <SelectValue placeholder="Select" />
                     </SelectTrigger>
                     <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
@@ -1467,12 +1202,12 @@ export default function TicketAndEnquiry() {
                       />
                     </div>
                     <div className="space-y-1 animate-in fade-in duration-300">
-                      <Label className="text-sm">Engineer-Assigned *</Label>
+                      <Label htmlFor="tk-engineer" className="text-sm">Engineer-Assigned *</Label>
                       <Select
                         onValueChange={(value) => setNewEnquiryData(prev => ({ ...prev, engineerAssign: value }))}
                         value={newEnquiryData.engineerAssign || ""}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger id="tk-engineer">
                           <SelectValue placeholder="Select Engineer" />
                         </SelectTrigger>
                         <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
@@ -1491,8 +1226,8 @@ export default function TicketAndEnquiry() {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-sm">GST No.</Label>
-                <Input
+                <Label htmlFor="tk-gstNo" className="text-sm">GST No.</Label>
+                <Input id="tk-gstNo"
                   value={newEnquiryData.gstNo || ""}
                   onChange={(e) => setNewEnquiryData(prev => ({ ...prev, gstNo: e.target.value }))}
                   placeholder="Enter GST No."
@@ -1502,8 +1237,8 @@ export default function TicketAndEnquiry() {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-sm">GST Address *</Label>
-                <Input
+                <Label htmlFor="tk-gstAddress" className="text-sm">GST Address *</Label>
+                <Input id="tk-gstAddress"
                   value={newEnquiryData.gstAddress || ""}
                   onChange={(e) => setNewEnquiryData(prev => ({ ...prev, gstAddress: e.target.value }))}
                   placeholder="Enter GST Address"
@@ -1513,8 +1248,8 @@ export default function TicketAndEnquiry() {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-sm">Site Address *</Label>
-                <Input
+                <Label htmlFor="tk-site" className="text-sm">Site Address *</Label>
+                <Input id="tk-site"
                   value={newEnquiryData.siteAddress || ""}
                   onChange={(e) => setNewEnquiryData(prev => ({ ...prev, siteAddress: e.target.value }))}
                   placeholder="Enter Site Address"
@@ -1523,12 +1258,12 @@ export default function TicketAndEnquiry() {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-sm">Service Location *</Label>
+                <Label htmlFor="tk-location" className="text-sm">Service Location *</Label>
                 <Select
                   onValueChange={(value) => setNewEnquiryData(prev => ({ ...prev, serviceLocation: value }))}
                   value={newEnquiryData.serviceLocation}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="tk-location">
                     <SelectValue placeholder="Select Service Location" />
                   </SelectTrigger>
                   <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
@@ -1546,16 +1281,16 @@ export default function TicketAndEnquiry() {
 
 
               {newEnquiryData.serviceLocation?.trim() === "Warehouse" && (
-                <div className="md:col-span-2 border border-blue-100 rounded-lg p-4 bg-blue-50/20 space-y-4">
-                  <h4 className="text-sm font-semibold text-blue-800 border-b border-blue-100 pb-2">
+                <div className="md:col-span-2 border border-brand-100 rounded-lg p-4 bg-brand-50/20 space-y-4">
+                  <h4 className="text-sm font-semibold text-brand-800 border-b border-brand-100 pb-2">
                     Warehouse Service Details
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Challan Copy File Input */}
                     <div className="space-y-1">
-                      <Label className="text-sm">Challan Copy</Label>
+                      <Label htmlFor="tk-challan" className="text-sm">Challan Copy</Label>
                       {warehouseFiles.challanCopy ? (
-                        <div className="flex items-center justify-between border border-blue-200 rounded-md p-2 bg-blue-50 text-blue-800 text-sm">
+                        <div className="flex items-center justify-between border border-brand-200 rounded-md p-2 bg-brand-50 text-brand-800 text-sm">
                           <span className="truncate max-w-[200px]" title={warehouseFiles.challanCopy.name}>
                             {warehouseFiles.challanCopy.name}
                           </span>
@@ -1583,7 +1318,7 @@ export default function TicketAndEnquiry() {
                           </Button>
                         </div>
                       ) : (
-                        <Input
+                        <Input id="tk-challan"
                           type="file"
                           onChange={(e) => {
                             if (e.target.files?.[0]) {
@@ -1596,9 +1331,9 @@ export default function TicketAndEnquiry() {
 
                     {/* Machine Photo File Input */}
                     <div className="space-y-1">
-                      <Label className="text-sm">Machine Photo</Label>
+                      <Label htmlFor="tk-photo" className="text-sm">Machine Photo</Label>
                       {warehouseFiles.machinePhoto ? (
-                        <div className="flex items-center justify-between border border-blue-200 rounded-md p-2 bg-blue-50 text-blue-800 text-sm">
+                        <div className="flex items-center justify-between border border-brand-200 rounded-md p-2 bg-brand-50 text-brand-800 text-sm">
                           <span className="truncate max-w-[200px]" title={warehouseFiles.machinePhoto.name}>
                             {warehouseFiles.machinePhoto.name}
                           </span>
@@ -1626,7 +1361,7 @@ export default function TicketAndEnquiry() {
                           </Button>
                         </div>
                       ) : (
-                        <Input
+                        <Input id="tk-photo"
                           type="file"
                           onChange={(e) => {
                             if (e.target.files?.[0]) {
@@ -1642,15 +1377,15 @@ export default function TicketAndEnquiry() {
 
 
               <div className="space-y-1 md:col-span-2 relative">
-                <Label className="text-sm">Machine Name *</Label>
+                <Label htmlFor="tk-machine" className="text-sm">Machine Name *</Label>
                 <div className="relative dropdown-container">
-                  <button
+                  <button id="tk-machine"
                     type="button"
                     onClick={() => {
                       setShowMachineDropdown(!showMachineDropdown);
                       setShowCategoryDropdown(false);
                     }}
-                    className="flex h-10 w-full items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="flex h-10 w-full items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <span className="text-gray-500">Select machine(s)</span>
                     <svg
@@ -1718,7 +1453,7 @@ export default function TicketAndEnquiry() {
                     {newFormSelectedMachines.map((machine) => (
                       <div
                         key={machine}
-                        className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded flex items-center"
+                        className="bg-brand-100 text-brand-800 text-xs px-2 py-1 rounded flex items-center"
                       >
                         {machine}
                         <button
@@ -1726,7 +1461,7 @@ export default function TicketAndEnquiry() {
                           onClick={() => {
                             setNewFormSelectedMachines(prev => prev.filter(m => m !== machine));
                           }}
-                          className="ml-1 text-blue-600 hover:text-blue-800 font-bold"
+                          className="ml-1 text-brand-600 hover:text-brand-800 font-bold"
                         >
                           ×
                         </button>
@@ -1737,8 +1472,8 @@ export default function TicketAndEnquiry() {
               </div>
 
               <div className="space-y-1 md:col-span-2">
-                <Label className="text-sm">Mention Issue *</Label>
-                <Textarea
+                <Label htmlFor="tk-issue" className="text-sm">Mention Issue *</Label>
+                <Textarea id="tk-issue"
                   value={newEnquiryData.mentionIssue || ""}
                   onChange={(e) => setNewEnquiryData(prev => ({ ...prev, mentionIssue: e.target.value }))}
                   placeholder="Describe the issue"
@@ -1747,9 +1482,9 @@ export default function TicketAndEnquiry() {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-sm">Enquiry-Item-List</Label>
+                <Label htmlFor="tk-itemList" className="text-sm">Enquiry-Item-List</Label>
                 {enquiryItemListFile ? (
-                  <div className="flex items-center justify-between border border-blue-200 rounded-md p-2 bg-blue-50 text-blue-800 text-sm">
+                  <div className="flex items-center justify-between border border-brand-200 rounded-md p-2 bg-brand-50 text-brand-800 text-sm">
                     <span className="truncate max-w-[200px]" title={enquiryItemListFile.name}>
                       {enquiryItemListFile.name}
                     </span>
@@ -1777,7 +1512,7 @@ export default function TicketAndEnquiry() {
                     </Button>
                   </div>
                 ) : (
-                  <Input
+                  <Input id="tk-itemList"
                     type="file"
                     onChange={(e) => {
                       if (e.target.files?.[0]) {
@@ -1789,8 +1524,8 @@ export default function TicketAndEnquiry() {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-sm">Remarks</Label>
-                <Input
+                <Label htmlFor="tk-remarks" className="text-sm">Remarks</Label>
+                <Input id="tk-remarks"
                   value={newEnquiryData.remarks || ""}
                   onChange={(e) => setNewEnquiryData(prev => ({ ...prev, remarks: e.target.value }))}
                   placeholder="Enter remarks"
@@ -1801,14 +1536,14 @@ export default function TicketAndEnquiry() {
           <div className="flex justify-end space-x-4 pt-6">
             <Button
               type="button"
+              variant="outline"
               onClick={() => setShowNewEnquiryForm(false)}
-              className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white shadow-md transition-all duration-300"
+              disabled={isSubmitting}
             >
               Cancel
             </Button>
             <Button
               type="submit"
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-md transition-all duration-300"
               disabled={isSubmitting}
             >
               {isSubmitting && (
@@ -1821,30 +1556,30 @@ export default function TicketAndEnquiry() {
       </Modal>
 
       <Dialog open={isDateModalOpen} onOpenChange={setIsDateModalOpen}>
-        <DialogContent className="sm:max-w-[425px] bg-white border-blue-100">
+        <DialogContent className="sm:max-w-[425px] bg-white border-brand-100">
           <DialogHeader>
-            <DialogTitle className="text-blue-800 flex items-center">
-              <Calendar className="mr-2 h-5 w-5 text-blue-600" />
+            <DialogTitle className="text-brand-800 flex items-center">
+              <Calendar className="mr-2 h-5 w-5 text-brand-600" />
               Filter by Date Range
             </DialogTitle>
           </DialogHeader>
           <div className="grid gap-6 py-4">
             <div className="space-y-2">
-              <Label htmlFor="start" className="text-blue-700 font-medium">Start Date</Label>
+              <Label htmlFor="start" className="text-brand-700 font-medium">Start Date</Label>
               <Input
                 id="start"
                 type="date"
-                className="border-blue-200 focus:ring-blue-500"
+                className="border-brand-200 focus:ring-brand-500"
                 value={dateRange.start}
                 onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="end" className="text-blue-700 font-medium">End Date</Label>
+              <Label htmlFor="end" className="text-brand-700 font-medium">End Date</Label>
               <Input
                 id="end"
                 type="date"
-                className="border-blue-200 focus:ring-blue-500"
+                className="border-brand-200 focus:ring-brand-500"
                 value={dateRange.end}
                 onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
               />
@@ -1854,13 +1589,13 @@ export default function TicketAndEnquiry() {
             <Button
               variant="outline"
               onClick={() => setDateRange({ start: "", end: "" })}
-              className="border-blue-200 text-blue-600 hover:bg-blue-50"
+              className="border-brand-200 text-brand-600 hover:bg-brand-50"
             >
               Reset Range
             </Button>
             <Button
               onClick={() => setIsDateModalOpen(false)}
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md px-8"
+              className="px-8"
             >
               Apply Filter
             </Button>

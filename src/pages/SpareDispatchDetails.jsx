@@ -27,7 +27,7 @@ import { supabase } from "../lib/supabase/client";
 import { fetchDropdownRows } from "../lib/supabase/dropdown";
 
 export default function SpareDispatchDetails() {
-  const [activeTab, setActiveTab] = useState("pending");
+  const [activeTab, setActiveTab] = useState("pending-spare");
   const [showModal, setShowModal] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [formData, setFormData] = useState({});
@@ -103,6 +103,10 @@ export default function SpareDispatchDetails() {
           mentionIssue: t.mention_issue || "",
           CREName: t.cre_name || "",
           invoiceNoSpare: inv?.invoice_no_spare || inv?.invoice_no_service || inv?.invoice_no_nabl || "",
+          // Which condition put this ticket in Spare Dispatch: Pending (Spare) =
+          // enquiry_type 'SPARE', Pending (Warehouse) = service_location 'Warehouse'.
+          isSpare: t.enquiry_type === "SPARE",
+          isWarehouse: String(t.service_location || "").trim().toLowerCase() === "warehouse",
           attachmentSpare: inv?.attachment_spare || inv?.attachment_service || inv?.attachment_nabl || "",
         };
 
@@ -300,50 +304,15 @@ export default function SpareDispatchDetails() {
   const parsedData = roleStorage ? JSON.parse(roleStorage) : null;
   const role = parsedData?.state?.user?.role;
 
-  const filteredPendingData = filteredPendingDataa;
+  // A ticket meeting both conditions shows in both tabs; one with neither
+  // (enquiry type edited after the invoice) stays reachable under Spare.
+  const filteredSparePending = filteredPendingDataa.filter((t) => t.isSpare || !t.isWarehouse);
+  const filteredWarehousePending = filteredPendingDataa.filter((t) => t.isWarehouse);
 
   const filteredHistoryData = filteredHistoryDataa;
 
-  return (
-    <div className="space-y-2">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <Card className="border-0 shadow-lg bg-gradient-to-br from-blue-50 to-indigo-50">
-          <CardHeader className="bg-gradient-to-r from-blue-50/50 to-indigo-50/50 rounded-t-lg border-b border-blue-100 px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
-            <div className="flex flex-wrap items-center gap-4">
-              <TabsList className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200">
-                <TabsTrigger
-                  value="pending"
-                  data-testid="tab-pending"
-                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-                >
-                  Pending ({filteredPendingData.length})
-                </TabsTrigger>
-                <TabsTrigger
-                  value="history"
-                  data-testid="tab-history"
-                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-                >
-                  History ({filteredHistoryData.length})
-                </TabsTrigger>
-              </TabsList>
-            </div>
-
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 flex-1 md:justify-end w-full md:w-auto">
-              <div className="relative flex-1 max-w-md w-full">
-                <Input
-                  id="searchFilter"
-                  placeholder="Search by ticket ID, client, company or phone..."
-                  className="pl-10 py-2 w-full rounded-md border-blue-200 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white"
-                  data-testid="input-search-filter"
-                  onChange={(e) => setSearchItem(e.target.value)}
-                />
-              </div>
-            </div>
-          </CardHeader>
-
-          <CardContent>
-            <div className="mt-2">
-              <TabsContent value="pending" className="mt-0">
+  const renderPendingRows = (filteredPendingData) => (
+  <>
                 <div className="relative overflow-x-auto">
                   <div className="max-h-[calc(103vh-200px)] overflow-y-auto">
                     <table className="hidden sm:block w-full">
@@ -475,6 +444,61 @@ export default function SpareDispatchDetails() {
                     </div>
                   </div>
                 </div>
+  </>
+  );
+
+  return (
+    <div className="space-y-2">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <Card className="border-0 shadow-lg bg-gradient-to-br from-blue-50 to-indigo-50">
+          <CardHeader className="bg-gradient-to-r from-blue-50/50 to-indigo-50/50 rounded-t-lg border-b border-blue-100 px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div className="flex flex-wrap items-center gap-4">
+              <TabsList className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200">
+                <TabsTrigger
+                  value="pending-spare"
+                  data-testid="tab-pending-spare"
+                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+                >
+                  Pending (Spare) ({filteredSparePending.length})
+                </TabsTrigger>
+                <TabsTrigger
+                  value="pending-warehouse"
+                  data-testid="tab-pending-warehouse"
+                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+                >
+                  Pending (Warehouse) ({filteredWarehousePending.length})
+                </TabsTrigger>
+                <TabsTrigger
+                  value="history"
+                  data-testid="tab-history"
+                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+                >
+                  History ({filteredHistoryData.length})
+                </TabsTrigger>
+              </TabsList>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 flex-1 md:justify-end w-full md:w-auto">
+              <div className="relative flex-1 max-w-md w-full">
+                <Input
+                  id="searchFilter"
+                  placeholder="Search by ticket ID, client, company or phone..."
+                  className="pl-10 py-2 w-full rounded-md border-blue-200 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white"
+                  data-testid="input-search-filter"
+                  onChange={(e) => setSearchItem(e.target.value)}
+                />
+              </div>
+            </div>
+          </CardHeader>
+
+          <CardContent>
+            <div className="mt-2">
+              <TabsContent value="pending-spare" className="mt-0">
+                {renderPendingRows(filteredSparePending)}
+              </TabsContent>
+
+              <TabsContent value="pending-warehouse" className="mt-0">
+                {renderPendingRows(filteredWarehousePending)}
               </TabsContent>
 
               <TabsContent value="history" className="mt-0">

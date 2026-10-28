@@ -20,6 +20,14 @@ import {
   TabsList,
   TabsTrigger,
 } from "../../components/ui/tabs";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../../components/ui/table";
 import { Modal } from "../../components/ui/modal";
 import { useToast } from "../../hooks/use-toast";
 import { Loader2Icon, LoaderIcon, Plus, Pencil, Trash2 } from "lucide-react";
@@ -104,7 +112,6 @@ export default function TatConfig() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   // ── Office Hours tab state ──────────────────────────────────────────
-  const [officeHours, setOfficeHours] = useState(null);
   const [officeHoursLoading, setOfficeHoursLoading] = useState(false);
   const [officeHoursForm, setOfficeHoursForm] = useState({ startTime: "10:00", endTime: "18:00", weeklyOffDays: [0] });
   const [isSavingOfficeHours, setIsSavingOfficeHours] = useState(false);
@@ -141,7 +148,6 @@ export default function TatConfig() {
       const { data, error } = await supabase.from("sss_office_hours").select("*").eq("id", 1).maybeSingle();
       if (error) throw error;
       if (data) {
-        setOfficeHours(data);
         setOfficeHoursForm({
           startTime: toTimeInputValue(data.start_time),
           endTime: toTimeInputValue(data.end_time),
@@ -209,13 +215,13 @@ export default function TatConfig() {
     e.preventDefault();
 
     if (!formData.stageName.trim()) {
-      alert("Stage name is required");
+      toast({ title: "Missing information", description: "Stage name is required", variant: "destructive" });
       return;
     }
 
     const durationMinutes = durationToMinutes(formData);
     if (durationMinutes <= 0) {
-      alert("TAT duration must be greater than 0");
+      toast({ title: "Invalid duration", description: "TAT duration must be greater than 0", variant: "destructive" });
       return;
     }
 
@@ -289,11 +295,11 @@ export default function TatConfig() {
     e.preventDefault();
 
     if (!officeHoursForm.startTime || !officeHoursForm.endTime) {
-      alert("Please set both start and end time");
+      toast({ title: "Missing information", description: "Please set both start and end time", variant: "destructive" });
       return;
     }
     if (officeHoursForm.endTime <= officeHoursForm.startTime) {
-      alert("End time must be after start time");
+      toast({ title: "Invalid time range", description: "End time must be after start time", variant: "destructive" });
       return;
     }
 
@@ -333,11 +339,11 @@ export default function TatConfig() {
     e.preventDefault();
 
     if (!holidayForm.holidayName.trim()) {
-      alert("Holiday name is required");
+      toast({ title: "Missing information", description: "Holiday name is required", variant: "destructive" });
       return;
     }
     if (!holidayForm.holidayDate) {
-      alert("Holiday date is required");
+      toast({ title: "Missing information", description: "Holiday date is required", variant: "destructive" });
       return;
     }
 
@@ -396,23 +402,19 @@ export default function TatConfig() {
     return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
   };
 
+  const iconBtn = "h-8 w-8 p-0";
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-4">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <Card className="border-0 shadow-lg bg-gradient-to-br from-blue-50 to-indigo-50">
-          <CardHeader className="bg-gradient-to-r from-blue-50/50 to-indigo-50/50 rounded-t-lg border-b border-blue-100 px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
-            <div className="flex items-center gap-4">
-              <h2 className="text-blue-900 text-xl font-bold">TAT Config</h2>
-              <TabsList className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200">
-                <TabsTrigger value="stages" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
-                  Stages ({stages.length})
-                </TabsTrigger>
-                <TabsTrigger value="officeHours" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
-                  Office Hours
-                </TabsTrigger>
-                <TabsTrigger value="holidays" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
-                  Holidays ({holidays.length})
-                </TabsTrigger>
+        <Card>
+          <CardHeader className="flex flex-col gap-3 space-y-0 border-b p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+              <h2 className="text-lg font-semibold tracking-tight text-foreground">TAT Config</h2>
+              <TabsList className="h-auto flex-wrap justify-start">
+                <TabsTrigger value="stages">Stages ({stages.length})</TabsTrigger>
+                <TabsTrigger value="officeHours">Office Hours</TabsTrigger>
+                <TabsTrigger value="holidays">Holidays ({holidays.length})</TabsTrigger>
               </TabsList>
             </div>
 
@@ -421,100 +423,95 @@ export default function TatConfig() {
                 onClick={openCreateModal}
                 disabled={availableStageNames.length === 0}
                 title={availableStageNames.length === 0 ? "All stages already configured" : undefined}
-                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-medium shadow-sm transition-all duration-300 rounded-lg px-4 py-2 flex items-center gap-1.5 group shrink-0 h-9 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="h-9 shrink-0 gap-1.5"
               >
-                <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
+                <Plus className="h-4 w-4" aria-hidden="true" />
                 New Stage
               </Button>
             )}
             {activeTab === "holidays" && (
-              <Button
-                onClick={openCreateHolidayModal}
-                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-medium shadow-sm transition-all duration-300 rounded-lg px-4 py-2 flex items-center gap-1.5 group shrink-0 h-9"
-              >
-                <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
+              <Button onClick={openCreateHolidayModal} className="h-9 shrink-0 gap-1.5">
+                <Plus className="h-4 w-4" aria-hidden="true" />
                 Add Holiday
               </Button>
             )}
           </CardHeader>
 
-          <CardContent>
+          <CardContent className="p-0">
             {/* ── Stages tab ──────────────────────────────────────────── */}
             <TabsContent value="stages" className="mt-0">
-              <div className="relative overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                      <th className="text-white px-4 py-3 text-left w-[100px]">Actions</th>
-                      <th className="text-white px-4 py-3 text-left">Stage</th>
-                      <th className="text-white px-4 py-3 text-left">TAT</th>
-                      <th className="text-white px-4 py-3 text-left">Responsible Person</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-blue-100">
-                    {fetchLoading ? (
-                      <tr>
-                        <td colSpan={4} className="text-center py-8">
-                          <div className="flex justify-center items-center text-blue-700">
-                            <LoaderIcon className="animate-spin w-8 h-8" />
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[100px]">Actions</TableHead>
+                    <TableHead>Stage</TableHead>
+                    <TableHead>TAT</TableHead>
+                    <TableHead>Responsible Person</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {fetchLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="py-10 text-center">
+                        <LoaderIcon className="mx-auto h-6 w-6 animate-spin text-primary" aria-label="Loading" />
+                      </TableCell>
+                    </TableRow>
+                  ) : stages.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="py-10 text-center text-muted-foreground">
+                        No stages configured.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    stages.map((stage) => (
+                      <TableRow key={stage.uuid}>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Button variant="ghost" size="sm" onClick={() => openEditModal(stage)} className={iconBtn} aria-label={`Edit ${stage.stage_name}`}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => setDeleteTarget(stage)} className={`${iconBtn} text-destructive hover:bg-destructive/10 hover:text-destructive`} aria-label={`Delete ${stage.stage_name}`}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </div>
-                        </td>
-                      </tr>
-                    ) : stages.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="text-center py-8 text-blue-700">
-                          No stages configured.
-                        </td>
-                      </tr>
-                    ) : (
-                      stages.map((stage, ind) => (
-                        <tr key={stage.uuid} className={ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"}>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              <Button variant="outline" size="sm" onClick={() => openEditModal(stage)} className="border-blue-200 text-blue-700 hover:bg-blue-50 h-8 px-2">
-                                <Pencil className="w-4 h-4" />
-                              </Button>
-                              <Button variant="outline" size="sm" onClick={() => setDeleteTarget(stage)} className="border-red-200 text-red-600 hover:bg-red-50 h-8 px-2">
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-blue-900 font-medium">{stage.stage_name}</td>
-                          <td className="px-4 py-3 text-blue-900">{formatDuration(stage.duration_minutes)}</td>
-                          <td className="px-4 py-3 text-blue-900">{stage.responsible_person || "-"}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap font-medium">{stage.stage_name}</TableCell>
+                        <TableCell className="whitespace-nowrap">{formatDuration(stage.duration_minutes)}</TableCell>
+                        <TableCell>{stage.responsible_person || "-"}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
             </TabsContent>
 
             {/* ── Office Hours tab ────────────────────────────────────── */}
             <TabsContent value="officeHours" className="mt-0">
               {officeHoursLoading ? (
-                <div className="flex justify-center items-center text-blue-700 py-8">
-                  <LoaderIcon className="animate-spin w-8 h-8" />
+                <div className="flex items-center justify-center py-10">
+                  <LoaderIcon className="h-6 w-6 animate-spin text-primary" aria-label="Loading" />
                 </div>
               ) : (
-                <form onSubmit={handleSaveOfficeHours} className="max-w-lg space-y-4 p-2">
-                  <p className="text-sm text-gray-600">
+                <form onSubmit={handleSaveOfficeHours} className="max-w-lg space-y-4 p-4">
+                  <p className="text-sm text-muted-foreground">
                     Every <code>&lt;next_stage&gt;_planned</code> timestamp across the app is confined to this
                     window — a stage submitted after closing time (or whose TAT runs past it) rolls over to the
                     next working day's opening time instead of landing outside office hours.
                   </p>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>Start Time *</Label>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="office-start">Start Time *</Label>
                       <Input
+                        id="office-start"
                         type="time"
                         value={officeHoursForm.startTime}
                         onChange={(e) => setOfficeHoursForm((prev) => ({ ...prev, startTime: e.target.value }))}
                       />
                     </div>
-                    <div>
-                      <Label>End Time *</Label>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="office-end">End Time *</Label>
                       <Input
+                        id="office-end"
                         type="time"
                         value={officeHoursForm.endTime}
                         onChange={(e) => setOfficeHoursForm((prev) => ({ ...prev, endTime: e.target.value }))}
@@ -522,20 +519,21 @@ export default function TatConfig() {
                     </div>
                   </div>
 
-                  <div>
-                    <Label>Weekly Off Days</Label>
-                    <div className="flex flex-wrap gap-2 mt-1">
+                  <div className="space-y-1.5">
+                    <Label id="weekly-off-label">Weekly Off Days</Label>
+                    <div role="group" aria-labelledby="weekly-off-label" className="flex flex-wrap gap-2">
                       {WEEKDAYS.map((day) => {
                         const isOff = officeHoursForm.weeklyOffDays.includes(day.value);
                         return (
                           <button
                             key={day.value}
                             type="button"
+                            aria-pressed={isOff}
                             onClick={() => toggleWeeklyOffDay(day.value)}
-                            className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                            className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
                               isOff
-                                ? "bg-red-100 text-red-800 border-red-200"
-                                : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                                ? "border-destructive/25 bg-destructive/10 text-destructive"
+                                : "border-input bg-card text-muted-foreground hover:bg-accent"
                             }`}
                           >
                             {day.label}
@@ -543,19 +541,15 @@ export default function TatConfig() {
                         );
                       })}
                     </div>
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-muted-foreground">
                       These recur every week automatically. For one-off dates (national/company holidays), use
                       the Holidays tab instead.
                     </p>
                   </div>
 
                   <div className="flex justify-end pt-2">
-                    <Button
-                      type="submit"
-                      disabled={isSavingOfficeHours}
-                      className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
-                    >
-                      {isSavingOfficeHours && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
+                    <Button type="submit" disabled={isSavingOfficeHours}>
+                      {isSavingOfficeHours && <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />}
                       Save Office Hours
                     </Button>
                   </div>
@@ -565,51 +559,47 @@ export default function TatConfig() {
 
             {/* ── Holidays tab ────────────────────────────────────────── */}
             <TabsContent value="holidays" className="mt-0">
-              <div className="relative overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                      <th className="text-white px-4 py-3 text-left w-[100px]">Actions</th>
-                      <th className="text-white px-4 py-3 text-left">Date</th>
-                      <th className="text-white px-4 py-3 text-left">Holiday Name</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-blue-100">
-                    {holidaysLoading ? (
-                      <tr>
-                        <td colSpan={3} className="text-center py-8">
-                          <div className="flex justify-center items-center text-blue-700">
-                            <LoaderIcon className="animate-spin w-8 h-8" />
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[100px]">Actions</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Holiday Name</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {holidaysLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={3} className="py-10 text-center">
+                        <LoaderIcon className="mx-auto h-6 w-6 animate-spin text-primary" aria-label="Loading" />
+                      </TableCell>
+                    </TableRow>
+                  ) : holidays.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={3} className="py-10 text-center text-muted-foreground">
+                        No holidays added.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    holidays.map((holiday) => (
+                      <TableRow key={holiday.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Button variant="ghost" size="sm" onClick={() => openEditHolidayModal(holiday)} className={iconBtn} aria-label={`Edit ${holiday.holiday_name}`}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => setDeleteHolidayTarget(holiday)} className={`${iconBtn} text-destructive hover:bg-destructive/10 hover:text-destructive`} aria-label={`Delete ${holiday.holiday_name}`}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </div>
-                        </td>
-                      </tr>
-                    ) : holidays.length === 0 ? (
-                      <tr>
-                        <td colSpan={3} className="text-center py-8 text-blue-700">
-                          No holidays added.
-                        </td>
-                      </tr>
-                    ) : (
-                      holidays.map((holiday, ind) => (
-                        <tr key={holiday.id} className={ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"}>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              <Button variant="outline" size="sm" onClick={() => openEditHolidayModal(holiday)} className="border-blue-200 text-blue-700 hover:bg-blue-50 h-8 px-2">
-                                <Pencil className="w-4 h-4" />
-                              </Button>
-                              <Button variant="outline" size="sm" onClick={() => setDeleteHolidayTarget(holiday)} className="border-red-200 text-red-600 hover:bg-red-50 h-8 px-2">
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-blue-900 font-medium">{formatHolidayDate(holiday.holiday_date)}</td>
-                          <td className="px-4 py-3 text-blue-900">{holiday.holiday_name}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap font-medium">{formatHolidayDate(holiday.holiday_date)}</TableCell>
+                        <TableCell>{holiday.holiday_name}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
             </TabsContent>
           </CardContent>
         </Card>
@@ -622,20 +612,20 @@ export default function TatConfig() {
         title={isEditMode ? "Edit Stage TAT" : "New Stage"}
         size="md"
       >
-        <form onSubmit={handleSubmit} className="space-y-4 p-2">
-          <div>
-            <Label>Stage Name *</Label>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="tat-stage-name">Stage Name *</Label>
             {isEditMode ? (
-              <Input value={formData.stageName} disabled className="bg-slate-50" />
+              <Input id="tat-stage-name" value={formData.stageName} disabled />
             ) : (
               <Select
                 value={formData.stageName || undefined}
                 onValueChange={(value) => setFormData((prev) => ({ ...prev, stageName: value }))}
               >
-                <SelectTrigger>
+                <SelectTrigger id="tat-stage-name">
                   <SelectValue placeholder="Select a stage" />
                 </SelectTrigger>
-                <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
+                <SelectContent className="rounded-md border border-input bg-popover shadow-lg">
                   {availableStageNames.length === 0 ? (
                     <SelectItem value="none" disabled>
                       All stages already configured
@@ -652,65 +642,54 @@ export default function TatConfig() {
             )}
           </div>
 
-          <div>
-            <Label>TAT Duration *</Label>
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <Input
-                  type="number"
-                  min="0"
-                  value={formData.days}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, days: e.target.value }))}
-                  placeholder="0"
-                />
-                <p className="text-xs text-gray-500 mt-1 text-center">Days</p>
-              </div>
-              <div>
-                <Input
-                  type="number"
-                  min="0"
-                  value={formData.hours}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, hours: e.target.value }))}
-                  placeholder="0"
-                />
-                <p className="text-xs text-gray-500 mt-1 text-center">Hours</p>
-              </div>
-              <div>
-                <Input
-                  type="number"
-                  min="0"
-                  value={formData.minutes}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, minutes: e.target.value }))}
-                  placeholder="0"
-                />
-                <p className="text-xs text-gray-500 mt-1 text-center">Minutes</p>
-              </div>
+          <fieldset className="space-y-1.5">
+            <legend className="text-sm font-medium leading-none">TAT Duration *</legend>
+            <div className="grid grid-cols-3 gap-2 pt-1.5">
+              {[
+                { key: "days", label: "Days" },
+                { key: "hours", label: "Hours" },
+                { key: "minutes", label: "Minutes" },
+              ].map(({ key, label }) => (
+                <div key={key}>
+                  <Input
+                    id={`tat-${key}`}
+                    type="number"
+                    min="0"
+                    value={formData[key]}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, [key]: e.target.value }))}
+                    placeholder="0"
+                  />
+                  <Label htmlFor={`tat-${key}`} className="mt-1 block text-center text-xs font-normal text-muted-foreground">
+                    {label}
+                  </Label>
+                </div>
+              ))}
             </div>
-            <p className="text-xs text-gray-500 mt-2">
+            <p className="pt-1 text-xs text-muted-foreground">
               = {durationToMinutes(formData)} minutes total
             </p>
-          </div>
+          </fieldset>
 
-          <div>
-            <Label>Responsible Person</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="tat-responsible">Responsible Person</Label>
             <Input
+              id="tat-responsible"
               value={formData.responsiblePerson}
               onChange={(e) => setFormData((prev) => ({ ...prev, responsiblePerson: e.target.value }))}
               placeholder="e.g. Piyush Tiwari"
             />
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-muted-foreground">
               Shown on Dashboard's "Generate Report" PDF as the person accountable for this stage's delay.
             </p>
           </div>
 
-          <div className="flex justify-end space-x-4 pt-2">
+          <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="outline" onClick={() => setShowModal(false)}>Cancel</Button>
             <Button
               type="submit"
               disabled={isSubmitting || (!isEditMode && availableStageNames.length === 0)}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
             >
-              {isSubmitting && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
+              {isSubmitting && <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />}
               {isEditMode ? "Save Changes" : "Create Stage"}
             </Button>
           </div>
@@ -724,14 +703,14 @@ export default function TatConfig() {
         title="Delete Stage"
         size="sm"
       >
-        <div className="p-2 space-y-4">
-          <p className="text-gray-700">
+        <div className="space-y-4">
+          <p className="text-sm text-foreground">
             Delete TAT config for <span className="font-semibold">{deleteTarget?.stage_name}</span>?
           </p>
-          <div className="flex justify-end space-x-4">
+          <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
-            <Button type="button" onClick={handleDelete} disabled={isDeleting} className="bg-red-600 hover:bg-red-700 text-white">
-              {isDeleting && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
+            <Button type="button" variant="destructive" onClick={handleDelete} disabled={isDeleting}>
+              {isDeleting && <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />}
               Delete
             </Button>
           </div>
@@ -745,31 +724,29 @@ export default function TatConfig() {
         title={holidayForm.uuid ? "Edit Holiday" : "Add Holiday"}
         size="sm"
       >
-        <form onSubmit={handleSaveHoliday} className="space-y-4 p-2">
-          <div>
-            <Label>Holiday Name *</Label>
+        <form onSubmit={handleSaveHoliday} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="holiday-name">Holiday Name *</Label>
             <Input
+              id="holiday-name"
               value={holidayForm.holidayName}
               onChange={(e) => setHolidayForm((prev) => ({ ...prev, holidayName: e.target.value }))}
               placeholder="e.g. Diwali, Republic Day, Company Anniversary"
             />
           </div>
-          <div>
-            <Label>Date *</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="holiday-date">Date *</Label>
             <Input
+              id="holiday-date"
               type="date"
               value={holidayForm.holidayDate}
               onChange={(e) => setHolidayForm((prev) => ({ ...prev, holidayDate: e.target.value }))}
             />
           </div>
-          <div className="flex justify-end space-x-4 pt-2">
+          <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="outline" onClick={() => setShowHolidayModal(false)}>Cancel</Button>
-            <Button
-              type="submit"
-              disabled={isSavingHoliday}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
-            >
-              {isSavingHoliday && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
+            <Button type="submit" disabled={isSavingHoliday}>
+              {isSavingHoliday && <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />}
               {holidayForm.uuid ? "Save Changes" : "Add Holiday"}
             </Button>
           </div>
@@ -783,15 +760,15 @@ export default function TatConfig() {
         title="Delete Holiday"
         size="sm"
       >
-        <div className="p-2 space-y-4">
-          <p className="text-gray-700">
+        <div className="space-y-4">
+          <p className="text-sm text-foreground">
             Delete holiday <span className="font-semibold">{deleteHolidayTarget?.holiday_name}</span> (
             {formatHolidayDate(deleteHolidayTarget?.holiday_date)})?
           </p>
-          <div className="flex justify-end space-x-4">
+          <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => setDeleteHolidayTarget(null)}>Cancel</Button>
-            <Button type="button" onClick={handleDeleteHoliday} disabled={isDeletingHoliday} className="bg-red-600 hover:bg-red-700 text-white">
-              {isDeletingHoliday && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
+            <Button type="button" variant="destructive" onClick={handleDeleteHoliday} disabled={isDeletingHoliday}>
+              {isDeletingHoliday && <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />}
               Delete
             </Button>
           </div>

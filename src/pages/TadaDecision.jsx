@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Textarea } from "../components/ui/textarea";
+import { Label } from "../components/ui/label";
 import { Loader2Icon, LoaderIcon, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { supabase } from "../lib/supabase/client";
 import { computeStagePlanned } from "../lib/supabase/stagePlanning";
@@ -24,6 +25,7 @@ export default function TadaDecision() {
   const [error, setError] = useState("");
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [rejectRemarks, setRejectRemarks] = useState("");
+  const [rejectError, setRejectError] = useState("");
   const [isDeciding, setIsDeciding] = useState(false);
   const [decisionResult, setDecisionResult] = useState(null); // "approved" | "rejected" | null
 
@@ -129,9 +131,10 @@ export default function TadaDecision() {
   const handleReject = async () => {
     if (!approval) return;
     if (!rejectRemarks.trim()) {
-      alert("Please enter a reason for rejection.");
+      setRejectError("Please enter a reason for rejection.");
       return;
     }
+    setRejectError("");
     setIsDeciding(true);
     try {
       const { data: updated, error: approvalError } = await supabase
@@ -161,12 +164,12 @@ export default function TadaDecision() {
     }
   };
 
-  const containerClass = "min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4";
+  const containerClass = "min-h-screen bg-background flex items-center justify-center p-4";
 
   if (loading) {
     return (
       <div className={containerClass}>
-        <LoaderIcon className="animate-spin w-10 h-10 text-blue-600" />
+        <LoaderIcon className="animate-spin w-10 h-10 text-primary" aria-label="Loading" />
       </div>
     );
   }
@@ -174,17 +177,17 @@ export default function TadaDecision() {
   if (decisionResult) {
     return (
       <div className={containerClass}>
-        <Card className="max-w-md w-full border-0 shadow-xl">
+        <Card className="max-w-md w-full shadow-lg">
           <CardContent className="p-8 text-center space-y-3">
             {decisionResult === "approved" ? (
-              <CheckCircle2 className="w-14 h-14 text-green-600 mx-auto" />
+              <CheckCircle2 className="w-14 h-14 text-success mx-auto" />
             ) : (
-              <XCircle className="w-14 h-14 text-red-600 mx-auto" />
+              <XCircle className="w-14 h-14 text-destructive mx-auto" />
             )}
-            <h2 className="text-xl font-bold text-gray-800">
+            <h2 className="text-xl font-bold text-foreground">
               Ticket {decisionResult === "approved" ? "Approved" : "Rejected"}
             </h2>
-            <p className="text-gray-600">
+            <p className="text-muted-foreground">
               Thank you — your decision on ticket <strong>{approval?.ticket_id}</strong> has been recorded.
               {decisionResult === "approved"
                 ? " It will now proceed to Site Visit OTP Verification."
@@ -199,11 +202,11 @@ export default function TadaDecision() {
   if (error) {
     return (
       <div className={containerClass}>
-        <Card className="max-w-md w-full border-0 shadow-xl">
+        <Card className="max-w-md w-full shadow-lg">
           <CardContent className="p-8 text-center space-y-3">
-            <AlertTriangle className="w-14 h-14 text-amber-500 mx-auto" />
-            <h2 className="text-xl font-bold text-gray-800">Unable to process</h2>
-            <p className="text-gray-600">{error}</p>
+            <AlertTriangle className="w-14 h-14 text-warning mx-auto" />
+            <h2 className="text-xl font-bold text-foreground">Unable to process</h2>
+            <p className="text-muted-foreground">{error}</p>
           </CardContent>
         </Card>
       </div>
@@ -213,15 +216,15 @@ export default function TadaDecision() {
   if (approval?.status !== "pending") {
     return (
       <div className={containerClass}>
-        <Card className="max-w-md w-full border-0 shadow-xl">
+        <Card className="max-w-md w-full shadow-lg">
           <CardContent className="p-8 text-center space-y-3">
             {approval?.status === "approved" ? (
-              <CheckCircle2 className="w-14 h-14 text-green-600 mx-auto" />
+              <CheckCircle2 className="w-14 h-14 text-success mx-auto" />
             ) : (
-              <XCircle className="w-14 h-14 text-red-600 mx-auto" />
+              <XCircle className="w-14 h-14 text-destructive mx-auto" />
             )}
-            <h2 className="text-xl font-bold text-gray-800">Already Decided</h2>
-            <p className="text-gray-600">
+            <h2 className="text-xl font-bold text-foreground">Already Decided</h2>
+            <p className="text-muted-foreground">
               Ticket <strong>{approval?.ticket_id}</strong> was already{" "}
               <strong>{approval?.status === "approved" ? "approved" : "rejected"}</strong> on{" "}
               {formatDate(approval?.decided_at)}.
@@ -240,9 +243,9 @@ export default function TadaDecision() {
 
   return (
     <div className={containerClass}>
-      <Card className="max-w-2xl w-full border-0 shadow-xl">
-        <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-t-lg">
-          <CardTitle className="text-white">TADA / Travel Advance — Senior Approval</CardTitle>
+      <Card className="max-w-2xl w-full shadow-lg">
+        <CardHeader className="bg-primary rounded-t-lg">
+          <CardTitle className="text-primary-foreground">TADA / Travel Advance — Senior Approval</CardTitle>
         </CardHeader>
         <CardContent className="p-6 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
@@ -264,11 +267,11 @@ export default function TadaDecision() {
           </div>
 
           {!showRejectForm ? (
-            <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-gray-100">
+            <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-border">
               <Button
                 onClick={handleApprove}
                 disabled={isDeciding}
-                className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                className="flex-1 bg-success text-success-foreground hover:bg-success/90"
               >
                 {isDeciding ? <Loader2Icon className="animate-spin w-4 h-4 mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
                 Approve
@@ -277,26 +280,38 @@ export default function TadaDecision() {
                 onClick={() => setShowRejectForm(true)}
                 disabled={isDeciding}
                 variant="outline"
-                className="flex-1 border-red-300 text-red-600 hover:bg-red-50"
+                className="flex-1 border-destructive/40 text-destructive hover:bg-destructive/10"
               >
                 <XCircle className="w-4 h-4 mr-2" />
                 Reject
               </Button>
             </div>
           ) : (
-            <div className="space-y-3 pt-4 border-t border-gray-100">
-              <label className="text-sm font-medium text-gray-700">Reason for rejection *</label>
+            <div className="space-y-3 pt-4 border-t border-border">
+              <Label htmlFor="rejectRemarks">Reason for rejection *</Label>
               <Textarea
+                id="rejectRemarks"
                 rows={3}
                 value={rejectRemarks}
-                onChange={(e) => setRejectRemarks(e.target.value)}
+                aria-invalid={rejectError ? true : undefined}
+                aria-describedby={rejectError ? "rejectError" : undefined}
+                onChange={(e) => {
+                  setRejectRemarks(e.target.value);
+                  if (rejectError) setRejectError("");
+                }}
                 placeholder="Please explain why this request is being rejected"
               />
+              {rejectError && (
+                <p id="rejectError" role="alert" className="text-sm text-destructive">
+                  {rejectError}
+                </p>
+              )}
               <div className="flex gap-3">
                 <Button
                   onClick={handleReject}
                   disabled={isDeciding}
-                  className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+                  variant="destructive"
+                  className="flex-1"
                 >
                   {isDeciding && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
                   Confirm Rejection
@@ -304,7 +319,10 @@ export default function TadaDecision() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setShowRejectForm(false)}
+                  onClick={() => {
+                    setShowRejectForm(false);
+                    setRejectError("");
+                  }}
                   disabled={isDeciding}
                   className="flex-1"
                 >
@@ -322,8 +340,8 @@ export default function TadaDecision() {
 function Field({ label, value }) {
   return (
     <div>
-      <p className="text-gray-500 font-medium">{label}</p>
-      <p className="text-gray-900">{value || "-"}</p>
+      <p className="text-muted-foreground font-medium">{label}</p>
+      <p className="text-foreground">{value || "-"}</p>
     </div>
   );
 }

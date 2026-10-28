@@ -1,10 +1,4 @@
 import { useState, useEffect, useMemo } from "react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -16,169 +10,85 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../components/ui/table";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "../components/ui/tabs";
 import { Modal } from "../components/ui/modal";
+import { ListToolbar, ListTable, StatusBadge } from "../components/shared";
+import { useClientList } from "../hooks/useClientList";
 import { useToast } from "../hooks/use-toast";
-import { Loader2Icon, LoaderIcon, Calendar } from "lucide-react";
+import { Loader2Icon, Calendar } from "lucide-react";
 import { Textarea } from "../components/ui/textarea";
 import VisitCalendarModal from "../components/VisitCalendarModal";
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { supabase } from "../lib/supabase/client";
 import { fetchDropdownRows } from "../lib/supabase/dropdown";
 import { fetchEngineerNames } from "../lib/supabase/engineers";
 import { sendSiteVisitAssignedNotifications } from "../lib/notifications/whatsapp";
+import { parseIST } from "../lib/dateIST";
+import { formatDate } from "../lib/format";
 
-const PREMIUM_COLORS = [
-  { bg: "bg-emerald-50 text-emerald-700 border-emerald-200", badge: "bg-emerald-100 text-emerald-800" },
-  { bg: "bg-indigo-50 text-indigo-700 border-indigo-200", badge: "bg-indigo-100 text-indigo-800" },
-  { bg: "bg-amber-50 text-amber-700 border-amber-200", badge: "bg-amber-100 text-amber-800" },
-  { bg: "bg-rose-50 text-rose-700 border-rose-200", badge: "bg-rose-100 text-rose-800" },
-  { bg: "bg-sky-50 text-sky-700 border-sky-200", badge: "bg-sky-100 text-sky-800" },
-  { bg: "bg-violet-50 text-violet-700 border-violet-200", badge: "bg-violet-100 text-violet-800" },
-  { bg: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200", badge: "bg-fuchsia-100 text-fuchsia-800" },
-  { bg: "bg-cyan-50 text-cyan-700 border-cyan-200", badge: "bg-cyan-100 text-cyan-800" },
-  { bg: "bg-teal-50 text-teal-700 border-teal-200", badge: "bg-teal-100 text-teal-800" },
-  { bg: "bg-orange-50 text-orange-700 border-orange-200", badge: "bg-orange-100 text-orange-800" },
+// Engineer cell: current engineer, plus the "Rescheduled" log on pending rows (migration 0054).
+const engineerCell = (r) => {
+  if (!r.engineerAssign && !r.wasRescheduled) return null;
+  return (
+    <div>
+      {r.engineerAssign}
+      {r.wasRescheduled && (
+        <div
+          className="mt-1 flex flex-col items-start gap-0.5"
+          title={r.rescheduleLog
+            .map(
+              (log) =>
+                `${log.engineerAssign || "N/A"} — rescheduled ${formatDate(log.rescheduledAt)}${log.rescheduledBy ? ` by ${log.rescheduledBy}` : ""}${log.remarks ? `: ${log.remarks}` : ""}`
+            )
+            .join("\n")}
+        >
+          <StatusBadge tone="warning">Rescheduled</StatusBadge>
+          <span className="text-[11px] text-muted-foreground">
+            Previously: {r.lastAssignedEngineer || "N/A"}
+            {r.rescheduledAt ? ` (${formatDate(r.rescheduledAt)})` : ""}
+          </span>
+          {r.rescheduleRemarks && (
+            <span className="text-[11px] text-muted-foreground">Reason: {r.rescheduleRemarks}</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Pending: Action + ticket columns. History: the booked visit (travel date, transportation).
+const COLUMNS = [
+  { key: "action", label: "Action", fixed: true, tabs: ["pending"], cell: (r, { onPlan }) => (
+    <Button size="sm" variant="outline" onClick={() => onPlan(r)} data-testid={`button-plan-${r.ticketId}`} className="font-semibold">
+      PLAN
+    </Button>
+  ) },
+  { key: "date", label: "Date", defaultVisible: true, strong: true, text: (r) => formatDate(r.timeStemp) },
+  { key: "ticketId", label: "Ticket-ID", defaultVisible: true, strong: true, text: (r) => r.ticketId },
+  { key: "enquiryType", label: "Enquiry Type", defaultVisible: true, text: (r) => r.enquiryType },
+  { key: "sourceOfEnquiry", label: "Source of enquiry", defaultVisible: false, text: (r) => r.sourceOfEnquiry },
+  { key: "callType", label: "Call type", defaultVisible: false, text: (r) => r.callType },
+  { key: "enquiryReceiverName", label: "Enquiry Receiver Name", defaultVisible: false, text: (r) => r.enquiryReceiverName },
+  { key: "clientType", label: "Client Type", defaultVisible: false, text: (r) => r.clientType },
+  { key: "companyName", label: "Company Name", defaultVisible: true, text: (r) => r.companyName },
+  { key: "clientName", label: "Client Name", defaultVisible: true, text: (r) => r.clientName },
+  { key: "phoneNumber", label: "Phone Number", defaultVisible: true, text: (r) => r.phoneNumber },
+  { key: "siteAddress", label: "Site Address", defaultVisible: false, wrap: true, width: 200, text: (r) => r.siteAddress },
+  { key: "gstNo", label: "GST No.", defaultVisible: false, text: (r) => r.gstNo },
+  { key: "machineName", label: "Machine Name", defaultVisible: true, text: (r) => r.machineName },
+  { key: "category", label: "Category", defaultVisible: false, text: (r) => r.category },
+  { key: "mentionIssue", label: "Mention Issue", defaultVisible: false, wrap: true, width: 200, text: (r) => r.mentionIssue },
+  { key: "serviceLocation", label: "Service Location", defaultVisible: false, text: (r) => r.serviceLocation },
+  { key: "warrantyCheck", label: "Warranty Check", defaultVisible: true, tabs: ["pending"], text: (r) => r.warrantyCheck },
+  { key: "engineerAssign", label: "Engineer Assign", defaultVisible: true, cell: engineerCell },
+  { key: "travelDate", label: "Travel Date", defaultVisible: true, tabs: ["history"], text: (r) => formatDate(r.dateOfVisit) },
+  { key: "transportation", label: "Transportation", defaultVisible: true, tabs: ["history"], cell: (r) =>
+    r.transportation ? <StatusBadge tone="info">{r.transportation}</StatusBadge> : null },
 ];
 
-const getEngineerColor = (name) => {
-  if (!name) return { bg: "bg-slate-50 text-slate-700 border-slate-200", badge: "bg-slate-100 text-slate-800" };
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return PREMIUM_COLORS[Math.abs(hash) % PREMIUM_COLORS.length];
-};
-
-const IST_FORMATTER = new Intl.DateTimeFormat("en-US", {
-  timeZone: "Asia/Kolkata",
-  year: "numeric",
-  month: "numeric",
-  day: "numeric",
-});
-
-const getISTComponents = (date) => {
-  const parts = {};
-  IST_FORMATTER.formatToParts(date).forEach((p) => {
-    if (p.type !== "literal") parts[p.type] = parseInt(p.value, 10);
-  });
-  return { year: parts.year, month: parts.month - 1, day: parts.day };
-};
-
-const parseIST = (dateStr) => {
-  if (!dateStr || typeof dateStr !== "string") return null;
-
-  if (dateStr.includes("T") || dateStr.endsWith("Z")) {
-    const d = new Date(dateStr);
-    if (!isNaN(d.getTime())) return getISTComponents(d);
-    return null;
-  }
-
-  if (dateStr.includes("/")) {
-    const datePart = dateStr.split(" ")[0];
-    const parts = datePart.split("/");
-    if (parts.length === 3) {
-      const day = parseInt(parts[0], 10);
-      const month = parseInt(parts[1], 10) - 1;
-      let year = parseInt(parts[2], 10);
-      if (year < 100) year += 2000;
-      if (!isNaN(day) && !isNaN(month) && !isNaN(year)) return { day, month, year };
-    }
-  }
-
-  if (dateStr.includes("-")) {
-    const datePart = dateStr.split(" ")[0];
-    const parts = datePart.split("-");
-    if (parts.length === 3 && parts[0].length === 4) {
-      const year = parseInt(parts[0], 10);
-      const month = parseInt(parts[1], 10) - 1;
-      const day = parseInt(parts[2], 10);
-      if (!isNaN(year) && !isNaN(month) && !isNaN(day)) return { day, month, year };
-    }
-    if (parts.length === 3) {
-      const day = parseInt(parts[0], 10);
-      const month = parseInt(parts[1], 10) - 1;
-      const year = parseInt(parts[2], 10);
-      if (!isNaN(day) && !isNaN(month) && !isNaN(year)) return { day, month, year };
-    }
-  }
-
-  return null;
-};
-
-const formatMinutesToTime = (min) => {
-  const totalMin = min + 9 * 60;
-  let hrs = Math.floor(totalMin / 60);
-  const mins = totalMin % 60;
-  const ampm = hrs >= 12 ? "PM" : "AM";
-  hrs = hrs % 12;
-  if (hrs === 0) hrs = 12;
-  const minStr = String(mins).padStart(2, "0");
-  return `${hrs}:${minStr} ${ampm}`;
-};
-
-const formatCallTime = (timeStr) => {
-  if (!timeStr) return "";
-  const str = String(timeStr).trim();
-
-  // If it's a full ISO format, e.g. "1899-12-30T14:30:00.000Z"
-  if (str.includes("T")) {
-    const timePart = str.split("T")[1];
-    const parts = timePart.split(":");
-    if (parts.length >= 2) {
-      return `${parts[0].padStart(2, "0")}:${parts[1].padStart(2, "0")}`;
-    }
-  }
-
-  // If it's in format "HH:MM:SS"
-  const parts = str.split(":");
-  if (parts.length >= 2) {
-    const hh = parts[0].trim().padStart(2, "0");
-    const mm = parts[1].trim().padStart(2, "0");
-    if (!isNaN(hh) && !isNaN(mm)) {
-      return `${hh}:${mm}`;
-    }
-  }
-
-  // Regex match for HH:MM with optional AM/PM
-  const match = str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
-  if (match) {
-    let hours = parseInt(match[1], 10);
-    const minutes = match[2];
-    const ampm = match[3];
-    if (ampm) {
-      if (ampm.toUpperCase() === "PM" && hours < 12) {
-        hours += 12;
-      } else if (ampm.toUpperCase() === "AM" && hours === 12) {
-        hours = 0;
-      }
-    }
-    return `${String(hours).padStart(2, "0")}:${minutes}`;
-  }
-
-  return str;
-};
-
 export default function SiteVisitPlan() {
-  const [activeTab, setActiveTab] = useState("pending");
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [formData, setFormData] = useState({});
-  const [searchItem, setSearchItem] = useState("");
-  const [cancelRemarks, setCancelRemarks] = useState("");
   const [isCancelled, setIsCancelled] = useState(false);
   const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
   const [isTodayAvailabilityOpen, setIsTodayAvailabilityOpen] = useState(false);
@@ -186,16 +96,16 @@ export default function SiteVisitPlan() {
 
   const [masterData, setMasterData] = useState({});
 
-  // console.log("followUpData",followUpData);
-
   const [pendingData, setPendingData] = useState([]);
   const [historyData, setHistoryData] = useState([]);
   const [calendarHistoryData, setCalendarHistoryData] = useState([]);
   const [fetchLoading, setFetchLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fetchData = async () => {
     setFetchLoading(true);
+    setLoadError(null);
     try {
       // Tickets ready for Site Visit Plan (follow_up.site_visit_planned set).
       const { data: followUpRows, error: followUpError } = await supabase
@@ -330,6 +240,7 @@ export default function SiteVisitPlan() {
       setCalendarHistoryData(history);
     } catch (error) {
       console.error("Error fetching data:", error);
+      setLoadError(error.message || "Failed to load data");
       toast({
         title: "Error",
         description: "Failed to load data",
@@ -377,6 +288,7 @@ export default function SiteVisitPlan() {
   useEffect(() => {
     fetchMasterSheet();
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handlePlanClick = (ticket) => {
@@ -513,63 +425,6 @@ export default function SiteVisitPlan() {
       setCancelSubmit(false);
     }
   };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return "";
-
-    const date = new Date(dateString);
-    const day = String(date.getDate()).padStart(2, "0");
-    const month = String(date.getMonth() + 1).padStart(2, "0"); // Months are 0-indexed
-    const year = date.getFullYear();
-
-    return `${day}/${month}/${year}`;
-  };
-
-  const formatDateTime = (date) => {
-    const d = new Date(date);
-    const day = String(d.getDate()).padStart(2, "0");
-    const month = String(d.getMonth() + 1).padStart(2, "0");
-    const year = d.getFullYear();
-    const hours = String(d.getHours()).padStart(2, "0");
-    const minutes = String(d.getMinutes()).padStart(2, "0");
-    const seconds = String(d.getSeconds()).padStart(2, "0");
-
-    return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
-  };
-
-  const filteredPendingDataa = pendingData
-    .filter((item) => {
-      const q = searchItem.toLowerCase();
-      const matchesSearch =
-        String(item.ticketId || "").toLowerCase().includes(q) ||
-        String(item.clientName || "").toLowerCase().includes(q) ||
-        String(item.companyName || "").toLowerCase().includes(q) ||
-        String(item.phoneNumber || "").toLowerCase().includes(q);
-      return matchesSearch;
-    })
-    .reverse();
-
-  const filteredHistoryDataa = historyData
-    .filter((item) => {
-      const q = searchItem.toLowerCase();
-      const matchesSearch =
-        String(item.ticketId || "").toLowerCase().includes(q) ||
-        String(item.clientName || "").toLowerCase().includes(q) ||
-        String(item.companyName || "").toLowerCase().includes(q) ||
-        String(item.phoneNumber || "").toLowerCase().includes(q);
-      return matchesSearch;
-    })
-    .reverse();
-
-  const userName = localStorage.getItem("currentUsername");
-
-  const roleStorage = localStorage.getItem("o2d-auth-storage");
-  const parsedData = JSON.parse(roleStorage);
-  const role = parsedData.state.user.role;
-
-  const filteredPendingData = filteredPendingDataa;
-
-  const filteredHistoryData = filteredHistoryDataa;
 
   const engineersList = useMemo(() => {
     const masterEngs = masterData[0]?.["Engineer Assign Name"] || [];
@@ -733,7 +588,7 @@ export default function SiteVisitPlan() {
 
   const chartData = useMemo(() => {
     return engineersList.map((eng) => {
-      const { segments, statusText, isPendingTADA } = getTodayAvailability(eng);
+      const { segments, isPendingTADA } = getTodayAvailability(eng);
       
       let busyHours = 0;
       let pendingHours = 0;
@@ -780,659 +635,57 @@ export default function SiteVisitPlan() {
     return null;
   };
 
+  const list = useClientList({
+    key: "site-visit-plan",
+    data: { pending: pendingData, history: historyData },
+    loading: fetchLoading,
+    error: loadError,
+    onRetry: fetchData,
+    searchKeys: ["ticketId", "clientName", "companyName", "phoneNumber"],
+    filters: [
+      { key: "engineer", label: "Engineer", allLabel: "All Engineers", get: (r) => r.engineerAssign },
+      { key: "category", label: "Category", allLabel: "All Categories", get: (r) => r.category },
+      { key: "enquiryType", label: "Enquiry Type", allLabel: "All Enquiry Types", get: (r) => r.enquiryType },
+      { key: "transportation", label: "Transportation", allLabel: "All Transportation", get: (r) => r.transportation, tabs: ["history"] },
+    ],
+    columns: COLUMNS,
+  });
+
   return (
-    <div className="space-y-2">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <Card className="border-0 shadow-lg bg-gradient-to-br from-blue-50 to-indigo-50">
-          <CardHeader className="bg-gradient-to-r from-blue-50/50 to-indigo-50/50 rounded-t-lg border-b border-blue-100 px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
-            {/* Left Side: Tabs buttons */}
-            <div className="flex flex-wrap items-center gap-4">
-              <TabsList className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200">
-                <TabsTrigger
-                  value="pending"
-                  data-testid="tab-pending"
-                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-                >
-                  Pending ({filteredPendingData.length})
-                </TabsTrigger>
-                <TabsTrigger
-                  value="history"
-                  data-testid="tab-history"
-                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-                >
-                  History ({filteredHistoryData.length})
-                </TabsTrigger>
-              </TabsList>
-              <Button
-                onClick={() => setIsCalendarModalOpen(true)}
-                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md flex items-center gap-2"
-                data-testid="btn-view-visit-calendar"
-              >
-                <Calendar className="h-4 w-4" />
-                View Visit Calendar
-              </Button>
-              <Button
-                onClick={() => setIsTodayAvailabilityOpen(true)}
-                className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-md flex items-center gap-2"
-                data-testid="btn-view-today-availability"
-              >
-                <Calendar className="h-4 w-4" />
-                Today's Availability
-              </Button>
-            </div>
-
-            
-
-            {/* Right Side: Search Input */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 flex-1 md:justify-end w-full md:w-auto">
-              <div className="relative flex-1 max-w-md w-full">
-                <Input
-                  id="searchFilter"
-                  placeholder="Search by ticket ID, client, company or phone..."
-                  className="pl-10 py-2 w-full rounded-md border-blue-200 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white"
-                  data-testid="input-search-filter"
-                  onChange={(e) => setSearchItem(e.target.value)}
-                />
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="mt-2">
-
-              <TabsContent value="pending" className="mt-0">
-              <div className="relative overflow-x-auto">
-                <div className="max-h-[calc(103vh-200px)] overflow-y-auto">
-                  <table className="hidden sm:block w-full">
-                    <thead className="sticky top-0 z-10">
-                      <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
-                          Action
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
-                          Date
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
-                          Ticket-ID
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Enquiry Type
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Source of enquiry
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Call type
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[180px] sticky top-0">
-                          Enquiry Receiver Name
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Client Type
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
-                          Company Name
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Client Name
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Phone Number
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
-                          Site Address
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          GST No.
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Machine Name
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Category
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
-                          Mention Issue
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Service Location
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Warranty Check
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Engineer Assign
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-blue-100">
-                      {filteredPendingData.length === 0 ? (
-                        <tr>
-                          <td
-                            colSpan={19}
-                            className="text-center py-8 bg-white"
-                            data-testid="text-no-pending"
-                          >
-                            {fetchLoading ? (
-                              <div className="flex justify-center items-center text-blue-700">
-                                <LoaderIcon className="animate-spin w-8 h-8" />
-                              </div>
-                            ) : (
-                              <h1 className="text-blue-700">
-                                No pending site visit plans found.
-                              </h1>
-                            )}
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredPendingData.map((ticket, indx) => (
-                          <tr
-                            key={indx}
-                            className={
-                              indx % 2 === 0 ? "bg-blue-50/50" : "bg-white"
-                            }
-                          >
-                            <td className="px-4 py-3">
-                              <Button
-                                size="sm"
-                                onClick={() => handlePlanClick(ticket)}
-                                variant="outline"
-                                className="bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 hover:from-blue-100 hover:to-indigo-100 hover:text-blue-700 transition-all duration-300 border border-blue-200 hover:border-blue-300 rounded-lg px-3 py-1.5 shadow-sm hover:shadow-md group"
-                                data-testid={`button-plan-${ticket.ticketId}`}
-                              >
-                                <span className="font-medium">PLAN</span>
-                              </Button>
-                            </td>
-                            <td className="px-4 py-3 font-medium text-blue-800">
-                              {formatDate(ticket.timeStemp)}
-                            </td>
-                            <td className="px-4 py-3 font-medium text-blue-800">
-                              {ticket.ticketId}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.enquiryType || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.sourceOfEnquiry || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.callType || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.enquiryReceiverName || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.clientType || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.companyName || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.clientName || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.phoneNumber || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.siteAddress || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.gstNo || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.machineName || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.category || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.mentionIssue || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.serviceLocation || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.warrantyCheck || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.engineerAssign || ""}
-                              {ticket.wasRescheduled && (
-                                <div
-                                  className="mt-1 flex flex-col gap-0.5"
-                                  title={ticket.rescheduleLog
-                                    .map(
-                                      (log) =>
-                                        `${log.engineerAssign || "N/A"} — rescheduled ${formatDate(log.rescheduledAt)}${log.rescheduledBy ? ` by ${log.rescheduledBy}` : ""
-                                        }${log.remarks ? `: ${log.remarks}` : ""}`
-                                    )
-                                    .join("\n")}
-                                >
-                                  <span className="inline-flex w-fit items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                                    🔄 Rescheduled
-                                  </span>
-                                  <span className="text-[11px] text-gray-500">
-                                    Previously: {ticket.lastAssignedEngineer || "N/A"}
-                                  </span>
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-
-                  {/* Mobile Card View */}
-                  <div className="sm:hidden space-y-4">
-                    {filteredPendingData.length === 0 ? (
-                      <div
-                        className="text-center py-8 bg-white"
-                        data-testid="text-no-pending"
-                      >
-                        {fetchLoading ? (
-                          <div className="flex justify-center items-center text-blue-700">
-                            <LoaderIcon className="animate-spin w-8 h-8" />
-                          </div>
-                        ) : (
-                          <h1 className="text-blue-700">
-                            No pending site visit plans found.
-                          </h1>
-                        )}
-                      </div>
-                    ) : (
-                      filteredPendingData.map((ticket, indx) => (
-                        <Card
-                          key={indx}
-                          className={`${indx % 2 === 0 ? "bg-blue-50/50" : "bg-white"
-                            } border-l-4 border-l-blue-500`}
-                        >
-                          <CardContent className="p-4 space-y-3">
-                            {/* Header with Ticket ID and Action */}
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <h3 className="font-bold text-blue-800 text-lg">
-                                  {ticket.ticketId}
-                                </h3>
-                                <p className="text-sm text-gray-600">
-                                  {ticket.clientName}
-                                </p>
-                              </div>
-                              <Button
-                                size="sm"
-                                onClick={() => handlePlanClick(ticket)}
-                                variant="outline"
-                                className="bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 hover:from-blue-100 hover:to-indigo-100 border border-blue-200"
-                              >
-                                PLAN
-                              </Button>
-                            </div>
-
-                            {/* Contact & Receiver Info */}
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Phone
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.phoneNumber}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Enquiry Receiver
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.enquiryReceiverName}
-                                </p>
-                              </div>
-                            </div>
-
-                            {/* Technical Details */}
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Warranty
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.warrantyCheck}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Machine
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.machineName || "N/A"}
-                                </p>
-                              </div>
-                            </div>
-
-                            {/* Engineer & Site */}
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Engineer
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.engineerAssign || "N/A"}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Site Name
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.siteName || "N/A"}
-                                </p>
-                              </div>
-                            </div>
-
-                            {ticket.wasRescheduled && (
-                              <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 space-y-0.5">
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                                  🔄 Rescheduled
-                                </span>
-                                <p className="text-[11px] text-amber-800">
-                                  Previously assigned: <span className="font-semibold">{ticket.lastAssignedEngineer || "N/A"}</span>
-                                  {ticket.rescheduledAt ? ` (${formatDate(ticket.rescheduledAt)})` : ""}
-                                </p>
-                                {ticket.rescheduleRemarks && (
-                                  <p className="text-[11px] text-amber-700">Reason: {ticket.rescheduleRemarks}</p>
-                                )}
-                              </div>
-                            )}
-
-                            {/* Enquiry Type */}
-                            <div>
-                              <p className="text-gray-500 font-medium text-sm">
-                                Enquiry Type
-                              </p>
-                              <p className="text-blue-900">
-                                {ticket.enquiryType}
-                              </p>
-                            </div>
-
-                          </CardContent>
-                        </Card>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-        </TabsContent>
-
-              <TabsContent value="history" className="mt-0">
-              <div className="relative overflow-x-auto">
-                <div className="max-h-[calc(103vh-200px)] overflow-y-auto">
-                  <table className="hidden sm:block w-full">
-                    <thead className="sticky top-0 z-10">
-                      <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
-                          Date
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
-                          Ticket-ID
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Enquiry Type
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Source of enquiry
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Call type
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[180px] sticky top-0">
-                          Enquiry Receiver Name
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Client Type
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
-                          Company Name
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Client Name
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Phone Number
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
-                          Site Address
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          GST No.
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Machine Name
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Category
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
-                          Mention Issue
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Service Location
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Engineer Assign
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Travel Date
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Transportation
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-blue-100">
-                      {filteredHistoryData.length === 0 ? (
-                        <tr>
-                          <td
-                            colSpan={19}
-                            className="text-center py-8 bg-white"
-                            data-testid="text-no-history"
-                          >
-                            {fetchLoading ? (
-                              <div className="flex justify-center items-center text-blue-700">
-                                <LoaderIcon className="animate-spin w-8 h-8" />
-                              </div>
-                            ) : (
-                              <h1 className="text-blue-700">
-                                No site visit plan history found.
-                              </h1>
-                            )}
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredHistoryData.map((ticket, indx) => (
-                          <tr
-                            key={indx}
-                            className={
-                              indx % 2 === 0 ? "bg-blue-50/50" : "bg-white"
-                            }
-                          >
-                            <td className="px-4 py-3 font-medium text-blue-800">
-                              {formatDate(ticket.timeStemp)}
-                            </td>
-                            <td className="px-4 py-3 font-medium text-blue-800">
-                              {ticket.ticketId}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.enquiryType || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.sourceOfEnquiry || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.callType || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.enquiryReceiverName || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.clientType || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.companyName || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.clientName || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.phoneNumber || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.siteAddress || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.gstNo || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.machineName || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.category || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.mentionIssue || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.serviceLocation || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.engineerAssign || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {formatDate(ticket.dateOfVisit) || ""}
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                                {ticket.transportation || ""}
-                              </span>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-
-                  {/* Mobile Card View */}
-                  <div className="sm:hidden space-y-4">
-                    {filteredHistoryData.length === 0 ? (
-                      <div
-                        className="text-center py-8 bg-white"
-                        data-testid="text-no-history"
-                      >
-                        {fetchLoading ? (
-                          <div className="flex justify-center items-center text-blue-700">
-                            <LoaderIcon className="animate-spin w-8 h-8" />
-                          </div>
-                        ) : (
-                          <h1 className="text-blue-700">
-                            No site visit plan history found.
-                          </h1>
-                        )}
-                      </div>
-                    ) : (
-                      filteredHistoryData.map((ticket, indx) => (
-                        <Card
-                          key={indx}
-                          className={`${indx % 2 === 0 ? "bg-blue-50/50" : "bg-white"
-                            } border-l-4 border-l-blue-500`}
-                        >
-                          <CardContent className="p-4 space-y-3">
-                            {/* Header */}
-                            <div>
-                              <h3 className="font-bold text-blue-800 text-lg">
-                                {ticket.ticketId}
-                              </h3>
-                              <p className="text-sm text-gray-600">
-                                {ticket.clientName}
-                              </p>
-                            </div>
-
-                            {/* Contact & Machine Info */}
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Phone
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.phoneNumber}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Machine
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.machineName || "N/A"}
-                                </p>
-                              </div>
-                            </div>
-
-                            {/* Engineer & Site */}
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Engineer
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.engineerAssign || "N/A"}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Site Name
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.siteName || "N/A"}
-                                </p>
-                              </div>
-                            </div>
-
-                            {/* Visit Details */}
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Travel Date
-                                </p>
-                                <p className="text-blue-900">
-                                  {formatDate(ticket.dateOfVisit) || "N/A"}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Transportation
-                                </p>
-                                <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
-                                  {ticket.transportation || "N/A"}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Enquiry Type */}
-                            <div>
-                              <p className="text-gray-500 font-medium text-sm">
-                                Enquiry Type
-                              </p>
-                              <p className="text-blue-900">
-                                {ticket.enquiryType || "N/A"}
-                              </p>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-        </TabsContent>
-            </div>
-          </CardContent>
-        </Card>
-      </Tabs>
+    <div className="space-y-3">
+      <ListToolbar
+        list={list}
+        searchPlaceholder="Search by ticket ID, client, company or phone..."
+        actions={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => setIsCalendarModalOpen(true)}
+              data-testid="btn-view-visit-calendar"
+              className="gap-2"
+            >
+              <Calendar className="h-4 w-4" />
+              View Visit Calendar
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setIsTodayAvailabilityOpen(true)}
+              data-testid="btn-view-today-availability"
+              className="gap-2"
+            >
+              <Calendar className="h-4 w-4" />
+              Today's Availability
+            </Button>
+          </>
+        }
+      />
+      <ListTable
+        list={list}
+        ctx={{ onPlan: handlePlanClick }}
+        rowKey={(r) => r.ticketId}
+        emptyTitle={{ pending: "No pending site visit plans found.", history: "No site visit plan history found." }}
+        ariaLabel="Site visit plans"
+      />
 
       {/* Site Visit Plan Modal */}
       <Modal
@@ -1443,17 +696,17 @@ export default function SiteVisitPlan() {
       >
         <form
           onSubmit={handleSubmit}
-          className="grid grid-cols-1 md:grid-cols-2 gap-4"
+          className="grid grid-cols-1 gap-4 md:grid-cols-2"
         >
-          <div className="flex items-center space-x-2 mb-10">
+          <div className="mb-10 flex items-center space-x-2">
             <input
               type="checkbox"
               id="cancelTicket"
               checked={isCancelled}
               onChange={(e) => setIsCancelled(e.target.checked)}
-              className="h-4 w-4 text-red-600 focus:ring-red-500 border-gray-300 rounded"
+              className="h-4 w-4 rounded border-input accent-destructive"
             />
-            <Label htmlFor="cancelTicket" className="text-red-600 font-medium">
+            <Label htmlFor="cancelTicket" className="font-medium text-destructive">
               Cancel Ticket
             </Label>
           </div>
@@ -1462,63 +715,40 @@ export default function SiteVisitPlan() {
 
           {/* Pre-filled fields */}
           <div>
-            <Label>Ticket ID</Label>
-            <Input
-              value={formData.ticketId || ""}
-              disabled
-              className="bg-slate-50"
-            />
+            <Label htmlFor="svp-ticketId">Ticket ID</Label>
+            <Input id="svp-ticketId" value={formData.ticketId || ""} disabled className="bg-muted" />
           </div>
           <div>
-            <Label>Client Name</Label>
-            <Input
-              value={formData.clientName || ""}
-              disabled
-              className="bg-slate-50"
-            />
+            <Label htmlFor="svp-clientName">Client Name</Label>
+            <Input id="svp-clientName" value={formData.clientName || ""} disabled className="bg-muted" />
           </div>
           <div>
-            <Label>Phone Number</Label>
-            <Input
-              value={formData.phoneNumber || ""}
-              disabled
-              className="bg-slate-50"
-            />
+            <Label htmlFor="svp-phoneNumber">Phone Number</Label>
+            <Input id="svp-phoneNumber" value={formData.phoneNumber || ""} disabled className="bg-muted" />
           </div>
           <div>
-            <Label>Machine Name</Label>
-            <Input
-              value={formData.machineName || ""}
-              disabled
-              className="bg-slate-50"
-            />
+            <Label htmlFor="svp-machineName">Machine Name</Label>
+            <Input id="svp-machineName" value={formData.machineName || ""} disabled className="bg-muted" />
           </div>
 
           {!isCancelled && (
             <>
               <div>
-                <Label>Engineer Assign</Label>
+                <Label htmlFor="svp-engineerAssign">Engineer Assign</Label>
                 <Select
                   value={formData.engineerAssign || undefined}
                   onValueChange={(value) =>
                     handleInputChange("engineerAssign", value)
                   }
                 >
-                  <SelectTrigger
-                    className="border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                    data-testid="select-person-name"
-                  >
+                  <SelectTrigger id="svp-engineerAssign" data-testid="select-person-name">
                     <SelectValue placeholder={formData.engineerAssign || "Select Engineer"} />
                   </SelectTrigger>
-                  <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
+                  <SelectContent className="rounded-md border border-border bg-white shadow-lg">
                     {masterData.length > 0 &&
                       masterData[0]["Engineer Assign Name"] ? (
                       masterData[0]["Engineer Assign Name"].map((item, ind) => (
-                        <SelectItem
-                          key={ind}
-                          value={item}
-                          className="hover:bg-blue-50 focus:bg-blue-50"
-                        >
+                        <SelectItem key={ind} value={item}>
                           {item}
                         </SelectItem>
                       ))
@@ -1532,18 +762,15 @@ export default function SiteVisitPlan() {
               </div>
 
               <div>
-                <Label>Site Name</Label>
-                <Input
-                  value={formData.siteName || ""}
-                  disabled
-                  className="bg-slate-50"
-                />
+                <Label htmlFor="svp-siteName">Site Name</Label>
+                <Input id="svp-siteName" value={formData.siteName || ""} disabled className="bg-muted" />
               </div>
 
               {/* Editable fields */}
               <div>
-                <Label>Travel Date *</Label>
+                <Label htmlFor="svp-dateOfVisit">Travel Date *</Label>
                 <Input
+                  id="svp-dateOfVisit"
                   type="date"
                   value={formData.dateOfVisit || ""}
                   onChange={(e) =>
@@ -1555,35 +782,30 @@ export default function SiteVisitPlan() {
               </div>
 
               <div>
-                <Label>Travel-Time (AM/PM) *</Label>
-                <TimePicker12
-                  value={formData.travelTime || ""}
-                  onChange={(val) => handleInputChange("travelTime", val)}
-                />
+                <Label id="svp-travelTime-label">Travel-Time (AM/PM) *</Label>
+                <div role="group" aria-labelledby="svp-travelTime-label">
+                  <TimePicker12
+                    value={formData.travelTime || ""}
+                    onChange={(val) => handleInputChange("travelTime", val)}
+                  />
+                </div>
               </div>
 
               <div>
-                <Label>Transportation *</Label>
+                <Label htmlFor="svp-transportation">Transportation *</Label>
                 <Select
                   value={formData.transportation || undefined}
                   onValueChange={(value) =>
                     handleInputChange("transportation", value)
                   }
                 >
-                  <SelectTrigger
-                    className="border-gray-300 focus:border-blue-500 focus:ring-blue-500 bg-white"
-                    data-testid="select-transportation"
-                  >
+                  <SelectTrigger id="svp-transportation" data-testid="select-transportation">
                     <SelectValue placeholder="Select transportation" />
                   </SelectTrigger>
-                  <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
+                  <SelectContent className="rounded-md border border-border bg-white shadow-lg">
                     {["By Bus", "By Train", "By Air", "By Personal Vehicle"].map(
-                      (item, ind) => (
-                        <SelectItem
-                          key={ind}
-                          value={item}
-                          className="hover:bg-blue-50 focus:bg-blue-50"
-                        >
+                      (item) => (
+                        <SelectItem key={item} value={item}>
                           {item}
                         </SelectItem>
                       )
@@ -1592,19 +814,20 @@ export default function SiteVisitPlan() {
                 </Select>
               </div>
 
-              <div className="md:col-span-2 flex space-x-4 pt-4">
+              <div className="flex gap-3 pt-4 md:col-span-2">
                 <Button
                   type="submit"
+                  disabled={isSubmitting}
                   data-testid="button-submit-plan"
-                  className="px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-70 disabled:transform-none"
                 >
-                  {isSubmitting && <Loader2Icon className="animate-spin" />}
+                  {isSubmitting && <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />}
                   Submit
                 </Button>
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => setShowPlanModal(false)}
+                  disabled={isSubmitting}
                   data-testid="button-cancel-plan"
                 >
                   Cancel
@@ -1616,8 +839,9 @@ export default function SiteVisitPlan() {
           {isCancelled && (
             <>
               <div>
-                <Label>Remarks</Label>
+                <Label htmlFor="svp-cancelRemarks">Remarks</Label>
                 <Textarea
+                  id="svp-cancelRemarks"
                   rows={3}
                   value={formData.cancelRemarks || ""}
                   onChange={(e) =>
@@ -1630,11 +854,13 @@ export default function SiteVisitPlan() {
               <div className="flex justify-center py-6">
                 <Button
                   type="button"
+                  variant="destructive"
                   onClick={handleSubmitCancel}
-                  className="bg-red-600 hover:bg-red-700 text-white px-8 py-3"
+                  disabled={cancelSubmit}
+                  className="px-8 py-3"
                 >
                   {cancelSubmit && (
-                    <Loader2Icon className="animate-spin w-4 h-4 mr-2" />
+                    <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />
                   )}
                   Confirm Cancellation
                 </Button>
@@ -1659,9 +885,9 @@ export default function SiteVisitPlan() {
         title="Today's Engineer Availability (9 AM - 7 PM)"
         size="3xl"
       >
-        <div className="bg-white rounded-lg p-6 max-h-[80vh] overflow-y-auto space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
-            <div className="text-sm text-slate-500">
+        <div className="rounded-lg bg-card p-6 max-h-[80vh] overflow-y-auto space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border pb-3">
+            <div className="text-sm text-muted-foreground">
               Availability view for today: <strong>{new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</strong>
             </div>
             <div className="flex items-center gap-4 text-xs font-semibold">
@@ -1672,8 +898,8 @@ export default function SiteVisitPlan() {
           </div>
 
           {/* Availability Stacked Bar Chart */}
-          <div className="bg-slate-50/50 rounded-xl p-4 border border-slate-100 shadow-sm">
-            <h4 className="text-xs font-bold text-slate-700 mb-2 px-1">Availability Breakdown (Hours)</h4>
+          <div className="bg-muted/40 rounded-xl p-4 border border-border shadow-sm">
+            <h4 className="text-xs font-bold text-foreground mb-2 px-1">Availability Breakdown (Hours)</h4>
             <div className="h-[320px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart

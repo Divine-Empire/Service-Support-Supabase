@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   Card,
   CardContent,
@@ -8,7 +8,6 @@ import {
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -23,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import { LoaderIcon, Loader2Icon, Plus, Search, Calendar, Filter, Clock, CheckCircle2, MoreHorizontal, ExternalLink, ClipboardList, Trash2 } from "lucide-react";
+import { LoaderIcon, Loader2Icon, Plus, CheckCircle2, ExternalLink, ClipboardList } from "lucide-react";
 import { useToast } from "../hooks/use-toast";
 import { Textarea } from "../components/ui/textarea";
 import { Modal } from "../components/ui/modal";
@@ -32,6 +31,8 @@ import { ltoSupabase } from "../lib/supabase/ltoClient";
 import { fetchDropdownRows } from "../lib/supabase/dropdown";
 import { fetchEngineerNames } from "../lib/supabase/engineers";
 import { computeStagePlanned } from "../lib/supabase/stagePlanning";
+import { ListToolbar, ListTable, StatusBadge, filterControlClass } from "../components/shared";
+import { useClientList } from "../hooks/useClientList";
 
 
 const formatDateTime = (date) => {
@@ -67,7 +68,7 @@ const formatInputDate = (dateStr) => {
   }
   
   // Case 2: DD-MM-YYYY or DD/MM/YYYY
-  const match = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  const match = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
   if (match) {
     const day = match[1].padStart(2, "0");
     const month = match[2].padStart(2, "0");
@@ -79,7 +80,7 @@ const formatInputDate = (dateStr) => {
   }
 
   // Case 3: YYYY/MM/DD
-  const matchY = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+  const matchY = str.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/);
   if (matchY) {
     const year = matchY[1];
     const month = matchY[2].padStart(2, "0");
@@ -96,18 +97,70 @@ const formatInputDate = (dateStr) => {
       const day = String(date.getDate()).padStart(2, "0");
       return `${year}-${month}-${day}`;
     }
-  } catch (e) {}
+  } catch {
+    // unparseable: fall through to ""
+  }
   
   return "";
 };
+
+const isHttp = (v) => !!v && String(v).startsWith("http");
+
+const fileLink = (url, label) =>
+  isHttp(url) ? (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+    >
+      <ExternalLink className="h-3 w-3" aria-hidden="true" />
+      {label}
+    </a>
+  ) : (
+    url
+  );
+
+const CLIENT_STATUS_TONE = { yes: "success", no: "danger" };
+const REMARKS_KEY = "What Did Customer's Say (Remarks)";
+const isSiteVisitRow = (r) => (r["Service-Type"] || "").trim().toLowerCase() === "site visit";
+
+// Pending: Approve + order/invoice columns. History: what the follow-up recorded.
+const COLUMNS = [
+  { key: "approve", label: "Action", fixed: true, tabs: ["pending"], cell: (r, { onApprove }) => (
+    <Button size="sm" onClick={() => onApprove(r)}>Approve</Button>
+  ) },
+  { key: "siNo", label: "SI NO", defaultVisible: true, strong: true, text: (r) => r["SI NO"] },
+  { key: "orderNo", label: "Order No", defaultVisible: true, text: (r) => r["Order No."] },
+  { key: "companyName", label: "Company Name", defaultVisible: true, wrap: true, width: 200, text: (r) => r["COMPANY NAME"] },
+  { key: "itemName", label: "Item Name", defaultVisible: true, tabs: ["pending"], wrap: true, width: 200, text: (r) => r["Item-Name"] },
+  { key: "invoiceDate", label: "Invoice Date", defaultVisible: true, tabs: ["pending"], text: (r) => formatDateOnly(r["INVOICE DATE"]) },
+  { key: "invoiceNo", label: "Invoice No", defaultVisible: true, tabs: ["pending"], text: (r) => r["INVOICE NO"] },
+  { key: "invoiceCopy", label: "Invoice Copy", defaultVisible: true, tabs: ["pending"], cell: (r) => fileLink(r["Invoice Copy"], "View Invoice") },
+  { key: "clientStatus", label: "Client Status", defaultVisible: true, tabs: ["history"], cell: (r) => (
+    r["Client Status"] ? <StatusBadge tone={CLIENT_STATUS_TONE[r["Client Status"].toLowerCase()] || "warning"}>{r["Client Status"]}</StatusBadge> : ""
+  ) },
+  { key: "serviceType", label: "Service Type", defaultVisible: true, tabs: ["history"], text: (r) => r["Service-Type"] },
+  { key: "engineerName", label: "Engineer Name", defaultVisible: true, tabs: ["history"], text: (r) => r["Engineer Name"] },
+  { key: "serviceReport", label: "Service Report File", defaultVisible: true, tabs: ["history"], cell: (r) => fileLink(r["Service Report"], "View File") },
+  { key: "nextDate", label: "Next Follow-Up Date", defaultVisible: true, text: (r) => formatDateOnly(r["Next Date"]) },
+  { key: "remarks", label: "Remarks", defaultVisible: true, wrap: true, width: 200, text: (r) => r[REMARKS_KEY] },
+  { key: "invoiceCopyHistory", label: "Invoice Copy", tabs: ["history"], defaultVisible: false, cell: (r) => fileLink(r["Invoice Copy"], "View Invoice") },
+  // Empty fragment (not null) so the kit does not print a "-" for rows without an Enquiry button.
+  { key: "enquiry", label: "Actions", fixed: true, tabs: ["history"], cell: (r, { onEnquiry }) => (
+    isSiteVisitRow(r) ? <Button variant="outline" size="sm" onClick={() => onEnquiry(r)}>Enquiry</Button> : <></>
+  ) },
+  { key: "materialRcvd", label: "Material Rcvd", defaultVisible: false, text: (r) => r["Actual material rcvd"] || "0" },
+  { key: "planned", label: "Planned", defaultVisible: false, text: (r) => formatDateTime(r._planned1) },
+  { key: "actual", label: "Actual", defaultVisible: false, tabs: ["history"], text: (r) => formatDateTime(r._actual1) },
+];
 
 const ServiceInstallation = () => {
   const [installations, setInstallations] = useState([]);
   const [fetchLoading, setFetchLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [loadError, setLoadError] = useState(null);
   const [selectedDateFilter, setSelectedDateFilter] = useState("");
-  const [activeTab, setActiveTab] = useState("pending");
   const [showApprovalDialog, setShowApprovalDialog] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   const [approvalData, setApprovalData] = useState({
@@ -124,8 +177,6 @@ const ServiceInstallation = () => {
   const { toast } = useToast();
   const [employeeNames, setEmployeeNames] = useState([]);
   const [serviceTypes, setServiceTypes] = useState([]);
-  const [serviceTypeSearch, setServiceTypeSearch] = useState("");
-  const [engineerSearch, setEngineerSearch] = useState("");
   const [fileData, setFileData] = useState({ name: "", base64: "" });
   const fileInputRef = useRef(null);
 
@@ -177,6 +228,7 @@ const ServiceInstallation = () => {
   const fetchInstallations = async () => {
     try {
       setFetchLoading(true);
+      setLoadError(null);
       const { data, error } = await supabase
         .from("sss_service_installation")
         .select("*")
@@ -213,6 +265,7 @@ const ServiceInstallation = () => {
       setInstallations(formattedData);
     } catch (error) {
       console.error("Error fetching installations:", error);
+      setLoadError(error.message || "Failed to fetch data");
       toast({ title: "Error", description: "Failed to fetch data", variant: "destructive" });
     } finally {
       setFetchLoading(false);
@@ -285,6 +338,7 @@ const ServiceInstallation = () => {
   useEffect(() => {
     fetchInstallations();
     fetchDropdownData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -414,19 +468,19 @@ const ServiceInstallation = () => {
     e.preventDefault();
 
     if (!newEnquiryData.clientName) {
-      alert("Error: Client Name is required");
+      toast({ title: "Validation Error", description: "Client Name is required", variant: "destructive" });
       return;
     }
     if (!newEnquiryData.phoneNumber) {
-      alert("Error: Phone Number is required");
+      toast({ title: "Validation Error", description: "Phone Number is required", variant: "destructive" });
       return;
     }
     if (newEnquiryData.clientType === "Existing" && !newEnquiryData.companyName) {
-      alert("Error: Company Name is required for existing clients");
+      toast({ title: "Validation Error", description: "Company Name is required for existing clients", variant: "destructive" });
       return;
     }
     if (!newEnquiryData.mentionIssue || !newEnquiryData.mentionIssue.trim()) {
-      alert("Error: Mention Issue is required");
+      toast({ title: "Validation Error", description: "Mention Issue is required", variant: "destructive" });
       return;
     }
 
@@ -672,29 +726,31 @@ const ServiceInstallation = () => {
 
 
 
-  const filteredData = installations.filter(item => {
-    const matchesSearch = searchTerm === "" ||
-      Object.values(item).some(val => String(val).toLowerCase().includes(searchTerm.toLowerCase()));
-    if (!matchesSearch) return false;
+  // Follow-Up Date filter narrows the rows (and the tab counts) before the list hook sees them.
+  const dateFiltered = useMemo(
+    () => (selectedDateFilter === "" ? installations : installations.filter((i) => formatInputDate(i["Next Date"]) === selectedDateFilter)),
+    [installations, selectedDateFilter]
+  );
+  const pendingRows = useMemo(() => dateFiltered.filter((i) => i._planned1 !== "" && i._actual1 === ""), [dateFiltered]);
+  const historyRows = useMemo(() => dateFiltered.filter((i) => i._planned1 !== "" && i._actual1 !== ""), [dateFiltered]);
 
-    if (selectedDateFilter !== "") {
-      const itemDateNormalized = formatInputDate(item["Next Date"]);
-      if (itemDateNormalized !== selectedDateFilter) return false;
-    }
-
-    if (activeTab === "pending") {
-      return item._planned1 !== "" && item._actual1 === "";
-    } else {
-      return item._planned1 !== "" && item._actual1 !== "";
-    }
+  const list = useClientList({
+    key: "service-installation",
+    data: { pending: pendingRows, history: historyRows },
+    loading: fetchLoading,
+    error: loadError,
+    onRetry: fetchInstallations,
+    // Same as before: search matches any field of the row.
+    searchKeys: (row) => Object.values(row),
+    filters: [
+      { key: "company", label: "Company", allLabel: "All Companies", get: (r) => r["COMPANY NAME"] },
+      { key: "clientStatus", label: "Client Status", allLabel: "All Statuses", get: (r) => r["Client Status"], tabs: ["history"] },
+      { key: "serviceType", label: "Service Type", allLabel: "All Service Types", get: (r) => r["Service-Type"], tabs: ["history"] },
+      { key: "engineer", label: "Engineer", allLabel: "All Engineers", get: (r) => r["Engineer Name"], tabs: ["history"] },
+    ],
+    columns: COLUMNS,
+    sort: "none", // rows already arrive newest first
   });
-
-  const getStatusBadge = (status) => {
-    const s = String(status || "").toLowerCase();
-    if (s.includes("approved") || s.includes("complete")) return "bg-green-500/20 text-green-700 border border-green-500/30";
-    if (s.includes("reject") || s.includes("cancel")) return "bg-red-500/20 text-red-700 border border-red-500/30";
-    return "bg-yellow-500/20 text-yellow-700 border border-yellow-500/30";
-  };
 
   const serviceTypeClean = (approvalData.serviceType || "").trim().toLowerCase();
   const isSiteVisit = serviceTypeClean === "site visit";
@@ -702,85 +758,44 @@ const ServiceInstallation = () => {
   const showServiceReport = !isSiteVisit && serviceTypeClean.includes("visit");
 
   return (
-    <div className="space-y-6">
-      <Card className="border border-indigo-100 bg-gradient-to-br from-indigo-50 to-blue-50 shadow-md">
-        <CardHeader className="pb-4">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-              <CardTitle className="text-2xl font-bold text-indigo-900">Service Installation</CardTitle>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto items-start sm:items-center">
-              <div className="relative w-full sm:w-64">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-indigo-400" />
-                <Input
-                  placeholder="Search installations..."
-                  className="pl-10 border-indigo-100 focus:ring-2 focus:ring-indigo-500 bg-white shadow-sm"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <Label className="text-xs font-bold text-indigo-600 whitespace-nowrap">Follow-Up Date:</Label>
-                <Input
-                  type="date"
-                  className="border-indigo-100 focus:ring-2 focus:ring-indigo-500 bg-white shadow-sm text-indigo-900 cursor-pointer h-10 w-full sm:w-44"
-                  value={selectedDateFilter}
-                  onChange={(e) => setSelectedDateFilter(e.target.value)}
-                />
-                {selectedDateFilter && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setSelectedDateFilter("")}
-                    className="text-indigo-600 hover:text-indigo-800 text-xs font-semibold px-2"
-                  >
-                    Clear
-                  </Button>
-                )}
-              </div>
-            </div>
+    <div className="space-y-3">
+      <ListToolbar
+        list={list}
+        searchPlaceholder="Search installations..."
+        extraFilters={
+          <div className="flex items-center gap-2">
+            <Label htmlFor="followup-date-filter" className="whitespace-nowrap text-xs font-medium text-muted-foreground">Follow-Up Date</Label>
+            <input
+              id="followup-date-filter"
+              type="date"
+              className={`${filterControlClass} w-auto`}
+              value={selectedDateFilter}
+              onChange={(e) => setSelectedDateFilter(e.target.value)}
+            />
+            {selectedDateFilter && (
+              <Button variant="ghost" size="sm" onClick={() => setSelectedDateFilter("")} className="px-2 text-xs">
+                Clear
+              </Button>
+            )}
           </div>
-        </CardHeader>
-      </Card>
-
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-          <TabsList className="bg-white border border-gray-200 p-1 shadow-sm">
-            <TabsTrigger value="pending" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white transition-all">
-              <Clock className="h-4 w-4 mr-2" />
-              Pending
-              <span className="ml-2 px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-xs font-bold">
-                {installations.filter(i => i._planned1 !== "" && i._actual1 === "" && (selectedDateFilter === "" || formatInputDate(i["Next Date"]) === selectedDateFilter)).length}
-              </span>
-            </TabsTrigger>
-            <TabsTrigger value="history" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white transition-all">
-              <CheckCircle2 className="h-4 w-4 mr-2" />
-              History
-              <span className="ml-2 px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-xs font-bold">
-                {installations.filter(i => i._planned1 !== "" && i._actual1 !== "" && (selectedDateFilter === "" || formatInputDate(i["Next Date"]) === selectedDateFilter)).length}
-              </span>
-            </TabsTrigger>
-          </TabsList>
-        </div>
-
-        <TabsContent value="pending" className="mt-0">
-          <InstallationTable data={filteredData} loading={fetchLoading} getStatusBadge={getStatusBadge} onApprove={handleApproveClick} onEnquiry={handleEnquiryClick} activeTab={activeTab} />
-        </TabsContent>
-
-        <TabsContent value="history" className="mt-0">
-          <InstallationTable data={filteredData} loading={fetchLoading} getStatusBadge={getStatusBadge} onApprove={handleApproveClick} onEnquiry={handleEnquiryClick} activeTab={activeTab} />
-        </TabsContent>
-
-      </Tabs>
+        }
+      />
+      <ListTable
+        list={list}
+        ctx={{ onApprove: handleApproveClick, onEnquiry: handleEnquiryClick }}
+        rowKey={(r) => r.id}
+        emptyTitle={{ pending: "No pending installations.", history: "No installation history." }}
+        ariaLabel="Service installations"
+      />
 
       {/* Approval Dialog */}
       <Dialog open={showApprovalDialog} onOpenChange={setShowApprovalDialog}>
         <DialogContent className="sm:max-w-[650px] p-0 bg-white border-none shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-          <DialogHeader className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white p-6 rounded-t-lg shrink-0">
+          <DialogHeader className="bg-primary text-primary-foreground p-6 rounded-t-lg shrink-0">
             <div className="flex justify-between items-center">
               <div>
                 <DialogTitle className="text-2xl font-bold">Follow Up Form</DialogTitle>
-                <p className="text-indigo-100 text-sm mt-1 font-medium">Processing follow-up for SN: {selectedItem?.["SI NO"]}</p>
+                <p className="text-primary-foreground/80 text-sm mt-1 font-medium">Processing follow-up for SN: {selectedItem?.["SI NO"]}</p>
               </div>
             </div>
           </DialogHeader>
@@ -788,37 +803,37 @@ const ServiceInstallation = () => {
           <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-gray-50/50">
             <form id="followup-form" onSubmit={handleApprovalSubmit} className="space-y-6">
               {/* Info Card */}
-              <Card className="bg-white border border-indigo-100 shadow-sm overflow-hidden">
+              <Card className="bg-white border border-brand-100 shadow-sm overflow-hidden">
                 <CardContent className="p-5 grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="space-y-1">
-                    <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Order No.</p>
+                    <p className="text-[10px] font-bold text-brand-400 uppercase tracking-widest">Order No.</p>
                     <p className="text-sm font-bold text-gray-900">{selectedItem?.["Order No."] || "N/A"}</p>
                   </div>
                   <div className="space-y-1 md:col-span-1">
-                    <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Company Name</p>
+                    <p className="text-[10px] font-bold text-brand-400 uppercase tracking-widest">Company Name</p>
                     <p className="text-sm font-bold text-gray-900 leading-tight">{selectedItem?.["COMPANY NAME"] || "N/A"}</p>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Invoice Date</p>
+                    <p className="text-[10px] font-bold text-brand-400 uppercase tracking-widest">Invoice Date</p>
                     <p className="text-sm font-bold text-gray-900">{formatDateOnly(selectedItem?.["INVOICE DATE"])}</p>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Invoice No</p>
+                    <p className="text-[10px] font-bold text-brand-400 uppercase tracking-widest">Invoice No</p>
                     <p className="text-sm font-bold text-gray-900 truncate" title={selectedItem?.["INVOICE NO"]}>{selectedItem?.["INVOICE NO"] || "N/A"}</p>
                   </div>
                   <div className="space-y-1 md:col-span-2">
-                    <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Machine Names</p>
+                    <p className="text-[10px] font-bold text-brand-400 uppercase tracking-widest">Machine Names</p>
                     <p className="text-sm font-bold text-gray-900 leading-tight">{selectedItem?.["Item-Name"] || "N/A"}</p>
                   </div>
                   {selectedItem?.["Next Date"] && (
                     <div className="space-y-1">
-                      <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Last Follow-Up Date</p>
+                      <p className="text-[10px] font-bold text-brand-400 uppercase tracking-widest">Last Follow-Up Date</p>
                       <p className="text-sm font-bold text-gray-900">{formatDateOnly(selectedItem["Next Date"])}</p>
                     </div>
                   )}
                   {(selectedItem?.["What Did Customer's Say (Remarks)"] || selectedItem?.["What Did Customer's Say"]) && (
                     <div className="space-y-1 md:col-span-2">
-                      <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Last Follow-Up Remarks</p>
+                      <p className="text-[10px] font-bold text-brand-400 uppercase tracking-widest">Last Follow-Up Remarks</p>
                       <p className="text-sm font-bold text-gray-900 leading-tight">
                         {selectedItem["What Did Customer's Say (Remarks)"] || selectedItem["What Did Customer's Say"]}
                       </p>
@@ -830,20 +845,20 @@ const ServiceInstallation = () => {
               {/* Dynamic Section */}
               <div className="space-y-4 bg-white p-5 rounded-lg border border-gray-100 shadow-sm">
                 <div className="space-y-2">
-                  <Label className="text-indigo-900 font-bold flex items-center gap-2">
+                  <Label htmlFor="fu-status" className="text-brand-900 font-bold flex items-center gap-2">
                     Installation Follow-Up <span className="text-red-500">*</span>
                   </Label>
                   <Select
                     value={approvalData.clientStatus}
                     onValueChange={(val) => setApprovalData({ ...approvalData, clientStatus: val })}
                   >
-                    <SelectTrigger className="w-full border-indigo-200 focus:ring-indigo-500 h-11">
+                    <SelectTrigger id="fu-status" className="w-full border-brand-200 focus:ring-brand-500 h-11">
                       <SelectValue placeholder="Select Status" />
                     </SelectTrigger>
-                    <SelectContent className="bg-white border-indigo-100">
-                      <SelectItem value="Yes" className="focus:bg-indigo-50">Yes</SelectItem>
-                      <SelectItem value="No" className="focus:bg-indigo-50">No</SelectItem>
-                      <SelectItem value="Next Date for Follow-Up" className="focus:bg-indigo-50">Next Date for Follow-Up</SelectItem>
+                    <SelectContent className="bg-white border-brand-100">
+                      <SelectItem value="Yes" className="focus:bg-brand-50">Yes</SelectItem>
+                      <SelectItem value="No" className="focus:bg-brand-50">No</SelectItem>
+                      <SelectItem value="Next Date for Follow-Up" className="focus:bg-brand-50">Next Date for Follow-Up</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -852,7 +867,7 @@ const ServiceInstallation = () => {
                   <div className="space-y-5 pt-4 animate-in fade-in slide-in-from-top-4 duration-300">
                     <div className="flex items-center gap-2 mb-2">
                       <div className="h-px flex-1 bg-gray-100"></div>
-                      <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest px-2">Service Details</span>
+                      <span className="text-[10px] font-bold text-brand-500 uppercase tracking-widest px-2">Service Details</span>
                       <div className="h-px flex-1 bg-gray-100"></div>
                     </div>
 
@@ -864,12 +879,12 @@ const ServiceInstallation = () => {
                         : "space-y-2"
                     }>
                       <div className="space-y-2">
-                        <Label className="text-gray-700 font-semibold">Service Type *</Label>
+                        <Label htmlFor="fu-serviceType" className="text-gray-700 font-semibold">Service Type *</Label>
                         <Select
                           value={approvalData.serviceType}
                           onValueChange={(val) => setApprovalData({ ...approvalData, serviceType: val })}
                         >
-                          <SelectTrigger className="h-10">
+                          <SelectTrigger id="fu-serviceType" className="h-10">
                             <SelectValue placeholder="Select Service Type" />
                           </SelectTrigger>
                           <SelectContent className="bg-white max-h-60 overflow-y-auto">
@@ -882,12 +897,12 @@ const ServiceInstallation = () => {
 
                       {showEngineer && (
                         <div className="space-y-2 animate-in fade-in duration-300">
-                          <Label className="text-gray-700 font-semibold">Engineer Name *</Label>
+                          <Label htmlFor="fu-engineer" className="text-gray-700 font-semibold">Engineer Name *</Label>
                           <Select
                             value={approvalData.engineerName}
                             onValueChange={(val) => setApprovalData({ ...approvalData, engineerName: val })}
                           >
-                            <SelectTrigger className="h-10">
+                            <SelectTrigger id="fu-engineer" className="h-10">
                               <SelectValue placeholder="Select Engineer" />
                             </SelectTrigger>
                             <SelectContent className="bg-white max-h-60 overflow-y-auto">
@@ -901,8 +916,8 @@ const ServiceInstallation = () => {
 
                       {approvalData.serviceType && ["video-call", "video call"].includes(approvalData.serviceType.trim().toLowerCase()) && (
                         <div className="space-y-2 animate-in fade-in duration-300">
-                          <Label className="text-gray-700 font-semibold">Video-Call Time *</Label>
-                          <Input
+                          <Label htmlFor="fu-videoTime" className="text-gray-700 font-semibold">Video-Call Time *</Label>
+                          <Input id="fu-videoTime"
                             type="time"
                             className="h-10"
                             value={approvalData.videoCallTime}
@@ -915,15 +930,15 @@ const ServiceInstallation = () => {
 
                     {/* Site Visit: show only company info + redirect notice, hide engineer/file/remarks */}
                     {isSiteVisit ? (
-                      <div className="animate-in fade-in duration-300 rounded-lg border border-indigo-200 bg-indigo-50 p-4 flex items-start gap-3">
-                        <div className="mt-0.5 h-8 w-8 shrink-0 rounded-full bg-indigo-100 flex items-center justify-center">
-                          <ExternalLink className="h-4 w-4 text-indigo-600" />
+                      <div className="animate-in fade-in duration-300 rounded-lg border border-brand-200 bg-brand-50 p-4 flex items-start gap-3">
+                        <div className="mt-0.5 h-8 w-8 shrink-0 rounded-full bg-brand-100 flex items-center justify-center">
+                          <ExternalLink className="h-4 w-4 text-brand-600" />
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-indigo-800">
+                          <p className="text-sm font-semibold text-brand-800">
                             Redirecting to New Enquiry
                           </p>
-                          <p className="text-xs text-indigo-600 mt-0.5">
+                          <p className="text-xs text-brand-600 mt-0.5">
                             Company: <span className="font-bold">{selectedItem?.["COMPANY NAME"] || "—"}</span>
                           </p>
                           <p className="text-xs text-gray-500 mt-1">
@@ -935,8 +950,8 @@ const ServiceInstallation = () => {
                       <>
                         {showServiceReport && (
                           <div className="space-y-2 animate-in fade-in duration-300">
-                            <Label className="text-gray-700 font-semibold">Service Report (Image/Video/PDF) *</Label>
-                            <input
+                            <Label htmlFor="fu-report" className="text-gray-700 font-semibold">Service Report (Image/Video/PDF) *</Label>
+                            <input id="fu-report"
                               type="file"
                               ref={fileInputRef}
                               className="hidden"
@@ -945,12 +960,12 @@ const ServiceInstallation = () => {
                             />
                             <div
                               onClick={() => fileInputRef.current?.click()}
-                              className={`border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center transition-all cursor-pointer group ${fileData.name ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 bg-gray-50 hover:bg-indigo-50/50 hover:border-indigo-300'}`}
+                              className={`border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center transition-all cursor-pointer group ${fileData.name ? 'border-brand-500 bg-brand-50' : 'border-gray-200 bg-gray-50 hover:bg-brand-50/50 hover:border-brand-300'}`}
                             >
-                              <div className={`h-10 w-10 rounded-full flex items-center justify-center mb-2 group-hover:scale-110 transition-transform ${fileData.name ? 'bg-indigo-600' : 'bg-indigo-100'}`}>
-                                {fileData.name ? <CheckCircle2 className="h-5 w-5 text-white" /> : <Plus className="h-5 w-5 text-indigo-600" />}
+                              <div className={`h-10 w-10 rounded-full flex items-center justify-center mb-2 group-hover:scale-110 transition-transform ${fileData.name ? 'bg-brand-600' : 'bg-brand-100'}`}>
+                                {fileData.name ? <CheckCircle2 className="h-5 w-5 text-white" /> : <Plus className="h-5 w-5 text-brand-600" />}
                               </div>
-                              <p className="text-sm font-medium text-indigo-600">
+                              <p className="text-sm font-medium text-brand-600">
                                 {fileData.name ? fileData.name : "Upload a file"} <span className="text-gray-400 font-normal">or drag and drop</span>
                               </p>
                               <p className="text-xs text-gray-400 mt-1">Images, Videos, PDFs up to 10MB</p>
@@ -959,9 +974,9 @@ const ServiceInstallation = () => {
                         )}
 
                         <div className="space-y-2">
-                          <Label className="text-gray-700 font-semibold">Remarks *</Label>
-                          <textarea
-                            className="w-full min-h-[100px] p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm shadow-inner"
+                          <Label htmlFor="fu-remarks" className="text-gray-700 font-semibold">Remarks *</Label>
+                          <textarea id="fu-remarks"
+                            className="w-full min-h-[100px] p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm shadow-inner"
                             placeholder="Enter service remarks..."
                             value={approvalData.remarks}
                             onChange={(e) => setApprovalData({ ...approvalData, remarks: e.target.value })}
@@ -974,9 +989,9 @@ const ServiceInstallation = () => {
 
                 {approvalData.clientStatus === "No" && (
                   <div className="space-y-2 pt-4 animate-in fade-in slide-in-from-top-4 duration-300">
-                    <Label className="text-gray-700 font-semibold">Remarks *</Label>
-                    <textarea
-                      className="w-full min-h-[120px] p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm shadow-inner"
+                    <Label htmlFor="fu-remarksNo" className="text-gray-700 font-semibold">Remarks *</Label>
+                    <textarea id="fu-remarksNo"
+                      className="w-full min-h-[120px] p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm shadow-inner"
                       placeholder="Why not?"
                       value={approvalData.remarks}
                       onChange={(e) => setApprovalData({ ...approvalData, remarks: e.target.value })}
@@ -987,8 +1002,8 @@ const ServiceInstallation = () => {
                 {approvalData.clientStatus === "Next Date for Follow-Up" && (
                   <div className="space-y-5 pt-4 animate-in fade-in slide-in-from-top-4 duration-300">
                     <div className="space-y-2">
-                      <Label className="text-gray-700 font-semibold">Next Date for Follow-Up *</Label>
-                      <Input
+                      <Label htmlFor="fu-nextDate" className="text-gray-700 font-semibold">Next Date for Follow-Up *</Label>
+                      <Input id="fu-nextDate"
                         type="date"
                         className="h-10"
                         value={approvalData.followUpDate}
@@ -996,9 +1011,9 @@ const ServiceInstallation = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-gray-700 font-semibold">What did Customer Said *</Label>
-                      <textarea
-                        className="w-full min-h-[120px] p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm shadow-inner"
+                      <Label htmlFor="fu-customerSay" className="text-gray-700 font-semibold">What did Customer Said *</Label>
+                      <textarea id="fu-customerSay"
+                        className="w-full min-h-[120px] p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm shadow-inner"
                         placeholder="Enter what the customer said..."
                         value={approvalData.customerSay}
                         onChange={(e) => setApprovalData({ ...approvalData, customerSay: e.target.value })}
@@ -1024,7 +1039,7 @@ const ServiceInstallation = () => {
               <Button
                 form="followup-form"
                 type="submit"
-                className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 h-10 font-bold shadow-lg shadow-indigo-200 transition-all transform active:scale-95"
+                className="px-8 h-10 font-bold"
                 disabled={isSubmitting}
               >
                 {isSubmitting ? <LoaderIcon className="h-4 w-4 animate-spin" /> : "Save"}
@@ -1039,7 +1054,7 @@ const ServiceInstallation = () => {
         onClose={() => setShowEnquiryModal(false)}
         title={
           <div className="flex items-center space-x-2 font-sans">
-            <ClipboardList className="w-5 h-5 text-indigo-600" />
+            <ClipboardList className="w-5 h-5 text-brand-600" />
             <span>New Enquiry</span>
           </div>
         }
@@ -1058,7 +1073,7 @@ const ServiceInstallation = () => {
             </CardHeader>
             <CardContent className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1">
-                <Label className="text-sm">Client Type *</Label>
+                <Label htmlFor="enq-clientType" className="text-sm">Client Type *</Label>
                 <Select
                   onValueChange={(value) => {
                     setNewEnquiryData(prev => ({
@@ -1071,7 +1086,7 @@ const ServiceInstallation = () => {
                   }}
                   value={newEnquiryData.clientType}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="enq-clientType">
                     <SelectValue placeholder="Select Client Type" />
                   </SelectTrigger>
                   <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
@@ -1082,10 +1097,10 @@ const ServiceInstallation = () => {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-sm">Company Name *</Label>
+                <Label htmlFor="enq-company" className="text-sm">Company Name *</Label>
                 {newEnquiryData.clientType === "Existing" ? (
                   <div className="relative">
-                    <Input
+                    <Input id="enq-company"
                       value={newEnquiryData.companyName || ""}
                       onChange={(e) => handleNewEnquiryCompanyChange(e.target.value)}
                       placeholder="Type to search or select company name"
@@ -1100,7 +1115,7 @@ const ServiceInstallation = () => {
                     </datalist>
                   </div>
                 ) : (
-                  <Input
+                  <Input id="enq-company"
                     value={newEnquiryData.companyName || ""}
                     onChange={(e) => setNewEnquiryData(prev => ({ ...prev, companyName: e.target.value }))}
                     placeholder="Enter company name"
@@ -1109,8 +1124,8 @@ const ServiceInstallation = () => {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-sm">Client Name *</Label>
-                <Input
+                <Label htmlFor="enq-clientName" className="text-sm">Client Name *</Label>
+                <Input id="enq-clientName"
                   value={newEnquiryData.clientName || ""}
                   onChange={(e) => setNewEnquiryData(prev => ({ ...prev, clientName: e.target.value }))}
                   placeholder="Enter client name"
@@ -1118,8 +1133,8 @@ const ServiceInstallation = () => {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-sm">Phone Number *</Label>
-                <Input
+                <Label htmlFor="enq-phone" className="text-sm">Phone Number *</Label>
+                <Input id="enq-phone"
                   value={newEnquiryData.phoneNumber || ""}
                   onChange={(e) => setNewEnquiryData(prev => ({ ...prev, phoneNumber: e.target.value }))}
                   placeholder="Enter phone number"
@@ -1127,8 +1142,8 @@ const ServiceInstallation = () => {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-sm">Billing Address</Label>
-                <Input
+                <Label htmlFor="enq-billing" className="text-sm">Billing Address</Label>
+                <Input id="enq-billing"
                   value={newEnquiryData.gstAddress || ""}
                   onChange={(e) => setNewEnquiryData(prev => ({ ...prev, gstAddress: e.target.value }))}
                   placeholder="Enter Billing Address"
@@ -1136,8 +1151,8 @@ const ServiceInstallation = () => {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-sm">GST No.</Label>
-                <Input
+                <Label htmlFor="enq-gst" className="text-sm">GST No.</Label>
+                <Input id="enq-gst"
                   value={newEnquiryData.gstNo || ""}
                   onChange={(e) => setNewEnquiryData(prev => ({ ...prev, gstNo: e.target.value }))}
                   placeholder="Enter GST No."
@@ -1145,8 +1160,8 @@ const ServiceInstallation = () => {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-sm">Site Address</Label>
-                <Input
+                <Label htmlFor="enq-site" className="text-sm">Site Address</Label>
+                <Input id="enq-site"
                   value={newEnquiryData.siteAddress || ""}
                   onChange={(e) => setNewEnquiryData(prev => ({ ...prev, siteAddress: e.target.value }))}
                   placeholder="Enter Site Address"
@@ -1163,12 +1178,12 @@ const ServiceInstallation = () => {
             </CardHeader>
             <CardContent className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1">
-                <Label className="text-sm">Call Type *</Label>
+                <Label htmlFor="enq-callType" className="text-sm">Call Type *</Label>
                 <Select
                   onValueChange={(value) => setNewEnquiryData(prev => ({ ...prev, callType: value }))}
                   value={newEnquiryData.callType}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="enq-callType">
                     <SelectValue placeholder="Select Call Type" />
                   </SelectTrigger>
                   <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
@@ -1184,9 +1199,9 @@ const ServiceInstallation = () => {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-sm">Source of Enquiry *</Label>
+                <Label htmlFor="enq-source" className="text-sm">Source of Enquiry *</Label>
                 <div className="relative">
-                  <Input
+                  <Input id="enq-source"
                     value={newEnquiryData.sourceOfEnquiry || ""}
                     onChange={(e) => setNewEnquiryData(prev => ({ ...prev, sourceOfEnquiry: e.target.value }))}
                     placeholder="Search or enter source of enquiry"
@@ -1204,9 +1219,9 @@ const ServiceInstallation = () => {
 
               <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1">
-                  <Label className="text-sm">Enquiry Receiver Name *</Label>
+                  <Label htmlFor="enq-receiver" className="text-sm">Enquiry Receiver Name *</Label>
                   <div className="relative">
-                    <Input
+                    <Input id="enq-receiver"
                       value={newEnquiryData.enquiryReceiverName || ""}
                       onChange={(e) => setNewEnquiryData(prev => ({ ...prev, enquiryReceiverName: e.target.value }))}
                       placeholder="Search or enter receiver name"
@@ -1223,12 +1238,12 @@ const ServiceInstallation = () => {
                 </div>
 
                 <div className="space-y-1">
-                  <Label className="text-sm">Enquiry-Type *</Label>
+                  <Label htmlFor="enq-enquiryType" className="text-sm">Enquiry-Type *</Label>
                   <Select
                     onValueChange={(value) => setNewEnquiryData(prev => ({ ...prev, category: value }))}
                     value={newEnquiryData.category}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="enq-enquiryType">
                       <SelectValue placeholder="Select Enquiry-Type" />
                     </SelectTrigger>
                     <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
@@ -1244,15 +1259,15 @@ const ServiceInstallation = () => {
                 </div>
 
                 <div className="space-y-1 relative dropdown-container">
-                  <Label className="text-sm">Category *</Label>
+                  <Label htmlFor="enq-category" className="text-sm">Category *</Label>
                   <div className="relative">
-                    <button
+                    <button id="enq-category"
                       type="button"
                       onClick={() => {
                         setShowCategoryDropdown(!showCategoryDropdown);
                         setShowMachineDropdown(false);
                       }}
-                      className="flex h-10 w-full items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="flex h-10 w-full items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <span className="text-gray-500">
                         {newFormSelectedCategories.length > 0
@@ -1324,7 +1339,7 @@ const ServiceInstallation = () => {
                       {newFormSelectedCategories.map((cat) => (
                         <div
                           key={cat}
-                          className="bg-indigo-50 border border-indigo-100 text-indigo-800 text-xs px-2 py-1 rounded flex items-center"
+                          className="bg-brand-50 border border-brand-100 text-brand-800 text-xs px-2 py-1 rounded flex items-center"
                         >
                           {cat}
                           <button
@@ -1332,7 +1347,7 @@ const ServiceInstallation = () => {
                             onClick={() => {
                               setNewFormSelectedCategories(prev => prev.filter(c => c !== cat));
                             }}
-                            className="ml-1 text-indigo-600 hover:text-indigo-800 font-bold"
+                            className="ml-1 text-brand-600 hover:text-brand-800 font-bold"
                           >
                             ×
                           </button>
@@ -1345,12 +1360,12 @@ const ServiceInstallation = () => {
 
               <div className={`md:col-span-2 grid grid-cols-1 ${newEnquiryData.videoCall === "Yes" ? "md:grid-cols-3" : "md:grid-cols-2"} gap-4`}>
                 <div className="space-y-1">
-                  <Label className="text-sm">Video-Call</Label>
+                  <Label htmlFor="enq-videoCall" className="text-sm">Video-Call</Label>
                   <Select
                     onValueChange={(value) => setNewEnquiryData(prev => ({ ...prev, videoCall: value }))}
                     value={newEnquiryData.videoCall || ""}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="enq-videoCall">
                       <SelectValue placeholder="Yes/No" />
                     </SelectTrigger>
                     <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
@@ -1363,8 +1378,8 @@ const ServiceInstallation = () => {
                 {newEnquiryData.videoCall === "Yes" && (
                   <>
                     <div className="space-y-1 animate-in fade-in duration-300">
-                      <Label className="text-sm">Video-Call Time *</Label>
-                      <Input
+                      <Label htmlFor="enq-videoTime" className="text-sm">Video-Call Time *</Label>
+                      <Input id="enq-videoTime"
                         type="time"
                         value={newEnquiryData.videoCallTime || ""}
                         onChange={(e) => setNewEnquiryData(prev => ({ ...prev, videoCallTime: e.target.value }))}
@@ -1372,12 +1387,12 @@ const ServiceInstallation = () => {
                       />
                     </div>
                     <div className="space-y-1 animate-in fade-in duration-300">
-                      <Label className="text-sm">Engineer-Assigned *</Label>
+                      <Label htmlFor="enq-engineer" className="text-sm">Engineer-Assigned *</Label>
                       <Select
                         onValueChange={(value) => setNewEnquiryData(prev => ({ ...prev, engineerAssign: value }))}
                         value={newEnquiryData.engineerAssign || ""}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger id="enq-engineer">
                           <SelectValue placeholder="Select Engineer" />
                         </SelectTrigger>
                         <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
@@ -1396,12 +1411,12 @@ const ServiceInstallation = () => {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-sm">Service Location *</Label>
+                <Label htmlFor="enq-location" className="text-sm">Service Location *</Label>
                 <Select
                   onValueChange={(value) => setNewEnquiryData(prev => ({ ...prev, serviceLocation: value }))}
                   value={newEnquiryData.serviceLocation}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="enq-location">
                     <SelectValue placeholder="Select Service Location" />
                   </SelectTrigger>
                   <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
@@ -1417,13 +1432,13 @@ const ServiceInstallation = () => {
               </div>
 
               {newEnquiryData.serviceLocation?.trim() === "Warehouse" && (
-                <div className="md:col-span-2 border border-blue-100 rounded-lg p-4 bg-blue-50/20 space-y-4">
-                  <h4 className="text-sm font-semibold text-indigo-800 border-b border-blue-100 pb-2">
+                <div className="md:col-span-2 border border-brand-100 rounded-lg p-4 bg-brand-50/20 space-y-4">
+                  <h4 className="text-sm font-semibold text-brand-800 border-b border-brand-100 pb-2">
                     Warehouse Service Details
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1">
-                      <Label className="text-sm">Challan Copy</Label>
+                      <Label htmlFor="enq-challan" className="text-sm">Challan Copy</Label>
                       {newEnquiryData.challanCopy ? (
                         <div className="flex items-center justify-between border border-emerald-200 rounded-md p-2 bg-emerald-50 text-emerald-800 text-sm">
                           <a href={newEnquiryData.challanCopy} target="_blank" rel="noopener noreferrer" className="font-semibold underline truncate max-w-[200px]">
@@ -1440,7 +1455,7 @@ const ServiceInstallation = () => {
                         </div>
                       ) : (
                         <div className="relative">
-                          <Input
+                          <Input id="enq-challan"
                             type="file"
                             onChange={(e) => {
                               if (e.target.files?.[0]) {
@@ -1450,7 +1465,7 @@ const ServiceInstallation = () => {
                             disabled={uploadingFiles.challanCopy}
                           />
                           {uploadingFiles.challanCopy && (
-                            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center text-indigo-600 text-xs">
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center text-brand-600 text-xs">
                               <Loader2Icon className="animate-spin w-4 h-4 mr-1" />
                               Uploading...
                             </div>
@@ -1460,7 +1475,7 @@ const ServiceInstallation = () => {
                     </div>
 
                     <div className="space-y-1">
-                      <Label className="text-sm">Machine Photo</Label>
+                      <Label htmlFor="enq-photo" className="text-sm">Machine Photo</Label>
                       {newEnquiryData.machinePhoto ? (
                         <div className="flex items-center justify-between border border-emerald-200 rounded-md p-2 bg-emerald-50 text-emerald-800 text-sm">
                           <a href={newEnquiryData.machinePhoto} target="_blank" rel="noopener noreferrer" className="font-semibold underline truncate max-w-[200px]">
@@ -1477,7 +1492,7 @@ const ServiceInstallation = () => {
                         </div>
                       ) : (
                         <div className="relative">
-                          <Input
+                          <Input id="enq-photo"
                             type="file"
                             onChange={(e) => {
                               if (e.target.files?.[0]) {
@@ -1487,7 +1502,7 @@ const ServiceInstallation = () => {
                             disabled={uploadingFiles.machinePhoto}
                           />
                           {uploadingFiles.machinePhoto && (
-                            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center text-indigo-600 text-xs">
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center text-brand-600 text-xs">
                               <Loader2Icon className="animate-spin w-4 h-4 mr-1" />
                               Uploading...
                             </div>
@@ -1500,15 +1515,15 @@ const ServiceInstallation = () => {
               )}
 
               <div className="space-y-1 md:col-span-2 relative">
-                <Label className="text-sm">Machine Name *</Label>
+                <Label htmlFor="enq-machine" className="text-sm">Machine Name *</Label>
                 <div className="relative dropdown-container">
-                  <button
+                  <button id="enq-machine"
                     type="button"
                     onClick={() => {
                       setShowMachineDropdown(!showMachineDropdown);
                       setShowCategoryDropdown(false);
                     }}
-                    className="flex h-10 w-full items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="flex h-10 w-full items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <span className="text-gray-500">
                       {newFormSelectedMachines.length > 0
@@ -1580,7 +1595,7 @@ const ServiceInstallation = () => {
                     {newFormSelectedMachines.map((machine) => (
                       <div
                         key={machine}
-                        className="bg-indigo-50 border border-indigo-100 text-indigo-800 text-xs px-2 py-1 rounded flex items-center"
+                        className="bg-brand-50 border border-brand-100 text-brand-800 text-xs px-2 py-1 rounded flex items-center"
                       >
                         {machine}
                         <button
@@ -1588,7 +1603,7 @@ const ServiceInstallation = () => {
                           onClick={() => {
                             setNewFormSelectedMachines(prev => prev.filter(m => m !== machine));
                           }}
-                          className="ml-1 text-indigo-600 hover:text-indigo-800 font-bold"
+                          className="ml-1 text-brand-600 hover:text-brand-800 font-bold"
                         >
                           ×
                         </button>
@@ -1599,8 +1614,8 @@ const ServiceInstallation = () => {
               </div>
 
               <div className="space-y-1 md:col-span-2">
-                <Label className="text-sm">Mention Issue *</Label>
-                <Textarea
+                <Label htmlFor="enq-issue" className="text-sm">Mention Issue *</Label>
+                <Textarea id="enq-issue"
                   value={newEnquiryData.mentionIssue || ""}
                   onChange={(e) => setNewEnquiryData(prev => ({ ...prev, mentionIssue: e.target.value }))}
                   placeholder="Describe the issue"
@@ -1612,14 +1627,14 @@ const ServiceInstallation = () => {
           <div className="flex justify-end space-x-4 pt-6">
             <Button
               type="button"
+              variant="outline"
               onClick={() => setShowEnquiryModal(false)}
-              className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white shadow-md transition-all duration-300"
+              disabled={isSubmitting}
             >
               Cancel
             </Button>
             <Button
               type="submit"
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-md transition-all duration-300"
               disabled={isSubmitting}
             >
               {isSubmitting && (
@@ -1634,330 +1649,5 @@ const ServiceInstallation = () => {
   );
 };
 
-
-const InstallationTable = ({ data, loading, getStatusBadge, onApprove, onEnquiry, activeTab }) => {
-  if (loading) {
-    return (
-      <Card className="border border-gray-100 shadow-xl p-12 flex flex-col items-center justify-center">
-        <LoaderIcon className="h-10 w-10 animate-spin text-indigo-600" />
-        <p className="mt-4 text-gray-500 font-medium">Fetching data...</p>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {/* Mobile View (Cards) */}
-      <div className="grid grid-cols-1 gap-4 md:hidden">
-        {data.length > 0 ? (
-          data.map((item, idx) => (
-            <Card key={idx} className="border border-gray-100 shadow-md overflow-hidden bg-white">
-              <div className="bg-gradient-to-r from-indigo-800 to-blue-800 p-3 flex justify-between items-center">
-                <span className="font-bold text-white text-sm">{item["SI NO"]}</span>
-
-              </div>
-              <CardContent className="p-4 space-y-3">
-                <div className="flex justify-between items-start">
-                  <div className="space-y-1">
-                    <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Order & Company</p>
-                    <p className="text-sm font-bold text-gray-900">{item["Order No."]}</p>
-                    <p className="text-sm text-gray-600 truncate" title={item["COMPANY NAME"] || ""}>{item["COMPANY NAME"]}</p>
-                  </div>
-                  {activeTab === "pending" && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onApprove(item)}
-                      className="text-indigo-600 border-indigo-200 hover:bg-indigo-600 hover:text-white transition-all shadow-sm h-8"
-                    >
-                      Approve
-                    </Button>
-                  )}
-                  {activeTab === "history" && ((item["Service-Type"] || item["Installation/Service"] || "").trim().toLowerCase() === "site visit") && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onEnquiry(item)}
-                      className="text-indigo-600 border-indigo-200 hover:bg-indigo-600 hover:text-white transition-all shadow-sm h-8"
-                    >
-                      Enquiry
-                    </Button>
-                  )}
-                </div>
-
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Invoice No</p>
-                    <p className="text-sm text-gray-700">{item["INVOICE NO"] || "N/A"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Invoice Date</p>
-                    <p className="text-sm text-gray-700">{item["INVOICE DATE"] || "N/A"}</p>
-                  </div>
-                  {item["Invoice Copy"] && item["Invoice Copy"].toString().startsWith("http") && (
-                    <div className="space-y-1 col-span-2">
-                      <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Invoice Copy</p>
-                      <a
-                        href={item["Invoice Copy"]}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-700 rounded-md hover:bg-indigo-100 transition-colors font-semibold text-xs border border-indigo-200 mt-1"
-                      >
-                        <ExternalLink className="h-3 w-3" />
-                        View Invoice
-                      </a>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-1">
-                  <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Material Rcvd</p>
-                  <p className="text-sm text-gray-700">{item["Actual material rcvd"] || "0"}</p>
-                </div>
-
-                <div className="space-y-1">
-                  <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Item Details</p>
-                  <p className="text-sm text-gray-700 leading-tight">{item["Item-Name"]}</p>
-                </div>
-
-                <div className="pt-2 border-t border-gray-50 flex items-center justify-between text-xs">
-                  <div className="flex items-center text-gray-500">
-                    <Calendar className="h-3 w-3 mr-1 text-indigo-400" />
-                    Planned: {item["Planned 1"]}
-                  </div>
-                  {activeTab === "history" && item["Actual 1"] && (
-                    <div className="flex items-center text-green-600 font-medium">
-                      <CheckCircle2 className="h-3 w-3 mr-1" />
-                      Actual: {item["Actual 1"]}
-                    </div>
-                  )}
-                </div>
-
-                {activeTab === "pending" && (
-                  <div className="pt-2 mt-2 border-t border-gray-50 space-y-2 text-xs">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <p className="text-gray-400 font-semibold uppercase tracking-wider">Last Follow-Up Date</p>
-                        <p className="text-gray-700 font-medium">{formatDateOnly(item["Next Date"])}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-400 font-semibold uppercase tracking-wider">Remarks</p>
-                        <p className="text-gray-700 font-medium truncate" title={item["What Did Customer's Say (Remarks)"] || item["What Did Customer's Say"] || ""}>
-                          {item["What Did Customer's Say (Remarks)"] || item["What Did Customer's Say"] || "-"}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeTab === "history" && (
-                  <div className="pt-2 mt-2 border-t border-gray-50 space-y-2">
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div>
-                        <p className="text-gray-400 font-semibold uppercase tracking-wider">Client Status</p>
-                        <p className="text-gray-700 font-medium">{item["Client Status"] || "N/A"}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-400 font-semibold uppercase tracking-wider">Service Type</p>
-                        <p className="text-gray-700 font-medium">{item["Service-Type"] || item["Installation/Service"] || "N/A"}</p>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div>
-                        <p className="text-gray-400 font-semibold uppercase tracking-wider">Engineer</p>
-                        <p className="text-gray-700 font-medium">{item["Engineer Name"] || "N/A"}</p>
-                      </div>
-                      {item["Next Date"] && (
-                        <div>
-                          <p className="text-gray-400 font-semibold uppercase tracking-wider">Next Follow-up</p>
-                          <p className="text-gray-700 font-medium">{formatDateOnly(item["Next Date"])}</p>
-                        </div>
-                      )}
-                    </div>
-                    {(item["What Did Customer's Say (Remarks)"] || item["What Did Customer's Say"]) && (
-                      <div className="text-xs">
-                        <p className="text-gray-400 font-semibold uppercase tracking-wider">Remarks</p>
-                        <p className="text-gray-700 font-medium line-clamp-2">
-                          {item["What Did Customer's Say (Remarks)"] || item["What Did Customer's Say"]}
-                        </p>
-                      </div>
-                    )}
-                    {item["Service Report"] && item["Service Report"].toString().startsWith("http") && (
-                      <div className="text-xs pt-1">
-                        <p className="text-gray-400 font-semibold uppercase tracking-wider">Service Report File</p>
-                        <a
-                          href={item["Service Report"]}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-700 rounded-md hover:bg-indigo-100 transition-colors font-semibold text-xs border border-indigo-200 mt-1"
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                          View Service File
-                        </a>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))
-        ) : (
-          <Card className="p-8 text-center text-gray-500 font-medium">
-            No records found.
-          </Card>
-        )}
-      </div>
-
-      {/* Desktop View (Table) */}
-      <Card className="hidden md:block border border-gray-100 shadow-xl overflow-hidden bg-white">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-gradient-to-r from-indigo-800 to-blue-800">
-                {activeTab === "pending" && <th className="px-6 py-4 text-xs font-bold text-white uppercase tracking-wider">Action</th>}
-                <th className="px-6 py-4 text-xs font-bold text-white uppercase tracking-wider whitespace-nowrap">SI NO</th>
-                <th className="px-6 py-4 text-xs font-bold text-white uppercase tracking-wider whitespace-nowrap">Order No</th>
-                <th className="px-6 py-4 text-xs font-bold text-white uppercase tracking-wider whitespace-nowrap">Company Name</th>
-
-                {activeTab === "pending" ? (
-                  <>
-                    <th className="px-6 py-4 text-xs font-bold text-white uppercase tracking-wider whitespace-nowrap">Item Name</th>
-                    <th className="px-6 py-4 text-xs font-bold text-white uppercase tracking-wider whitespace-nowrap">Invoice Date</th>
-                    <th className="px-6 py-4 text-xs font-bold text-white uppercase tracking-wider whitespace-nowrap">Invoice No</th>
-                    <th className="px-6 py-4 text-xs font-bold text-white uppercase tracking-wider whitespace-nowrap">Invoice Copy</th>
-                    <th className="px-6 py-4 text-xs font-bold text-white uppercase tracking-wider whitespace-nowrap">Next Follow-Up Date</th>
-                    <th className="px-6 py-4 text-xs font-bold text-white uppercase tracking-wider whitespace-nowrap">Remarks</th>
-                    {/* <th className="px-6 py-4 text-xs font-bold text-white uppercase tracking-wider whitespace-nowrap">Material Rcvd</th> */}
-                  </>
-                ) : (
-                  <>
-                    <th className="px-6 py-4 text-xs font-bold text-white uppercase tracking-wider whitespace-nowrap">Client Status</th>
-                    <th className="px-6 py-4 text-xs font-bold text-white uppercase tracking-wider whitespace-nowrap">Service Type</th>
-                    <th className="px-6 py-4 text-xs font-bold text-white uppercase tracking-wider whitespace-nowrap">Engineer Name</th>
-                    <th className="px-6 py-4 text-xs font-bold text-white uppercase tracking-wider whitespace-nowrap">Service Report File</th>
-                    <th className="px-6 py-4 text-xs font-bold text-white uppercase tracking-wider whitespace-nowrap">Next Follow-Up Date</th>
-                    <th className="px-6 py-4 text-xs font-bold text-white uppercase tracking-wider whitespace-nowrap">Remarks</th>
-                    <th className="px-6 py-4 text-xs font-bold text-white uppercase tracking-wider whitespace-nowrap">Invoice Copy</th>
-                    <th className="px-6 py-4 text-xs font-bold text-white uppercase tracking-wider whitespace-nowrap">Actions</th>
-                  </>
-                )}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {data.length > 0 ? (
-                data.map((item, idx) => (
-                  <tr key={idx} className="hover:bg-indigo-50/30 transition-colors group">
-                    {activeTab === "pending" && (
-                      <td className="px-6 py-4">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => onApprove(item)}
-                          className="text-indigo-600 border-indigo-200 hover:bg-indigo-600 hover:text-white transition-all shadow-sm"
-                        >
-                          Approve
-                        </Button>
-                      </td>
-                    )}
-                    <td className="px-6 py-4 font-bold text-indigo-700 whitespace-nowrap">{item["SI NO"]}</td>
-                    <td className="px-6 py-4 text-gray-900 font-medium whitespace-nowrap">{item["Order No."]}</td>
-                    <td className="px-6 py-4 text-gray-600 truncate max-w-[200px]" title={item["COMPANY NAME"] || ""}>{item["COMPANY NAME"]}</td>
-
-                    {activeTab === "pending" ? (
-                      <>
-                        <td className="px-6 py-4 text-gray-600 min-w-[200px]">{item["Item-Name"]}</td>
-                        <td className="px-6 py-4 text-gray-600 whitespace-nowrap">{formatDateOnly(item["INVOICE DATE"])}</td>
-                        <td className="px-6 py-4 text-gray-600 whitespace-nowrap">{item["INVOICE NO"]}</td>
-                        <td className="px-6 py-4 text-gray-600 whitespace-nowrap">
-                          {item["Invoice Copy"] && item["Invoice Copy"].toString().startsWith("http") ? (
-                            <a
-                              href={item["Invoice Copy"]}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-700 rounded-md hover:bg-indigo-100 transition-colors font-semibold text-xs border border-indigo-200"
-                            >
-                              <ExternalLink className="h-3 w-3" />
-                              View Invoice
-                            </a>
-                          ) : (
-                            item["Invoice Copy"] || "-"
-                          )}
-                        </td>
-                        <td className="px-6 py-4 text-gray-600 whitespace-nowrap">{formatDateOnly(item["Next Date"])}</td>
-                        <td className="px-6 py-4 text-gray-600 truncate max-w-[150px]" title={item["What Did Customer's Say (Remarks)"] || item["What Did Customer's Say"] || ""}>
-                          {item["What Did Customer's Say (Remarks)"] || item["What Did Customer's Say"] || "-"}
-                        </td>
-                        {/* <td className="px-6 py-4 text-gray-600 text-center">{item["Actual material rcvd"]}</td> */}
-                      </>
-                    ) : (
-                      <>
-                        <td className="px-6 py-4 text-gray-600 whitespace-nowrap">{item["Client Status"] || "-"}</td>
-                        <td className="px-6 py-4 text-gray-600 whitespace-nowrap">{item["Service-Type"] || item["Installation/Service"] || "-"}</td>
-                        <td className="px-6 py-4 text-gray-600 whitespace-nowrap">{item["Engineer Name"] || "-"}</td>
-                        <td className="px-6 py-4 text-gray-600 whitespace-nowrap">
-                          {item["Service Report"] && item["Service Report"].toString().startsWith("http") ? (
-                            <a
-                              href={item["Service Report"]}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-700 rounded-md hover:bg-indigo-100 transition-colors font-semibold text-xs border border-indigo-200"
-                            >
-                              <ExternalLink className="h-3 w-3" />
-                              View File
-                            </a>
-                          ) : (
-                            item["Service Report"] || "-"
-                          )}
-                        </td>
-                        <td className="px-6 py-4 text-gray-600 whitespace-nowrap">{formatDateOnly(item["Next Date"])}</td>
-                        <td className="px-6 py-4 text-gray-600 truncate max-w-[200px]" title={item["What Did Customer's Say (Remarks)"] || item["What Did Customer's Say"] || ""}>
-                          {item["What Did Customer's Say (Remarks)"] || item["What Did Customer's Say"] || "-"}
-                        </td>
-                        <td className="px-6 py-4 text-gray-600 whitespace-nowrap">
-                          {item["Invoice Copy"] && item["Invoice Copy"].toString().startsWith("http") ? (
-                            <a
-                              href={item["Invoice Copy"]}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-700 rounded-md hover:bg-indigo-100 transition-colors font-semibold text-xs border border-indigo-200"
-                            >
-                              <ExternalLink className="h-3 w-3" />
-                              View Invoice
-                            </a>
-                          ) : (
-                            item["Invoice Copy"] || "-"
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {((item["Service-Type"] || item["Installation/Service"] || "").trim().toLowerCase() === "site visit") && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => onEnquiry(item)}
-                              className="text-indigo-600 border-indigo-200 hover:bg-indigo-600 hover:text-white transition-all shadow-sm"
-                            >
-                              Enquiry
-                            </Button>
-                          )}
-                        </td>
-                      </>
-                    )}
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={12} className="px-6 py-12 text-center text-gray-500 font-medium">
-                    No records matching your criteria.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-    </div>
-  );
-};
 
 export default ServiceInstallation;

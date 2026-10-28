@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
+import StatusBadge from "../components/shared/StatusBadge";
 import { Loader2, PhoneCall, FileText } from "lucide-react";
 import {
   Table,
@@ -53,18 +54,37 @@ const TAT_CONFIG_STAGE_NAME = {
   "Invoice": "Invoice",
 };
 
-function getRoleAndUser() {
-  const userName = localStorage.getItem("currentUsername");
-  const roleStorage = localStorage.getItem("o2d-auth-storage");
-  const parsedData = roleStorage ? JSON.parse(roleStorage) : null;
-  const role = parsedData?.state?.user?.role;
-  return { userName, role };
-}
+// Skeleton blocks live at module level so they keep a stable identity across renders.
+const SkeletonCard = () => (
+  <Card className="flex items-center gap-3 p-4">
+    <div className="h-8 w-8 animate-pulse rounded-full bg-secondary" />
+    <div className="flex-1">
+      <div className="mb-2 h-4 w-1/2 animate-pulse rounded bg-secondary" />
+      <div className="h-6 w-1/4 animate-pulse rounded bg-secondary" />
+    </div>
+  </Card>
+);
 
-function filterByRole(rows) {
-  return rows;
-}
+const SkeletonTable = () => (
+  <Card className="p-6">
+    <div className="mb-4 h-6 w-1/3 animate-pulse rounded bg-secondary" />
+    <div className="h-64 animate-pulse rounded bg-secondary" />
+  </Card>
+);
 
+function KpiCard({ icon: Icon, label, value }) {
+  return (
+    <Card className="flex items-center gap-3 p-4">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+        <Icon className="h-5 w-5" aria-hidden="true" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-sm text-muted-foreground">{label}</p>
+        <p className="text-xl font-semibold text-foreground">{value}</p>
+      </div>
+    </Card>
+  );
+}
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -97,14 +117,12 @@ export default function Dashboard() {
   const fetchData = async () => {
     setFetchLoading(true);
     try {
-      const { userName, role } = getRoleAndUser();
-
       const { data: ticketsRaw, error: ticketsError } = await supabase
         .from("sss_tickets")
         .select("ticket_id, cre_name, engineer_assign, category, company_name, site_address, warranty_check_planned, created_at");
       if (ticketsError) throw ticketsError;
 
-      const tickets = filterByRole(ticketsRaw || [], role, userName);
+      const tickets = ticketsRaw || [];
       setAllTicketsCount(tickets.length);
 
       const [
@@ -332,89 +350,39 @@ export default function Dashboard() {
     }
   };
 
-  // Skeleton Components
-  const SkeletonCard = () => (
-    <Card className="shadow rounded-2xl p-4 flex items-center gap-3">
-      <div className="w-8 h-8 bg-gray-300 rounded-full animate-pulse"></div>
-      <div className="flex-1">
-        <div className="h-4 bg-gray-300 rounded w-1/2 mb-2 animate-pulse"></div>
-        <div className="h-6 bg-gray-300 rounded w-1/4 animate-pulse"></div>
-      </div>
-    </Card>
-  );
-
-  const SkeletonTable = () => (
-    <Card className="p-6 shadow rounded-2xl">
-      <div className="h-6 bg-gray-300 rounded w-1/3 mb-4 animate-pulse"></div>
-      <div className="h-64 bg-gray-200 rounded animate-pulse"></div>
-    </Card>
-  );
-
   if (fetchLoading) {
     return (
-      <div className="p-6 space-y-6 bg-gray-50 min-h-screen">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          {[...Array(5)].map((_, i) => (
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
+          {[...Array(4)].map((_, i) => (
             <SkeletonCard key={i} />
           ))}
         </div>
-        <SkeletonTable />
         <SkeletonTable />
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-6 bg-gray-50 min-h-screen">
+    <div className="space-y-4">
       {/* KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="shadow rounded-2xl p-4 flex items-center gap-3">
-          <PhoneCall className="w-8 h-8 text-blue-500" />
-          <div>
-            <p className="text-sm text-gray-500">Enquiries</p>
-            <p className="text-xl font-bold">{allTicketsCount}</p>
-          </div>
-        </Card>
-
-        <Card className="shadow rounded-2xl p-4 flex items-center gap-3">
-          <FileText className="w-8 h-8 text-blue-500" />
-          <div>
-            <p className="text-sm text-gray-500">Quotations</p>
-            <p className="text-xl font-bold">{quotationPendingCount}</p>
-          </div>
-        </Card>
-
-        <Card className="shadow rounded-2xl p-4 flex items-center gap-3">
-          <FileText className="w-8 h-8 text-blue-500" />
-          <div>
-            <p className="text-sm text-gray-500">Site Visits</p>
-            <p className="text-xl font-bold">{siteVisitPendingCount}</p>
-          </div>
-        </Card>
-
-        <Card className="shadow rounded-2xl p-4 flex items-center gap-3">
-          <FileText className="w-8 h-8 text-blue-500" />
-          <div>
-            <p className="text-sm text-gray-500">Invoices</p>
-            <p className="text-xl font-bold">{invoicePendingCount}</p>
-          </div>
-        </Card>
-
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
+        <KpiCard icon={PhoneCall} label="Enquiries" value={allTicketsCount} />
+        <KpiCard icon={FileText} label="Quotations" value={quotationPendingCount} />
+        <KpiCard icon={FileText} label="Site Visits" value={siteVisitPendingCount} />
+        <KpiCard icon={FileText} label="Invoices" value={invoicePendingCount} />
       </div>
 
       {/* Pending Items by Stage */}
-      <Card className="shadow rounded-2xl">
-        <CardHeader className="pb-1 flex flex-row items-center justify-between">
-          <CardTitle className="text-lg font-semibold">
-            Pending Items by Stage
-          </CardTitle>
+      <Card>
+        <CardHeader className="flex flex-col gap-3 space-y-0 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <CardTitle className="text-base font-semibold">Pending Items by Stage</CardTitle>
           <Button
-            variant="default"
-            className="bg-blue-600 hover:bg-blue-700 h-9 text-xs flex items-center text-white gap-2 font-medium"
+            className="h-9 gap-2 text-xs font-medium"
             onClick={handleGenerateReport}
             disabled={isGeneratingReport}
           >
-            {isGeneratingReport ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
+            {isGeneratingReport ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
             {isGeneratingReport ? "Generating..." : "Generate Report"}
           </Button>
         </CardHeader>
@@ -422,13 +390,9 @@ export default function Dashboard() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="text-xs w-[300px]">Stage</TableHead>
-                <TableHead className="text-xs text-right w-[120px]">
-                  Pending
-                </TableHead>
-                <TableHead className="text-xs text-center w-[180px]">
-                  Pending Overdue
-                </TableHead>
+                <TableHead className="text-xs">Stage</TableHead>
+                <TableHead className="w-[90px] text-right text-xs">Pending</TableHead>
+                <TableHead className="w-[110px] text-right text-xs">Overdue</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -441,26 +405,22 @@ export default function Dashboard() {
                 rowsToRender.push(
                   <TableRow
                     key={stage.id}
-                    className="hover:bg-gray-50/50 cursor-pointer"
+                    className="cursor-pointer"
                     onClick={() => navigate(stage.route)}
                   >
-                    <TableCell className="text-xs font-medium">
+                    <TableCell className="text-sm font-medium">
                       <Link
                         to={stage.route}
-                        className="flex items-center gap-2 text-blue-600 hover:underline font-semibold"
+                        className="flex items-center gap-2 font-semibold text-primary hover:underline"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <div
-                          className={`w-2.5 h-2.5 rounded-full ${stage.color}`}
-                        ></div>
+                        <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${stage.color}`} aria-hidden="true" />
                         {stage.name}
                       </Link>
                     </TableCell>
-                    <TableCell className="text-xs text-right text-muted-foreground">
-                      {dynamicCount}
-                    </TableCell>
-                    <TableCell className="text-xs text-center text-red-500 font-medium">
-                      {overdueCount > 0 ? overdueCount : "-"}
+                    <TableCell className="text-right text-sm tabular-nums">{dynamicCount}</TableCell>
+                    <TableCell className="text-right">
+                      {overdueCount > 0 ? <StatusBadge tone="danger">{overdueCount}</StatusBadge> : <span className="text-muted-foreground">-</span>}
                     </TableCell>
                   </TableRow>
                 );
@@ -468,14 +428,14 @@ export default function Dashboard() {
                 if (stage.name === "Follow-Up" && Object.keys(followUpCategoryBreakdown).length > 0) {
                   Object.entries(followUpCategoryBreakdown).forEach(([category, data]) => {
                     rowsToRender.push(
-                      <TableRow key={`followup-${category}`} className="bg-gray-50/30 hover:bg-gray-50/60 border-l-4 border-l-teal-500/50">
-                        <TableCell className="text-xs font-medium pl-8 text-gray-500">
+                      <TableRow key={`followup-${category}`} className="bg-secondary/40">
+                        <TableCell className="pl-8 text-xs text-muted-foreground">
                           ↳ {category}
                         </TableCell>
-                        <TableCell className="text-xs text-right text-gray-400">
+                        <TableCell className="text-right text-xs tabular-nums text-muted-foreground">
                           {data.pending}
                         </TableCell>
-                        <TableCell className="text-xs text-center text-red-400 font-medium">
+                        <TableCell className="text-right text-xs tabular-nums text-muted-foreground">
                           {data.overdue > 0 ? data.overdue : "-"}
                         </TableCell>
                       </TableRow>
@@ -489,7 +449,6 @@ export default function Dashboard() {
           </Table>
         </CardContent>
       </Card>
-
     </div>
   );
 }

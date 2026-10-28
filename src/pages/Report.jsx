@@ -14,9 +14,11 @@ import {
   TableRow,
 } from "../components/ui/table";
 import { supabase } from "../lib/supabase/client";
+import { exportCsv } from "../lib/exportCsv";
 import {
   CATS,
   defaultRange,
+  fetchFollowUpReport,
   fetchQuotationReport,
   fetchSiteVisitSummary,
   fetchVideoCallSummary,
@@ -60,6 +62,7 @@ const TABS = [
   { id: "video", label: "Video-Call Summary" },
   { id: "site", label: "Site Visits" },
   { id: "quotation", label: "Quotations" },
+  { id: "followup", label: "Follow-Up" },
 ];
 
 function DateRange({ range, setRange, onReset }) {
@@ -508,6 +511,161 @@ function QuotationTab({ range, reloadKey }) {
   );
 }
 
+// ───────────────────────── Follow-Up ─────────────────────────
+
+const FOLLOWUP_STATUS_TONE = {
+  Resolved: "bg-green-100 text-green-800",
+  "On Hold": "bg-amber-100 text-amber-800",
+  Pending: "bg-blue-100 text-blue-800",
+};
+
+const PLANNED_COLUMNS = [
+  { h: "Ticket ID", v: (r) => r.ticketId },
+  { h: "Company Name", v: (r) => r.companyName },
+  { h: "Client Name", v: (r) => r.clientName },
+  { h: "Quotation No.", v: (r) => r.quotationNo },
+  { h: "Follow-Up Planned", v: (r) => fmtDate(r.followUpPlanned) },
+  { h: "Status", v: (r) => r.status, badge: true },
+  { h: "Resolved On", v: (r) => (r.resolvedOn ? fmtDateTime(r.resolvedOn) : "") },
+  { h: "Payment Mode", v: (r) => r.paymentMode },
+  { h: "Engineer", v: (r) => r.engineer },
+];
+
+const OUTSIDE_COLUMNS = [
+  { h: "Ticket ID", v: (r) => r.ticketId },
+  { h: "Company Name", v: (r) => r.companyName },
+  { h: "Client Name", v: (r) => r.clientName },
+  { h: "Quotation No.", v: (r) => r.quotationNo },
+  { h: "Follow-Up Planned", v: (r) => (r.followUpPlanned ? fmtDate(r.followUpPlanned) : "") },
+  { h: "Resolved On", v: (r) => fmtDateTime(r.resolvedOn) },
+  { h: "Payment Mode", v: (r) => r.paymentMode },
+  { h: "Hold Released?", v: (r) => r.released },
+  { h: "Engineer", v: (r) => r.engineer },
+];
+
+function FollowUpSection({ title, subtitle, columns, rows, filename, loading }) {
+  const handleExport = () => {
+    if (rows.length === 0) {
+      toast.error("No records to export");
+      return;
+    }
+    exportCsv(
+      `${filename}_${ymd(new Date())}`,
+      columns.map((c) => c.h),
+      rows.map((r) => columns.map((c) => c.v(r)))
+    );
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-blue-900">{title}</h3>
+          <p className="text-xs text-gray-500">{subtitle}</p>
+        </div>
+        <Button size="sm" variant="outline" onClick={handleExport} disabled={loading}>
+          <Download className="mr-1 h-4 w-4" /> Export CSV
+        </Button>
+      </div>
+      <div className="max-h-[45vh] overflow-auto rounded-lg border border-blue-100 bg-white">
+        <Table>
+          <TableHeader className="sticky top-0">
+            <TableRow className="bg-slate-800 hover:bg-slate-800">
+              {columns.map((c) => (
+                <TableHead key={c.h} className="text-xs font-bold text-white">
+                  {c.h}
+                </TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={columns.length} className="py-6 text-center text-sm text-gray-400">
+                  No records in this range
+                </TableCell>
+              </TableRow>
+            ) : (
+              rows.map((r) => (
+                <TableRow key={r.ticketId}>
+                  {columns.map((c) => (
+                    <TableCell key={c.h} className="text-sm">
+                      {c.badge ? (
+                        <span className={`rounded-full px-2 py-0.5 text-xs ${FOLLOWUP_STATUS_TONE[c.v(r)] || ""}`}>
+                          {c.v(r)}
+                        </span>
+                      ) : (
+                        c.v(r) || "-"
+                      )}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+function FollowUpTab({ range, reloadKey }) {
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState({ planned: [], resolvedOutside: [] });
+
+  useEffect(() => {
+    if (!range.from || !range.to) return;
+    let cancelled = false;
+    setLoading(true);
+    fetchFollowUpReport(supabase, range)
+      .then((d) => !cancelled && setData(d))
+      .catch((e) => {
+        console.error(e);
+        toast.error("Failed to load follow-up report");
+      })
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [range.from, range.to, reloadKey]);
+
+  const { planned, resolvedOutside } = data;
+  const count = (st) => planned.filter((r) => r.status === st).length;
+
+  return (
+    <div className="space-y-6 px-4 pb-4">
+      {loading ? (
+        <Loading />
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <StatCard label="Follow-Up Planned" value={planned.length} />
+            <StatCard label="Resolved" value={count("Resolved")} tone="green" />
+            <StatCard label="On Hold" value={count("On Hold")} tone="amber" />
+            <StatCard label="Pending" value={count("Pending")} tone="purple" />
+          </div>
+          <FollowUpSection
+            title="1. Follow-Up planned in this range"
+            subtitle="Tickets whose follow-up was planned in the range, and how many have been resolved (Order Received) so far."
+            columns={PLANNED_COLUMNS}
+            rows={planned}
+            filename="FollowUp_Planned"
+            loading={loading}
+          />
+          <FollowUpSection
+            title={`2. Resolved in this range, planned outside it (${resolvedOutside.length})`}
+            subtitle="Order Received resolved (or hold released) in the range, but follow-up planned before or after it."
+            columns={OUTSIDE_COLUMNS}
+            rows={resolvedOutside}
+            filename="FollowUp_Resolved_Outside_Range"
+            loading={loading}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
 // ───────────────────────── Page ─────────────────────────
 
 export default function Report() {
@@ -520,8 +678,9 @@ export default function Report() {
     video: defaultRange(7),
     site: defaultRange(7),
     quotation: defaultRange(1),
+    followup: defaultRange(7),
   }));
-  const [reloadKeys, setReloadKeys] = useState({ weekly: 0, video: 0, site: 0, quotation: 0 });
+  const [reloadKeys, setReloadKeys] = useState({ weekly: 0, video: 0, site: 0, quotation: 0, followup: 0 });
   const [opened, setOpened] = useState({ weekly: true });
 
   const switchTab = useCallback((t) => {
@@ -557,6 +716,7 @@ export default function Report() {
             {activeTab === "video" && opened.video && <AssignmentTab kind="video" range={ranges.video} reloadKey={reloadKeys.video} />}
             {activeTab === "site" && opened.site && <AssignmentTab kind="site" range={ranges.site} reloadKey={reloadKeys.site} />}
             {activeTab === "quotation" && opened.quotation && <QuotationTab range={ranges.quotation} reloadKey={reloadKeys.quotation} />}
+            {activeTab === "followup" && opened.followup && <FollowUpTab range={ranges.followup} reloadKey={reloadKeys.followup} />}
           </CardContent>
         </Card>
       </Tabs>

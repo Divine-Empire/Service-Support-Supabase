@@ -1,37 +1,64 @@
 import { useState, useEffect } from "react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-} from "../components/ui/card";
 import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "../components/ui/tabs";
 import { useToast } from "../hooks/use-toast";
-import { Loader2Icon, LoaderIcon, Mail } from "lucide-react";
+import { Loader2Icon, Mail } from "lucide-react";
 import { supabase } from "../lib/supabase/client";
 import { sendTadaApprovalEmail } from "../lib/notifications/email";
+import { ListToolbar, ListTable, StatusBadge } from "../components/shared";
+import { useClientList } from "../hooks/useClientList";
+
+// Kept local: unlike lib/format, an unparseable value is shown as-is.
+const formatDate = (dateString) => {
+  if (!dateString) return "";
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return dateString;
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+};
+
+// Pending: resend action + trip details. History: decision details.
+const COLUMNS = [
+  { key: "action", label: "Action", fixed: true, tabs: ["pending"], cell: (r, { onResend, resendingTicketId }) => (
+    <Button size="sm" variant="outline" onClick={() => onResend(r)} disabled={resendingTicketId === r.ticketId}>
+      {resendingTicketId === r.ticketId ? (
+        <Loader2Icon className="animate-spin w-4 h-4 mr-1" />
+      ) : (
+        <Mail className="w-4 h-4 mr-1" />
+      )}
+      Resend Email
+    </Button>
+  ) },
+  { key: "sentAt", label: "Sent At", defaultVisible: true, tabs: ["pending"], text: (r) => formatDate(r.sentAt) },
+  { key: "ticketId", label: "Ticket ID", defaultVisible: true, strong: true, text: (r) => r.ticketId },
+  { key: "companyName", label: "Company Name", defaultVisible: true, text: (r) => r.companyName },
+  { key: "engineerAssign", label: "Engineer", defaultVisible: true, text: (r) => r.engineerAssign },
+  { key: "travelDate", label: "Travel Date", defaultVisible: true, tabs: ["pending"], text: (r) => formatDate(r.travelDate) },
+  { key: "returnDate", label: "Return Date", defaultVisible: true, tabs: ["pending"], text: (r) => formatDate(r.returnDate) },
+  { key: "amount", label: "Amount", defaultVisible: true, text: (r) => `₹${r.amount || "0"}` },
+  { key: "status", label: "Status", defaultVisible: true, tabs: ["history"], cell: (r) => (
+    <StatusBadge tone={r.status === "approved" ? "success" : "danger"}>{r.status === "approved" ? "Approved" : "Rejected"}</StatusBadge>
+  ) },
+  { key: "decidedAt", label: "Decided At", defaultVisible: true, tabs: ["history"], text: (r) => formatDate(r.decidedAt) },
+  { key: "rejectRemarks", label: "Reject Remarks", defaultVisible: true, tabs: ["history"], wrap: true, width: 220, text: (r) => r.rejectRemarks },
+];
 
 // Internal visibility for this page is entirely handled by the existing
 // Page Access mechanism (Settings.jsx / Sidebar.jsx) — nothing special is
 // done here. Assign "TADA Approval" to admin + whichever specific user
 // should see it, from Settings.
 export default function TadaApproval() {
-  const [activeTab, setActiveTab] = useState("pending");
   const [pendingData, setPendingData] = useState([]);
   const [historyData, setHistoryData] = useState([]);
   const [fetchLoading, setFetchLoading] = useState(false);
-  const [searchItem, setSearchItem] = useState("");
+  const [loadError, setLoadError] = useState(null);
   const [resendingTicketId, setResendingTicketId] = useState(null);
   const { toast } = useToast();
 
   const fetchData = async () => {
     setFetchLoading(true);
+    setLoadError(null);
     try {
       const { data: approvalRows, error: approvalError } = await supabase
         .from("sss_senior_approval")
@@ -109,6 +136,7 @@ export default function TadaApproval() {
       setHistoryData(history);
     } catch (error) {
       console.error("Error fetching data:", error);
+      setLoadError(error.message || "Failed to load data");
       toast({
         title: "Error",
         description: "Failed to load data",
@@ -121,6 +149,7 @@ export default function TadaApproval() {
 
   useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleResendEmail = async (row) => {
@@ -163,179 +192,32 @@ export default function TadaApproval() {
     }
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return "";
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return dateString;
-    const day = String(date.getDate()).padStart(2, "0");
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const year = date.getFullYear();
-    return `${day}/${month}/${year}`;
-  };
-
-  const filterFn = (item) => {
-    const q = searchItem.toLowerCase();
-    return (
-      String(item.ticketId || "").toLowerCase().includes(q) ||
-      String(item.clientName || "").toLowerCase().includes(q) ||
-      String(item.companyName || "").toLowerCase().includes(q) ||
-      String(item.engineerAssign || "").toLowerCase().includes(q)
-    );
-  };
-
-  const filteredPending = pendingData.filter(filterFn);
-  const filteredHistory = historyData.filter(filterFn);
+  // Rows are already newest-first from the query, so no extra sort.
+  const list = useClientList({
+    key: "tada-approval",
+    data: { pending: pendingData, history: historyData },
+    loading: fetchLoading,
+    error: loadError,
+    onRetry: fetchData,
+    sort: "none",
+    searchKeys: ["ticketId", "clientName", "companyName", "engineerAssign"],
+    filters: [
+      { key: "engineer", label: "Engineer", allLabel: "All Engineers", get: (r) => r.engineerAssign },
+      { key: "status", label: "Status", allLabel: "All Statuses", get: (r) => r.status, tabs: ["history"] },
+    ],
+    columns: COLUMNS,
+  });
 
   return (
-    <div className="space-y-2">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <Card className="border-0 shadow-lg bg-gradient-to-br from-blue-50 to-indigo-50">
-          <CardHeader className="bg-gradient-to-r from-blue-50/50 to-indigo-50/50 rounded-t-lg border-b border-blue-100 px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
-            <TabsList className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200">
-              <TabsTrigger value="pending" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
-                Pending ({filteredPending.length})
-              </TabsTrigger>
-              <TabsTrigger value="history" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
-                History ({filteredHistory.length})
-              </TabsTrigger>
-            </TabsList>
-
-            <div className="relative flex-1 max-w-md w-full">
-              <Input
-                placeholder="Search by ticket ID, client, company or engineer..."
-                className="pl-3 py-2 w-full rounded-md border-blue-200 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white"
-                value={searchItem}
-                onChange={(e) => setSearchItem(e.target.value)}
-              />
-            </div>
-          </CardHeader>
-
-          <CardContent>
-            <div className="mt-2">
-              <TabsContent value="pending" className="mt-0">
-                <div className="relative overflow-x-auto">
-                  <div className="max-h-[calc(103vh-200px)] overflow-y-auto">
-                    <table className="w-full">
-                      <thead className="sticky top-0 z-10">
-                        <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[130px] sticky top-0">Action</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Sent At</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Ticket ID</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">Company Name</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Engineer</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Travel Date</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Return Date</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Amount</th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-blue-100">
-                        {filteredPending.length === 0 ? (
-                          <tr>
-                            <td colSpan={8} className="text-center py-8 bg-white">
-                              {fetchLoading ? (
-                                <div className="flex justify-center items-center text-blue-700">
-                                  <LoaderIcon className="animate-spin w-8 h-8" />
-                                </div>
-                              ) : (
-                                <h1 className="text-blue-700">No pending TADA approvals found.</h1>
-                              )}
-                            </td>
-                          </tr>
-                        ) : (
-                          filteredPending.map((row, ind) => (
-                            <tr key={row.id} className={ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"}>
-                              <td className="px-4 py-3">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleResendEmail(row)}
-                                  disabled={resendingTicketId === row.ticketId}
-                                  className="bg-gradient-to-br from-amber-50 to-orange-50 text-amber-700 hover:from-amber-100 hover:to-orange-100 border border-amber-200 rounded-lg px-3 py-1.5 shadow-sm"
-                                >
-                                  {resendingTicketId === row.ticketId ? (
-                                    <Loader2Icon className="animate-spin w-4 h-4 mr-1" />
-                                  ) : (
-                                    <Mail className="w-4 h-4 mr-1" />
-                                  )}
-                                  Resend Email
-                                </Button>
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">{formatDate(row.sentAt)}</td>
-                              <td className="px-4 py-3 font-medium text-blue-800">{row.ticketId}</td>
-                              <td className="px-4 py-3 text-blue-900">{row.companyName || "-"}</td>
-                              <td className="px-4 py-3 text-blue-900">{row.engineerAssign || "-"}</td>
-                              <td className="px-4 py-3 text-blue-900">{formatDate(row.travelDate)}</td>
-                              <td className="px-4 py-3 text-blue-900">{formatDate(row.returnDate)}</td>
-                              <td className="px-4 py-3 text-blue-900">₹{row.amount || "0"}</td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="history" className="mt-0">
-                <div className="relative overflow-x-auto">
-                  <div className="max-h-[calc(103vh-200px)] overflow-y-auto">
-                    <table className="w-full">
-                      <thead className="sticky top-0 z-10">
-                        <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Ticket ID</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">Company Name</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Engineer</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Amount</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[130px] sticky top-0">Status</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Decided At</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[250px] sticky top-0">Reject Remarks</th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-blue-100">
-                        {filteredHistory.length === 0 ? (
-                          <tr>
-                            <td colSpan={7} className="text-center py-8 bg-white">
-                              {fetchLoading ? (
-                                <div className="flex justify-center items-center text-blue-700">
-                                  <LoaderIcon className="animate-spin w-8 h-8" />
-                                </div>
-                              ) : (
-                                <h1 className="text-blue-700">No TADA approval history found.</h1>
-                              )}
-                            </td>
-                          </tr>
-                        ) : (
-                          filteredHistory.map((row, ind) => (
-                            <tr key={row.id} className={ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"}>
-                              <td className="px-4 py-3 font-medium text-blue-800">{row.ticketId}</td>
-                              <td className="px-4 py-3 text-blue-900">{row.companyName || "-"}</td>
-                              <td className="px-4 py-3 text-blue-900">{row.engineerAssign || "-"}</td>
-                              <td className="px-4 py-3 text-blue-900">₹{row.amount || "0"}</td>
-                              <td className="px-4 py-3">
-                                <span
-                                  className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                    row.status === "approved"
-                                      ? "bg-green-100 text-green-800"
-                                      : "bg-red-100 text-red-800"
-                                  }`}
-                                >
-                                  {row.status === "approved" ? "Approved" : "Rejected"}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">{formatDate(row.decidedAt)}</td>
-                              <td className="px-4 py-3 text-blue-900">{row.rejectRemarks || ""}</td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </TabsContent>
-            </div>
-          </CardContent>
-        </Card>
-      </Tabs>
+    <div className="space-y-3">
+      <ListToolbar list={list} searchPlaceholder="Search by ticket ID, client, company or engineer..." />
+      <ListTable
+        list={list}
+        ctx={{ onResend: handleResendEmail, resendingTicketId }}
+        rowKey={(r) => r.id}
+        emptyTitle={{ pending: "No pending TADA approvals found.", history: "No TADA approval history found." }}
+        ariaLabel="TADA approvals"
+      />
     </div>
   );
 }

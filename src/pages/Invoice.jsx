@@ -180,6 +180,8 @@ export default function Invoice() {
           // Drives whether this ticket gets calibration_planned/spare_dispatch_planned
           // at submit time — see stagePlanning.js's 'calibration'/'sparedispatch' rules.
           enquiryType: t.enquiry_type || "",
+          // Also drives spare_dispatch_planned (service_location = 'Warehouse').
+          serviceLocation: t.service_location || "",
           quotationNo: q?.quotation_no || "",
           quotationPdfLink: q?.quotation_pdf_link || "",
           paymentTerm: orderReceived?.payment_term || "",
@@ -369,7 +371,7 @@ export default function Invoice() {
         otp: generateSixDigitNumber(),
         // Readiness stamp for Calibration.jsx — set when tickets.enquiry_type is 'NABL' or 'NON-NABL'.
         calibration_planned: calibrationPlanned,
-        // Readiness stamp for SpareDispatchDetails.jsx — only set when tickets.enquiry_type = 'SPARE'.
+        // Readiness stamp for SpareDispatchDetails.jsx — set when tickets.enquiry_type = 'SPARE' or tickets.service_location = 'Warehouse'.
         spare_dispatch_planned: spareDispatchPlanned,
       });
 
@@ -551,7 +553,10 @@ export default function Invoice() {
           // Invoice-creation (this invoice row's own created_at), not "now"
           // -- an edit shouldn't quietly shift the TAT deadline.
           const planningCtx = {
-            ticket: { enquiryType: newEnquiryType },
+            ticket: {
+              enquiryType: newEnquiryType,
+              serviceLocation: editingHistoryRow.serviceLocation || "",
+            },
             invoiceSubmittedAt: editingHistoryRow.invoiceCreatedAt
               ? new Date(editingHistoryRow.invoiceCreatedAt)
               : new Date(),
