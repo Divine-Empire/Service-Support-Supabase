@@ -42,7 +42,7 @@ const Login = () => {
         "Site Visit Plan",
         "TADA",
         "Site Visit (Verification OTP)",
-        "Order Received",
+        "CRM Verification",
         "Invoice",
         "Calibration",
         "Calibration Certificate",
@@ -74,8 +74,8 @@ const Login = () => {
         navigate("/tada");
       }  else if (pagesss === "Site Visit (Verification OTP)") {
         navigate("/approval");
-      } else if (pagesss === "Order Received") {
-        navigate("/orderreceived");
+      } else if (pagesss === "CRM Verification") {
+        navigate("/crm-verification");
       } else if (pagesss === "Invoice") {
         navigate("/invoice");
       } else if (pagesss === "Calibration") {

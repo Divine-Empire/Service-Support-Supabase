@@ -84,15 +84,30 @@ export default function Invoice() {
   const fetchData = async () => {
     setFetchLoading(true);
     try {
-      // Tickets ready for Invoice (order_received.invoice_planned set).
-      const { data: orderReceivedRows, error: orderReceivedError } = await supabase
-        .from("sss_order_received")
-        .select("ticket_id, invoice_planned")
-        .not("invoice_planned", "is", null);
+      // Tickets ready for Invoice: invoice_planned set either on the
+      // follow-up 'Order Received' row (non site-visit orders) or on
+      // sss_crm_verification (site-visit orders, after CRM Verification).
+      const [
+        { data: followUpPlannedRows, error: followUpPlannedError },
+        { data: crmPlannedRows, error: crmPlannedError },
+      ] = await Promise.all([
+        supabase
+          .from("sss_follow_up")
+          .select("ticket_id")
+          .eq("stage", "Order Received")
+          .not("invoice_planned", "is", null),
+        supabase
+          .from("sss_crm_verification")
+          .select("ticket_id")
+          .not("invoice_planned", "is", null),
+      ]);
 
-      if (orderReceivedError) throw orderReceivedError;
+      if (followUpPlannedError) throw followUpPlannedError;
+      if (crmPlannedError) throw crmPlannedError;
 
-      const ticketIds = [...new Set((orderReceivedRows || []).map((o) => o.ticket_id))];
+      const ticketIds = [
+        ...new Set([...(followUpPlannedRows || []), ...(crmPlannedRows || [])].map((o) => o.ticket_id)),
+      ];
 
       if (ticketIds.length === 0) {
         setPendingData([]);
@@ -118,37 +133,21 @@ export default function Invoice() {
 
       const quotationByTicket = new Map((quotationRows || []).map((q) => [q.ticket_id, q]));
 
-      // Full order_received row — every pending-Invoice ticket has one by
-      // definition (invoice_planned only ever gets set on that row), so this
-      // also doubles as the Payment Term/Payment Mode/Senior Approval/
-      // Advance Payment Attachment source for the Pending tab.
-      const { data: orderReceivedFullRows, error: orderReceivedFullError } = await supabase
-        .from("sss_order_received")
-        .select("ticket_id, payment_term, payment_mode, senior_approval, advance_payment_attachment")
-        .in("ticket_id", ticketIds);
-
-      if (orderReceivedFullError) throw orderReceivedFullError;
-
-      const orderReceivedFullByTicket = new Map(
-        (orderReceivedFullRows || []).map((o) => [o.ticket_id, o])
-      );
-
-      // "Client Approval" — same attachment FollowUp.jsx collects when it
-      // logs stage='Order Received' (see OrderReceived.jsx's identical fetch).
-      const { data: invoiceFollowUpRows, error: invoiceFollowUpError } = await supabase
+      // The follow-up 'Order Received' row carries the order details
+      // (Payment Term/Mode, Senior Approval, Advance Payment) and the
+      // Client Approval attachment.
+      const { data: orderRows, error: orderRowsError } = await supabase
         .from("sss_follow_up")
-        .select("ticket_id, stage, client_attachment_url, created_at")
+        .select("ticket_id, client_attachment_url, payment_term, payment_mode, senior_approval, advance_payment_attachment, created_at")
         .in("ticket_id", ticketIds)
         .eq("stage", "Order Received")
         .order("created_at", { ascending: false });
 
-      if (invoiceFollowUpError) throw invoiceFollowUpError;
+      if (orderRowsError) throw orderRowsError;
 
-      const clientApprovalByTicket = new Map();
-      (invoiceFollowUpRows || []).forEach((f) => {
-        if (!clientApprovalByTicket.has(f.ticket_id)) {
-          clientApprovalByTicket.set(f.ticket_id, f.client_attachment_url || "");
-        }
+      const orderRowByTicket = new Map();
+      (orderRows || []).forEach((f) => {
+        if (!orderRowByTicket.has(f.ticket_id)) orderRowByTicket.set(f.ticket_id, f);
       });
 
       const { data: invoiceRows, error: invoiceError } = await supabase
@@ -165,7 +164,7 @@ export default function Invoice() {
 
       (ticketsData || []).forEach((t) => {
         const q = quotationByTicket.get(t.ticket_id);
-        const orderReceived = orderReceivedFullByTicket.get(t.ticket_id);
+        const orderReceived = orderRowByTicket.get(t.ticket_id);
 
         const base = {
           ticketId: t.ticket_id,
@@ -187,7 +186,7 @@ export default function Invoice() {
           paymentMode: orderReceived?.payment_mode || "",
           seniorApproval: orderReceived?.senior_approval || "",
           advancePaymentAttachment: orderReceived?.advance_payment_attachment || "",
-          clientApproval: clientApprovalByTicket.get(t.ticket_id) || "",
+          clientApproval: orderReceived?.client_attachment_url || "",
         };
 
         const inv = invoiceByTicket.get(t.ticket_id);

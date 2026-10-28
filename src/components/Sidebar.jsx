@@ -22,6 +22,7 @@ import {
   Truck,
   Mail,
   ClipboardList,
+  UserCheck,
 } from "lucide-react";
 import useAuthStore from "../store/authStore";
 
@@ -34,7 +35,6 @@ export const navigation = [
   { name: "Warehouse", href: "/warehouse", icon: Warehouse },
   { name: "Quotation", href: "/quotation", icon: FileText },
   { name: "Follow-Up", href: "/followup", icon: Phone },
-  { name: "Order Received", href: "/orderreceived", icon: Package },
   { name: "Site Visit Plan", href: "/siteplan", icon: MapPin },
   { name: "TADA", href: "/tada", icon: Plane },
   { name: "TADA Approval", href: "/tada-approval", icon: Mail },
@@ -43,6 +43,7 @@ export const navigation = [
     href: "/approval",
     icon: CheckCircle,
   },
+  { name: "CRM Verification", href: "/crm-verification", icon: UserCheck },
   { name: "Invoice", href: "/invoice", icon: Receipt },
   { name: "Calibration", href: "/calibration", icon: Settings },
   {

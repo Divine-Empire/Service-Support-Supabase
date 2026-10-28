@@ -10,13 +10,13 @@ import VideoCallSolution from "./pages/VideoCallSolution";
 import WarrantyCheck from "./pages/Warranty-Check";
 import Quotation from "./pages/Quotation";
 import FollowUp from "./pages/FollowUp";
-import OrderReceived from "./pages/OrderReceived";
 import Warehouse from "./pages/Warehouse";
 import SiteVisitPlan from "./pages/SiteVisitPlan";
 import TADA from "./pages/TADA";
 import TadaApproval from "./pages/TadaApproval";
 import TadaDecision from "./pages/TadaDecision";
 import EngineerApproval from "./pages/SiteVisitOTPVerification";
+import CrmVerification from "./pages/CrmVerification";
 import Invoice from "./pages/Invoice";
 import Calibration from "./pages/Calibration";
 import SpareDispatchDetails from "./pages/SpareDispatchDetails";
@@ -63,7 +63,7 @@ function App() {
           <Route path="/tada" element={<TADA />} />
           <Route path="/tada-approval" element={<TadaApproval />} />
           <Route path="/approval" element={<EngineerApproval />} />
-          <Route path="/orderreceived" element={<OrderReceived />} />
+          <Route path="/crm-verification" element={<CrmVerification />} />
           <Route path="/invoice" element={<Invoice />} />
           <Route path="/calibration" element={<Calibration />} />
           <Route path="/sparedispatch" element={<SpareDispatchDetails />} />

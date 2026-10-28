@@ -210,6 +210,15 @@ export const STAGE_PLANNING_RULES = {
     baseTime: (ctx) => ctx.tadaSubmittedAt,
   },
 
+  // OTP Verification -> CRM Verification (site-visit tickets). Skipped for
+  // older tickets whose invoice was already planned by the former Order
+  // Received stage (copied onto sss_follow_up.invoice_planned).
+  crmVerification: {
+    tatStageName: "CRM Verification",
+    shouldPlan: (ctx) => !ctx.invoiceAlreadyPlanned,
+    baseTime: (ctx) => ctx.otpSubmittedAt,
+  },
+
   // Order Received -> Invoice. Every Order Received submission moves on to
   // Invoice (no branching); base time is Order Received's own submit-time
   // timestamp.
@@ -296,4 +305,20 @@ export async function computeStagePlanned(stageKey, ctx) {
     getHolidayDates(),
   ]);
   return addBusinessMinutes(rule.baseTime(ctx), tatMinutes, officeHours, holidayDates).toISOString();
+}
+
+/** crm_verification_planned for an OTP Verification submit of this ticket (or null). */
+export async function computeCrmVerificationPlanned(ticketUuid, otpSubmittedAt) {
+  const { data, error } = await supabase
+    .from("sss_follow_up")
+    .select("id")
+    .eq("ticket_uuid", ticketUuid)
+    .not("invoice_planned", "is", null)
+    .limit(1);
+
+  if (error) throw error;
+  return computeStagePlanned("crmVerification", {
+    otpSubmittedAt,
+    invoiceAlreadyPlanned: (data || []).length > 0,
+  });
 }

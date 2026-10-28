@@ -113,16 +113,16 @@ export default function Dashboard() {
         { data: quotationRows, error: e3 },
         { data: followUpRows, error: e4 },
         { data: siteVisitRows, error: e5 },
-        { data: orderReceivedRows, error: e6 },
+        { data: crmVerificationRows, error: e6 },
         { data: invoiceRows, error: e7 },
         { data: tatConfigRows, error: e10 },
       ] = await Promise.all([
         supabase.from("sss_warranty_check").select("ticket_id, video_call_planned, quotation_planned"),
         supabase.from("sss_video_call").select("ticket_id, enquiry_solved, created_at").order("created_at", { ascending: true }),
         supabase.from("sss_quotation").select("ticket_id, follow_up_planned, basic_amount"),
-        supabase.from("sss_follow_up").select("ticket_id, stage, site_visit_planned, what_did_customer_say, next_date_of_call, created_at").order("created_at", { ascending: true }),
+        supabase.from("sss_follow_up").select("ticket_id, stage, site_visit_planned, invoice_planned, what_did_customer_say, next_date_of_call, created_at").order("created_at", { ascending: true }),
         supabase.from("sss_site_visit").select("ticket_id"),
-        supabase.from("sss_order_received").select("ticket_id, invoice_planned"),
+        supabase.from("sss_crm_verification").select("ticket_id, invoice_planned"),
         supabase.from("sss_invoice").select("ticket_id"),
         supabase.from("sss_tat_config").select("stage_name, responsible_person"),
       ]);
@@ -154,7 +154,15 @@ export default function Dashboard() {
       const quotationByTicket = new Map((quotationRows || []).map((q) => [q.ticket_id, q]));
       const siteVisitTicketIds = new Set((siteVisitRows || []).map((s) => s.ticket_id));
       const invoiceTicketIds = new Set((invoiceRows || []).map((i) => i.ticket_id));
-      const orderReceivedByTicket = new Map((orderReceivedRows || []).map((o) => [o.ticket_id, o]));
+      // Invoice is planned on the follow-up Order Received row (non site-visit)
+      // or on sss_crm_verification (site-visit, after CRM Verification).
+      const invoicePlannedByTicket = new Map();
+      (followUpRows || []).forEach((f) => {
+        if (f.stage === "Order Received" && f.invoice_planned) invoicePlannedByTicket.set(f.ticket_id, f.invoice_planned);
+      });
+      (crmVerificationRows || []).forEach((c) => {
+        if (c.invoice_planned) invoicePlannedByTicket.set(c.ticket_id, c.invoice_planned);
+      });
 
       // follow_up is append-only (multiple log rows per ticket) — need both
       // the LATEST row (for site_visit_planned) and whether ANY row ever
@@ -246,12 +254,12 @@ export default function Dashboard() {
           });
         }
 
-        // Invoice — gated by order_received.invoice_planned. Pending = no
-        // invoice row yet.
-        const or = orderReceivedByTicket.get(t.ticket_id);
-        if (or?.invoice_planned && !invoiceTicketIds.has(t.ticket_id)) {
+        // Invoice — gated by follow_up / crm_verification invoice_planned.
+        // Pending = no invoice row yet.
+        const invoicePlanned = invoicePlannedByTicket.get(t.ticket_id);
+        if (invoicePlanned && !invoiceTicketIds.has(t.ticket_id)) {
           counts["Invoice"]++;
-          if (new Date(or.invoice_planned) < now) overdueCounts["Invoice"]++;
+          if (new Date(invoicePlanned) < now) overdueCounts["Invoice"]++;
         }
       });
 

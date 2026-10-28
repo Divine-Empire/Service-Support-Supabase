@@ -26,6 +26,17 @@ import { Modal } from "../components/ui/modal";
 import { useToast } from "../hooks/use-toast";
 import { LoaderIcon, Loader2Icon } from "lucide-react";
 import { supabase } from "../lib/supabase/client";
+import { fetchDropdownRows } from "../lib/supabase/dropdown";
+import { computeStagePlanned } from "../lib/supabase/stagePlanning";
+
+// Order Received form dropdowns (same sss_dropdown categories the old
+// Order Received page used).
+const DROPDOWN_CATEGORY_TO_KEY = {
+  payment_term: "Payment Terms",
+  payment_mode: "Payment Mode",
+  acceptance_via: "Acceptance Via",
+  senior_approved_by: "Senior Approved By",
+};
 
 export default function FollowUp() {
   const [activeTab, setActiveTab] = useState("pending");
@@ -47,6 +58,13 @@ export default function FollowUp() {
 
   const [pendingData, setPendingData] = useState([]);
   const [historyData, setHistoryData] = useState([]);
+  // Order Received rows with hold_order = 'Yes' (not released yet).
+  const [holdData, setHoldData] = useState([]);
+  const [selectedHoldIds, setSelectedHoldIds] = useState([]);
+  const [isReleasingHold, setIsReleasingHold] = useState(false);
+  const [masterData, setMasterData] = useState({});
+  const [isUploadingAdvancePayment, setIsUploadingAdvancePayment] = useState(false);
+  const [isUploadingSeniorApproval, setIsUploadingSeniorApproval] = useState(false);
 
   const uniqueCategories = useMemo(() => {
     const categories = new Set();
@@ -74,6 +92,10 @@ export default function FollowUp() {
   const [editAttachmentUrl, setEditAttachmentUrl] = useState("");
   const [isUploadingEditAttachment, setIsUploadingEditAttachment] = useState(false);
   const [isSavingEditAttachment, setIsSavingEditAttachment] = useState(false);
+  // Order Received rows: Acceptance Via / Advance Payment / Senior Approval
+  // are editable from History too (moved here from the Order Received page).
+  const [editOrderFields, setEditOrderFields] = useState({});
+  const [isUploadingEditOrderFile, setIsUploadingEditOrderFile] = useState(false);
 
   const fetchData = async () => {
     setFetchLoading(true);
@@ -90,6 +112,7 @@ export default function FollowUp() {
 
       if (ticketIds.length === 0) {
         setPendingData([]);
+        setHoldData([]);
         setFollowUpData([]);
         setTicketsMap({});
         return;
@@ -118,13 +141,14 @@ export default function FollowUp() {
 
       if (followUpError) throw followUpError;
 
-      // A ticket leaves pending once ANY row logs stage = 'Order Received' —
-      // the deal's closed, regardless of how many 'Followup' logs preceded it.
-      const orderReceivedTicketIds = new Set(
-        (followUpRows || [])
-          .filter((f) => f.stage === "Order Received")
-          .map((f) => f.ticket_id)
-      );
+      // A ticket leaves pending once its 'Order Received' row carries the
+      // order details (payment_mode). Legacy rows logged before Order Received
+      // was merged into this stage have none yet — those tickets stay pending
+      // and their form submit updates that same row.
+      const orderReceivedRowByTicket = new Map();
+      (followUpRows || []).forEach((f) => {
+        if (f.stage === "Order Received") orderReceivedRowByTicket.set(f.ticket_id, f);
+      });
 
       // Latest follow_up log per ticket (rows are fetched created_at
       // ascending above, so the last one seen per ticket_id is the newest) —
@@ -156,6 +180,7 @@ export default function FollowUp() {
 
       const ticketsMapObj = {};
       const pending = [];
+      const hold = [];
 
       (ticketsData || []).forEach((t) => {
         const q = quotationByTicket.get(t.ticket_id);
@@ -204,14 +229,31 @@ export default function FollowUp() {
 
         ticketsMapObj[t.ticket_id] = base;
 
-        if (!orderReceivedTicketIds.has(t.ticket_id)) {
+        const orderRow = orderReceivedRowByTicket.get(t.ticket_id);
+        if (!orderRow) {
           pending.push(base);
+        } else if (!orderRow.payment_mode) {
+          pending.push({
+            ...base,
+            legacyOrderRow: orderRow,
+            clientAttachment: orderRow.client_attachment_url || "",
+          });
+        } else if (orderRow.hold_order === "Yes") {
+          hold.push({
+            ...base,
+            orderRow,
+            paymentMode: orderRow.payment_mode,
+            holdDate: orderRow.created_at,
+          });
         }
       });
 
       setTicketsMap(ticketsMapObj);
       setPendingData(pending);
-      setFollowUpData(followUpRows || []);
+      setHoldData(hold);
+      setSelectedHoldIds([]);
+      // History hides Order Received rows still on hold.
+      setFollowUpData((followUpRows || []).filter((f) => f.hold_order !== "Yes"));
     } catch (error) {
       console.error("Error fetching data:", error);
       toast({
@@ -224,8 +266,30 @@ export default function FollowUp() {
     }
   };
 
+  const fetchMasterData = async () => {
+    try {
+      const rows = await fetchDropdownRows(Object.keys(DROPDOWN_CATEGORY_TO_KEY));
+      const structured = {};
+      (rows || []).forEach(({ category, value }) => {
+        const key = DROPDOWN_CATEGORY_TO_KEY[category];
+        if (!key || !value) return;
+        if (!structured[key]) structured[key] = [];
+        structured[key].push(value);
+      });
+      setMasterData(structured);
+    } catch (error) {
+      console.error("Error fetching master data:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load dropdown options",
+        variant: "destructive",
+      });
+    }
+  };
+
   useEffect(() => {
     fetchData();
+    fetchMasterData();
   }, []);
 
 
@@ -269,12 +333,22 @@ export default function FollowUp() {
       quotationShareBy: ticket.quotationShareByPersonName || "",
       shareThrough: ticket.ShareThrough || "",
       remarks: ticket.quotationremarks || "",
-      stage: "",
+      // Legacy 'Order Received' row without order details: only the Order
+      // Received form applies, and its Client Approval is already uploaded.
+      stage: ticket.legacyOrderRow ? "Order Received" : "",
       whatDidCustomerSay: "",
       nextAction: "",
       nextDateOfCall: "",
-      clientAttachmentUrl: "",
+      clientAttachmentUrl: ticket.legacyOrderRow?.client_attachment_url || "",
+      paymentTerm: "",
+      acceptanceVia: "",
+      paymentMode: "",
+      advancePaymentAttachmentUrl: "",
+      seniorApprovalUrl: "",
+      seniorApprovedBy: "",
+      holdOrder: "",
     });
+    setIsCancelled(false);
     setShowFollowUpModal(true);
   };
 
@@ -332,12 +406,83 @@ export default function FollowUp() {
     }
   };
 
+  // Advance Payment / Senior Approval uploads (Order Received form).
+  const handleOrderFileChange = (field, setUploading) => async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const result = await uploadImageToDrive(file);
+      if (result.success && result.fileUrl) {
+        handleInputChange(field, result.fileUrl);
+        toast({ title: "Success", description: "File uploaded successfully" });
+      } else {
+        e.target.value = null;
+        handleInputChange(field, "");
+      }
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Next stage once an order is confirmed and not on hold:
+  //   Site Visit ticket -> site_visit_planned (Site Visit -> TADA -> OTP -> CRM -> Invoice)
+  //   FOC               -> nothing (no invoice)
+  //   anything else     -> invoice_planned (Invoice TAT)
+  // existingSiteVisitPlanned keeps a legacy row's earlier stamp.
+  const computeOrderPlanned = async ({ serviceType, paymentMode, baseTime, existingSiteVisitPlanned }) => {
+    if (serviceType === "Site Visit") {
+      return {
+        site_visit_planned: existingSiteVisitPlanned || baseTime.toISOString(),
+        invoice_planned: null,
+      };
+    }
+    if (paymentMode === "FOC") return { site_visit_planned: null, invoice_planned: null };
+    return {
+      site_visit_planned: null,
+      invoice_planned: await computeStagePlanned("invoice", { orderReceivedSubmittedAt: baseTime }),
+    };
+  };
+
   // --- History tab: "Client Approval" attachment edit modal handlers ---
   const handleEditHistoryAttachmentClick = (row) => {
     setEditingHistoryRow(row);
     setEditAttachmentUrl(row["client-attachment"] || "");
     setEditAttachmentFile(null);
     setIsUploadingEditAttachment(false);
+    setEditOrderFields({
+      acceptanceVia: row.acceptance_via || "",
+      advancePaymentAttachmentUrl: row.advance_payment_attachment || "",
+      seniorApprovalUrl: row.senior_approval || "",
+    });
+  };
+
+  const handleEditOrderFileChange = (field) => async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setIsUploadingEditOrderFile(true);
+    try {
+      const path = `follow_up/${editingHistoryRow?.ticketId || editingHistoryRow?.ticket_id}_${Date.now()}_${file.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from("ticket_enquiry")
+        .upload(path, file, { contentType: file.type });
+      if (uploadError) throw uploadError;
+      const { data } = supabase.storage.from("ticket_enquiry").getPublicUrl(path);
+      setEditOrderFields((prev) => ({ ...prev, [field]: data.publicUrl }));
+      toast({ title: "Success", description: "File uploaded successfully" });
+    } catch (error) {
+      console.error("Error uploading file:", error);
+      e.target.value = null;
+      toast({
+        title: "Error",
+        description: error.message || "Failed to upload file",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploadingEditOrderFile(false);
+    }
   };
 
   const closeEditHistoryAttachmentModal = () => {
@@ -346,6 +491,8 @@ export default function FollowUp() {
     setEditAttachmentUrl("");
     setIsUploadingEditAttachment(false);
     setIsSavingEditAttachment(false);
+    setEditOrderFields({});
+    setIsUploadingEditOrderFile(false);
   };
 
   const handleEditAttachmentFileChange = async (e) => {
@@ -398,16 +545,31 @@ export default function FollowUp() {
 
     setIsSavingEditAttachment(true);
     try {
+      const isOrderRow = editingHistoryRow.stage === "Order Received" && !!editingHistoryRow.payment_mode;
+      const isFOCRow = editingHistoryRow.payment_mode === "FOC";
       const { error } = await supabase
         .from("sss_follow_up")
-        .update({ client_attachment_url: editAttachmentUrl || null })
+        .update({
+          client_attachment_url: editAttachmentUrl || null,
+          ...(isOrderRow
+            ? {
+                acceptance_via: editOrderFields.acceptanceVia || null,
+                ...(isFOCRow
+                  ? {}
+                  : {
+                      advance_payment_attachment: editOrderFields.advancePaymentAttachmentUrl || null,
+                      senior_approval: editOrderFields.seniorApprovalUrl || null,
+                    }),
+              }
+            : {}),
+        })
         .eq("id", editingHistoryRow.id);
 
       if (error) throw error;
 
       toast({
         title: "Success",
-        description: "Client Approval updated successfully",
+        description: "Follow-up updated successfully",
       });
 
       closeEditHistoryAttachmentModal();
@@ -460,30 +622,91 @@ export default function FollowUp() {
         alert("Please add and upload file for client Attachment");
         return;
       }
+      if (!formData.paymentTerm) {
+        alert("Please select Payment Term");
+        return;
+      }
+      if (!formData.acceptanceVia) {
+        alert("Please select Acceptance Via");
+        return;
+      }
+      if (!formData.paymentMode) {
+        alert("Please select Payment Mode");
+        return;
+      }
+      // Advance Payment / Senior Approval are skipped for FOC (no payment).
+      if (formData.paymentMode !== "FOC") {
+        if (!formData.advancePaymentAttachmentUrl) {
+          alert("Please add and upload Advance Payment Attachment");
+          return;
+        }
+        if (!formData.seniorApprovalUrl) {
+          alert("Please add and upload Senior Approval");
+          return;
+        }
+        if (!formData.seniorApprovedBy) {
+          alert("Please select Senior Approved By");
+          return;
+        }
+      }
+      if (!formData.holdOrder) {
+        alert("Please select Hold Order");
+        return;
+      }
     }
 
     setIsSubmitting(true);
 
     try {
-      const { error } = await supabase.from("sss_follow_up").insert({
-        ticket_id: formData.ticketId,
-        ticket_uuid: formData.ticketUuid,
-        stage: formData.stage,
-        engineer_assign: formData.engineerAssign || null,
-        what_did_customer_say: formData.stage === "Followup" ? formData.whatDidCustomerSay || null : null,
-        next_action: formData.stage === "Followup" ? formData.nextAction || null : null,
-        next_date_of_call: formData.stage === "Followup" ? formData.nextDateOfCall || null : null,
-        client_attachment_url: formData.stage === "Order Received" ? formData.clientAttachmentUrl || null : null,
-        // Readiness stamp for the next stage (OrderReceived.jsx, not yet
-        // migrated) — placeholder until a real calculation rule is given.
-        order_received_planned: formData.stage === "Order Received" ? new Date().toISOString() : null,
-        // Only gates SiteVisitPlan.jsx when the order is confirmed AND this
-        // ticket's video call resulted in a "Site Visit" service type.
-        site_visit_planned:
-          formData.stage === "Order Received" && selectedTicket?.videoCallServiceType === "Site Visit"
-            ? new Date().toISOString()
-            : null,
-      });
+      let error;
+      if (formData.stage === "Order Received") {
+        const isFOC = formData.paymentMode === "FOC";
+        const legacyRow = selectedTicket?.legacyOrderRow;
+        // On hold: no next-stage planned until released from the Hold Orders tab.
+        const planned =
+          formData.holdOrder === "Yes"
+            ? { site_visit_planned: legacyRow?.site_visit_planned || null, invoice_planned: null }
+            : await computeOrderPlanned({
+                serviceType: selectedTicket?.videoCallServiceType,
+                paymentMode: formData.paymentMode,
+                baseTime: new Date(),
+                existingSiteVisitPlanned: legacyRow?.site_visit_planned,
+              });
+
+        const orderFields = {
+          client_attachment_url: formData.clientAttachmentUrl || null,
+          payment_term: formData.paymentTerm || null,
+          acceptance_via: formData.acceptanceVia || null,
+          payment_mode: formData.paymentMode || null,
+          advance_payment_attachment: isFOC ? null : formData.advancePaymentAttachmentUrl || null,
+          senior_approval: isFOC ? null : formData.seniorApprovalUrl || null,
+          senior_approved_by: isFOC ? null : formData.seniorApprovedBy || null,
+          hold_order: formData.holdOrder,
+          // The separate Order Received stage is gone — never feed it again.
+          order_received_planned: null,
+          ...planned,
+        };
+
+        ({ error } = legacyRow
+          ? await supabase.from("sss_follow_up").update(orderFields).eq("id", legacyRow.id)
+          : await supabase.from("sss_follow_up").insert({
+              ticket_id: formData.ticketId,
+              ticket_uuid: formData.ticketUuid,
+              stage: formData.stage,
+              engineer_assign: formData.engineerAssign || null,
+              ...orderFields,
+            }));
+      } else {
+        ({ error } = await supabase.from("sss_follow_up").insert({
+          ticket_id: formData.ticketId,
+          ticket_uuid: formData.ticketUuid,
+          stage: formData.stage,
+          engineer_assign: formData.engineerAssign || null,
+          what_did_customer_say: formData.whatDidCustomerSay || null,
+          next_action: formData.nextAction || null,
+          next_date_of_call: formData.nextDateOfCall || null,
+        }));
+      }
 
       if (error) throw error;
 
@@ -504,6 +727,55 @@ export default function FollowUp() {
       });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // Hold Orders tab: release the selected orders and generate their
+  // next-stage planned from the release time.
+  const handleReleaseHold = async () => {
+    const rows = holdData.filter((h) => selectedHoldIds.includes(h.orderRow.id));
+    if (rows.length === 0) return;
+
+    setIsReleasingHold(true);
+    try {
+      const releasedAt = new Date();
+      const results = await Promise.all(
+        rows.map(async (h) => {
+          const planned = await computeOrderPlanned({
+            serviceType: h.videoCallServiceType,
+            paymentMode: h.paymentMode,
+            baseTime: releasedAt,
+            existingSiteVisitPlanned: h.orderRow.site_visit_planned,
+          });
+          return supabase
+            .from("sss_follow_up")
+            .update({
+              hold_order: "No",
+              hold_released_at: releasedAt.toISOString(),
+              hold_released_by: localStorage.getItem("currentUsername") || null,
+              ...planned,
+            })
+            .eq("id", h.orderRow.id)
+            .eq("hold_order", "Yes");
+        })
+      );
+      const failed = results.find((r) => r.error);
+      if (failed) throw failed.error;
+
+      toast({
+        title: "Success",
+        description: `${rows.length} order(s) released from hold`,
+      });
+      fetchData();
+    } catch (error) {
+      console.error("Error releasing hold orders:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to release hold orders",
+        variant: "destructive",
+      });
+    } finally {
+      setIsReleasingHold(false);
     }
   };
 
@@ -671,6 +943,175 @@ export default function FollowUp() {
               </p>
             )}
           </div>
+          <div>
+            <Label>Payment Term *</Label>
+            <Select
+              value={formData.paymentTerm || undefined}
+              onValueChange={(value) => handleInputChange("paymentTerm", value)}
+            >
+              <SelectTrigger data-testid="select-payment-term">
+                <SelectValue placeholder="Select payment term" />
+              </SelectTrigger>
+              <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                {(masterData["Payment Terms"] || []).length > 0 ? (
+                  masterData["Payment Terms"].map((item) => (
+                    <SelectItem key={item} value={item} className="hover:bg-blue-50 focus:bg-blue-50">
+                      {item}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="loading" disabled>
+                    Loading options...
+                  </SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Acceptance Via *</Label>
+            <Select
+              value={formData.acceptanceVia || undefined}
+              onValueChange={(value) => handleInputChange("acceptanceVia", value)}
+            >
+              <SelectTrigger data-testid="select-acceptance-via">
+                <SelectValue placeholder="Acceptance Via" />
+              </SelectTrigger>
+              <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                {(masterData["Acceptance Via"] || []).length > 0 ? (
+                  masterData["Acceptance Via"].map((item) => (
+                    <SelectItem key={item} value={item} className="hover:bg-blue-50 focus:bg-blue-50">
+                      {item}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="loading" disabled>
+                    Loading options...
+                  </SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Payment Mode *</Label>
+            <Select
+              value={formData.paymentMode || undefined}
+              onValueChange={(value) => handleInputChange("paymentMode", value)}
+            >
+              <SelectTrigger data-testid="select-payment-mode">
+                <SelectValue placeholder="Select payment mode" />
+              </SelectTrigger>
+              <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                {(masterData["Payment Mode"] || []).length > 0 ? (
+                  masterData["Payment Mode"].map((item) => (
+                    <SelectItem key={item} value={item} className="hover:bg-blue-50 focus:bg-blue-50">
+                      {item}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="loading" disabled>
+                    Loading options...
+                  </SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+          {formData.paymentMode && formData.paymentMode !== "FOC" && (
+            <>
+            <div>
+              <Label className="flex items-center gap-2">
+                Advance Payment Attachment *
+                {isUploadingAdvancePayment && (
+                  <LoaderIcon className="animate-spin w-4 h-4 text-blue-600" />
+                )}
+              </Label>
+              <Input
+                type="file"
+                disabled={isUploadingAdvancePayment}
+                onChange={handleOrderFileChange("advancePaymentAttachmentUrl", setIsUploadingAdvancePayment)}
+                data-testid="input-advance-payment-attachment"
+              />
+              {formData.advancePaymentAttachmentUrl && (
+                <p className="mt-1 text-sm text-green-600">
+                  Uploaded:{" "}
+                  <a
+                    href={formData.advancePaymentAttachmentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline hover:text-green-800 font-medium"
+                  >
+                    View File
+                  </a>
+                </p>
+              )}
+            </div>
+            <div>
+              <Label className="flex items-center gap-2">
+                Senior Approval *
+                {isUploadingSeniorApproval && (
+                  <LoaderIcon className="animate-spin w-4 h-4 text-blue-600" />
+                )}
+              </Label>
+              <Input
+                type="file"
+                disabled={isUploadingSeniorApproval}
+                onChange={handleOrderFileChange("seniorApprovalUrl", setIsUploadingSeniorApproval)}
+                data-testid="input-senior-approval"
+              />
+              {formData.seniorApprovalUrl && (
+                <p className="mt-1 text-sm text-green-600">
+                  Uploaded:{" "}
+                  <a
+                    href={formData.seniorApprovalUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline hover:text-green-800 font-medium"
+                  >
+                    View File
+                  </a>
+                </p>
+              )}
+            </div>
+            <div>
+              <Label>Senior Approved By *</Label>
+              <Select
+                value={formData.seniorApprovedBy || undefined}
+                onValueChange={(value) => handleInputChange("seniorApprovedBy", value)}
+              >
+                <SelectTrigger data-testid="select-senior-approved-by">
+                  <SelectValue placeholder="Select senior" />
+                </SelectTrigger>
+                <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                  {(masterData["Senior Approved By"] || []).length > 0 ? (
+                    masterData["Senior Approved By"].map((item) => (
+                      <SelectItem key={item} value={item} className="hover:bg-blue-50 focus:bg-blue-50">
+                        {item}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="loading" disabled>
+                      Loading options...
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            </>
+          )}
+          <div>
+            <Label>Hold Order *</Label>
+            <Select
+              value={formData.holdOrder || undefined}
+              onValueChange={(value) => handleInputChange("holdOrder", value)}
+            >
+              <SelectTrigger data-testid="select-hold-order">
+                <SelectValue placeholder="Select Yes / No" />
+              </SelectTrigger>
+              <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
+                <SelectItem value="Yes" className="hover:bg-blue-50 focus:bg-blue-50">Yes</SelectItem>
+                <SelectItem value="No" className="hover:bg-blue-50 focus:bg-blue-50">No</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </>
       );
     }
@@ -694,6 +1135,36 @@ export default function FollowUp() {
       return matchesSearch && matchesCategory;
     })
     .reverse();
+
+  const filteredHoldData = holdData
+    .filter((item) => {
+      const q = searchItem.toLowerCase();
+      const matchesSearch =
+        String(item.ticketId || "").toLowerCase().includes(q) ||
+        String(item.clientName || "").toLowerCase().includes(q) ||
+        String(item.companyName || "").toLowerCase().includes(q) ||
+        String(item.phoneNumber || "").toLowerCase().includes(q) ||
+        String(item.quotationNo || "").toLowerCase().includes(q);
+
+      const matchesCategory =
+        categoryFilter === "all" ||
+        String(item.category || "").trim() === categoryFilter.trim();
+
+      return matchesSearch && matchesCategory;
+    })
+    .reverse();
+
+  const allHoldSelected =
+    filteredHoldData.length > 0 &&
+    filteredHoldData.every((h) => selectedHoldIds.includes(h.orderRow.id));
+
+  const toggleHoldSelected = (id) =>
+    setSelectedHoldIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+
+  const toggleAllHoldSelected = () =>
+    setSelectedHoldIds(allHoldSelected ? [] : filteredHoldData.map((h) => h.orderRow.id));
 
   const enrichedFollowUpData = followUpData.map((item) => {
     const ticketDetails = ticketsMap[item.ticket_id] || {};
@@ -830,6 +1301,13 @@ export default function FollowUp() {
                   Pending ({finalFilteredPendingData.length})
                 </TabsTrigger>
                 <TabsTrigger
+                  value="hold"
+                  data-testid="tab-hold"
+                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+                >
+                  Hold Orders ({filteredHoldData.length})
+                </TabsTrigger>
+                <TabsTrigger
                   value="history"
                   data-testid="tab-history"
                   className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
@@ -838,6 +1316,7 @@ export default function FollowUp() {
                 </TabsTrigger>
               </TabsList>
 
+              {activeTab !== "hold" && (
               <div className="flex flex-wrap gap-2 bg-gradient-to-r from-green-50 to-teal-50 border border-green-200 p-1 rounded-lg w-fit">
                 <button
                   type="button"
@@ -894,6 +1373,7 @@ export default function FollowUp() {
                   Last Call: Today ({lastCallTodayCount(chipBase)})
                 </button>
               </div>
+              )}
             </div>
 
             {/* Right Side: Search Input, Category Filter, and Client Attachment Filter */}
@@ -1044,7 +1524,7 @@ export default function FollowUp() {
                       ) : (
                         finalFilteredPendingData.map((ticket, ind) => (
                           <tr
-                            key={ticket.id}
+                            key={ticket.ticketId}
                             className={
                               ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"
                             }
@@ -1055,10 +1535,17 @@ export default function FollowUp() {
                                 onClick={() => handleFollowUpClick(ticket)}
                                 variant="outline"
                                 className="bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 hover:from-blue-100 hover:to-indigo-100 hover:text-blue-700 transition-all duration-300 border border-blue-200 hover:border-blue-300 rounded-lg px-3 py-1.5 shadow-sm hover:shadow-md group"
-                                data-testid={`button-followup-${ticket.id}`}
+                                data-testid={`button-followup-${ticket.ticketId}`}
                               >
-                                <span className="font-medium">Follow-Up</span>
+                                <span className="font-medium">
+                                  {ticket.legacyOrderRow ? "Order Details" : "Follow-Up"}
+                                </span>
                               </Button>
+                              {ticket.legacyOrderRow && (
+                                <p className="mt-1 text-xs text-amber-600 whitespace-nowrap">
+                                  Order details pending
+                                </p>
+                              )}
                             </td>
                             <td className="px-4 py-3 font-medium text-blue-800">
                               {formatDate(ticket.timeStemp)}
@@ -1194,7 +1681,7 @@ export default function FollowUp() {
                     ) : (
                       finalFilteredPendingData.map((ticket, ind) => (
                         <Card
-                          key={ticket.id}
+                          key={ticket.ticketId}
                           className={`${ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"
                             } border-l-4 border-l-blue-500`}
                         >
@@ -1222,7 +1709,7 @@ export default function FollowUp() {
                                 variant="outline"
                                 className="bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 hover:from-blue-100 hover:to-indigo-100 border border-blue-200"
                               >
-                                Follow-Up
+                                {ticket.legacyOrderRow ? "Order Details" : "Follow-Up"}
                               </Button>
                             </div>
 
@@ -1397,6 +1884,125 @@ export default function FollowUp() {
               </div>
         </TabsContent>
 
+              <TabsContent value="hold" className="mt-0">
+                <div className="flex justify-end mb-2">
+                  <Button
+                    type="button"
+                    onClick={handleReleaseHold}
+                    disabled={selectedHoldIds.length === 0 || isReleasingHold}
+                    data-testid="button-release-hold"
+                    className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white disabled:opacity-60"
+                  >
+                    {isReleasingHold && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
+                    Submit ({selectedHoldIds.length})
+                  </Button>
+                </div>
+                <div className="relative overflow-x-auto">
+                  <div className="max-h-[calc(103vh-200px)] overflow-y-auto">
+                    <table className="hidden sm:table w-full">
+                      <thead className="sticky top-0 z-10">
+                        <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[60px]">
+                            <input
+                              type="checkbox"
+                              checked={allHoldSelected}
+                              onChange={toggleAllHoldSelected}
+                              className="h-4 w-4"
+                              data-testid="checkbox-hold-all"
+                            />
+                          </th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left">Ticket-ID</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left">Company Name</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left">Client Name</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left">Quotation No.</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left">Payment Mode</th>
+                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left">Hold Date</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-blue-100">
+                        {filteredHoldData.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="text-center py-8 bg-white">
+                              {fetchLoading ? (
+                                <div className="flex justify-center items-center text-blue-700">
+                                  <LoaderIcon className="animate-spin w-8 h-8" />
+                                </div>
+                              ) : (
+                                <h1 className="text-blue-700">No orders on hold.</h1>
+                              )}
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredHoldData.map((ticket, ind) => (
+                            <tr
+                              key={ticket.orderRow.id}
+                              className={ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"}
+                            >
+                              <td className="px-4 py-3">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedHoldIds.includes(ticket.orderRow.id)}
+                                  onChange={() => toggleHoldSelected(ticket.orderRow.id)}
+                                  className="h-4 w-4"
+                                  data-testid={`checkbox-hold-${ticket.ticketId}`}
+                                />
+                              </td>
+                              <td className="px-4 py-3 font-medium text-blue-800">{ticket.ticketId}</td>
+                              <td className="px-4 py-3 text-blue-900 max-w-[220px] truncate" title={ticket.companyName || ""}>
+                                {ticket.companyName || ""}
+                              </td>
+                              <td className="px-4 py-3 text-blue-900">{ticket.clientName || ""}</td>
+                              <td className="px-4 py-3 font-medium text-blue-800">{ticket.quotationNo || ""}</td>
+                              <td className="px-4 py-3 text-blue-900">{ticket.paymentMode || ""}</td>
+                              <td className="px-4 py-3 text-blue-900">{formatDate(ticket.holdDate)}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+
+                    {/* Mobile Card View */}
+                    <div className="sm:hidden space-y-3">
+                      {filteredHoldData.length === 0 ? (
+                        <div className="text-center py-8 bg-white text-blue-700">
+                          {fetchLoading ? (
+                            <LoaderIcon className="animate-spin w-8 h-8 mx-auto" />
+                          ) : (
+                            "No orders on hold."
+                          )}
+                        </div>
+                      ) : (
+                        filteredHoldData.map((ticket, ind) => (
+                          <Card
+                            key={ticket.orderRow.id}
+                            className={`${ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"} border-l-4 border-l-blue-500`}
+                          >
+                            <CardContent className="p-4 flex gap-3 items-start">
+                              <input
+                                type="checkbox"
+                                checked={selectedHoldIds.includes(ticket.orderRow.id)}
+                                onChange={() => toggleHoldSelected(ticket.orderRow.id)}
+                                className="h-4 w-4 mt-1"
+                              />
+                              <div className="text-sm space-y-1 min-w-0">
+                                <h3 className="font-bold text-blue-800 text-base">{ticket.ticketId}</h3>
+                                <p className="text-gray-700 truncate" title={ticket.companyName || ""}>
+                                  {ticket.companyName || "N/A"}
+                                </p>
+                                <p className="text-gray-600">{ticket.clientName || "N/A"}</p>
+                                <p className="text-gray-600">Quote: {ticket.quotationNo || "N/A"}</p>
+                                <p className="text-gray-600">Payment Mode: {ticket.paymentMode || "N/A"}</p>
+                                <p className="text-gray-500">Hold Date: {formatDate(ticket.holdDate)}</p>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+
               <TabsContent value="history" className="mt-0">
               <div className="relative overflow-x-auto">
                 <div className="max-h-[calc(103vh-200px)] overflow-y-auto">
@@ -1475,13 +2081,34 @@ export default function FollowUp() {
                         <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
                           Next Date Of Call
                         </th>
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
+                          Payment Term
+                        </th>
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
+                          Acceptance Via
+                        </th>
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
+                          Payment Mode
+                        </th>
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
+                          Advance Payment
+                        </th>
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
+                          Senior Approval
+                        </th>
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
+                          Senior Approved By
+                        </th>
+                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
+                          Hold Released On
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-blue-100">
                       {finalFilteredHistoryData.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={24}
+                            colSpan={31}
                             className="text-center py-8 bg-white"
                             data-testid="text-no-history"
                           >
@@ -1596,6 +2223,49 @@ export default function FollowUp() {
                               <td className="px-4 py-3 text-blue-900">
                                 {formatDate(ticket.next_date_of_call) || ""}
                               </td>
+                              <td className="px-4 py-3 text-blue-900">
+                                {ticket.payment_term || ""}
+                              </td>
+                              <td className="px-4 py-3 text-blue-900">
+                                {ticket.acceptance_via || ""}
+                              </td>
+                              <td className="px-4 py-3 text-blue-900">
+                                {ticket.payment_mode || ""}
+                              </td>
+                              <td className="px-4 py-3 text-blue-900">
+                                {ticket.advance_payment_attachment ? (
+                                  <a
+                                    href={ticket.advance_payment_attachment}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:text-blue-800 hover:underline"
+                                  >
+                                    View
+                                  </a>
+                                ) : (
+                                  ""
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-blue-900">
+                                {ticket.senior_approval ? (
+                                  <a
+                                    href={ticket.senior_approval}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:text-blue-800 hover:underline"
+                                  >
+                                    View
+                                  </a>
+                                ) : (
+                                  ""
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-blue-900">
+                                {ticket.senior_approved_by || ""}
+                              </td>
+                              <td className="px-4 py-3 text-blue-900">
+                                {formatDate(ticket.hold_released_at) || ""}
+                              </td>
                             </tr>
                           ))
                       )}
@@ -1691,6 +2361,33 @@ export default function FollowUp() {
                                 <p className="text-blue-900">N/A</p>
                               )}
                             </div>
+
+                            {ticket.payment_mode && (
+                              <div className="grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                  <p className="text-gray-500 font-medium">Payment Term</p>
+                                  <p className="text-blue-900">{ticket.payment_term || "N/A"}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-500 font-medium">Payment Mode</p>
+                                  <p className="text-blue-900">{ticket.payment_mode}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-500 font-medium">Acceptance Via</p>
+                                  <p className="text-blue-900">{ticket.acceptance_via || "N/A"}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-500 font-medium">Senior Approved By</p>
+                                  <p className="text-blue-900">{ticket.senior_approved_by || "N/A"}</p>
+                                </div>
+                                {ticket.hold_released_at && (
+                                  <div>
+                                    <p className="text-gray-500 font-medium">Hold Released On</p>
+                                    <p className="text-blue-900">{formatDate(ticket.hold_released_at)}</p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
 
                             {/* Customer Feedback */}
                             <div>
@@ -1803,6 +2500,7 @@ export default function FollowUp() {
                 <Select
                   value={formData.stage || undefined} // Use undefined instead of empty string
                   onValueChange={(value) => handleInputChange("stage", value)}
+                  disabled={!!selectedTicket?.legacyOrderRow}
                 >
                   <SelectTrigger data-testid="select-stage">
                     <SelectValue placeholder="Select stage" />
@@ -1824,7 +2522,13 @@ export default function FollowUp() {
               <div className="md:col-span-2 flex space-x-4 pt-4">
                 <Button
                   type="submit"
-                  disabled={isSubmitting || isUploadingClientAttachment}
+                  disabled={
+                    isSubmitting ||
+                    isUploadingClientAttachment ||
+                    isUploadingAdvancePayment ||
+                    isUploadingSeniorApproval ||
+                    (formData.stage === "Order Received" && !formData.holdOrder)
+                  }
                   data-testid="button-submit-followup"
                   className="px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-70 disabled:transform-none"
                 >
@@ -1878,7 +2582,7 @@ export default function FollowUp() {
       <Modal
         isOpen={!!editingHistoryRow}
         onClose={closeEditHistoryAttachmentModal}
-        title="Edit Client Approval"
+        title="Edit Follow-Up"
         size="md"
       >
         <div className="space-y-4">
@@ -1913,11 +2617,67 @@ export default function FollowUp() {
             )}
           </div>
 
+          {editingHistoryRow?.stage === "Order Received" && editingHistoryRow?.payment_mode && (
+            <>
+              <div>
+                <Label>Acceptance Via</Label>
+                <Select
+                  value={editOrderFields.acceptanceVia || undefined}
+                  onValueChange={(value) =>
+                    setEditOrderFields((prev) => ({ ...prev, acceptanceVia: value }))
+                  }
+                >
+                  <SelectTrigger data-testid="edit-select-acceptance-via">
+                    <SelectValue placeholder="Acceptance Via" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
+                    {(masterData["Acceptance Via"] || []).map((item) => (
+                      <SelectItem key={item} value={item} className="hover:bg-blue-50 focus:bg-blue-50">
+                        {item}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {editingHistoryRow.payment_mode !== "FOC" &&
+                [
+                  ["advancePaymentAttachmentUrl", "Advance Payment Attachment"],
+                  ["seniorApprovalUrl", "Senior Approval"],
+                ].map(([field, label]) => (
+                  <div key={field}>
+                    <Label className="flex items-center gap-2">{label}</Label>
+                    <Input
+                      type="file"
+                      disabled={isUploadingEditOrderFile || isSavingEditAttachment}
+                      onChange={handleEditOrderFileChange(field)}
+                    />
+                    {editOrderFields[field] && (
+                      <p className="mt-1 text-sm text-green-600">
+                        Currently uploaded:{" "}
+                        <a
+                          href={editOrderFields[field]}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline hover:text-green-800 font-medium"
+                        >
+                          View File
+                        </a>
+                      </p>
+                    )}
+                  </div>
+                ))}
+              {isUploadingEditOrderFile && (
+                <p className="text-xs text-blue-600">Uploading file, please wait...</p>
+              )}
+            </>
+          )}
+
           <div className="flex space-x-4 pt-2">
             <Button
               type="button"
               onClick={handleSaveEditHistoryAttachment}
-              disabled={isUploadingEditAttachment || isSavingEditAttachment}
+              disabled={isUploadingEditAttachment || isSavingEditAttachment || isUploadingEditOrderFile}
               data-testid="button-save-edit-history-attachment"
               className="px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-70"
             >
