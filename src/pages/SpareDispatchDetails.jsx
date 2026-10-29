@@ -1,9 +1,4 @@
 import { useState, useEffect } from "react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-} from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -14,24 +9,51 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "../components/ui/tabs";
 import { Modal } from "../components/ui/modal";
 import { useToast } from "../hooks/use-toast";
-import { Loader2Icon, LoaderIcon } from "lucide-react";
+import { ListToolbar, ListTable, StatusBadge } from "../components/shared";
+import { useClientList } from "../hooks/useClientList";
+import { Loader2Icon } from "lucide-react";
 import { supabase } from "../lib/supabase/client";
 import { fetchDropdownRows } from "../lib/supabase/dropdown";
+import { formatDate, formatDelayLabel, delayTone } from "../lib/format";
+
+const linkCell = (url) =>
+  url ? (
+    <a href={url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-primary hover:underline">
+      View
+    </a>
+  ) : null;
+
+const PENDING_TABS = ["pending-spare", "pending-warehouse"];
+
+// Pending (Spare / Warehouse): ticket + spare invoice. History: adds the dispatch details.
+const COLUMNS = [
+  { key: "action", label: "Action", fixed: true, tabs: PENDING_TABS, cell: (r, { onProcess }) => (
+    <Button size="sm" variant="outline" onClick={() => onProcess(r)} data-testid={`button-dispatch-${r.ticketId}`}>Process</Button>
+  ) },
+  { key: "date", label: "Date", defaultVisible: true, text: (r) => formatDate(r.timeStemp) },
+  { key: "ticketId", label: "Ticket ID", defaultVisible: true, strong: true, text: (r) => r.ticketId },
+  { key: "companyName", label: "Company Name", defaultVisible: true, wrap: true, width: 220, text: (r) => r.companyName },
+  { key: "clientName", label: "Person Name", defaultVisible: true, text: (r) => r.clientName },
+  { key: "phoneNumber", label: "Phone Number", defaultVisible: true, text: (r) => r.phoneNumber },
+  { key: "mentionIssue", label: "Issue", defaultVisible: true, wrap: true, width: 240, text: (r) => r.mentionIssue },
+  { key: "invoiceNoSpare", label: "Spare Invoice No.", defaultVisible: true, strong: true, text: (r) => r.invoiceNoSpare },
+  { key: "attachmentSpare", label: "Spare Invoice Copy", defaultVisible: true, cell: (r) => linkCell(r.attachmentSpare) },
+  { key: "transporterName", label: "Transporter Name", defaultVisible: true, tabs: ["history"], text: (r) => r.transporterName },
+  { key: "docketBiltyNo", label: "Docket/Bilty No.", defaultVisible: true, tabs: ["history"], text: (r) => r.docketBiltyNo },
+  { key: "dispatchDate", label: "Dispatch Date", defaultVisible: true, tabs: ["history"], text: (r) => formatDate(r.dispatchDate) },
+  { key: "courierTransportDetails", label: "Courier/Transport Details", defaultVisible: true, tabs: ["history"], wrap: true, width: 220, text: (r) => r.courierTransportDetails },
+  { key: "biltyCopy", label: "Bilty Copy", defaultVisible: true, tabs: ["history"], cell: (r) => linkCell(r.biltyCopyAttachment) },
+  { key: "delay", label: "Delay", defaultVisible: true, tabs: ["history"], cell: (r) => (
+    <StatusBadge tone={delayTone(r.delayMinutes)}>{formatDelayLabel(r.delayMinutes)}</StatusBadge>
+  ) },
+];
 
 export default function SpareDispatchDetails() {
-  const [activeTab, setActiveTab] = useState("pending-spare");
   const [showModal, setShowModal] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [formData, setFormData] = useState({});
-  const [searchItem, setSearchItem] = useState("");
   const [masterData, setMasterData] = useState({});
   const { toast } = useToast();
 
@@ -252,450 +274,36 @@ export default function SpareDispatchDetails() {
     }
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return "";
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return dateString;
-    const day = String(date.getDate()).padStart(2, "0");
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const year = date.getFullYear();
-    return `${day}/${month}/${year}`;
-  };
-
-  // Minutes late (negative) or early (positive) — the ORIGINAL delay
-  // convention, matching predecessor Invoice. See
-  // spare_dispatch_details.delay_minutes.
-  const formatDelay = (minutes) => {
-    if (minutes === null || minutes === undefined) return "-";
-    if (minutes < 0) return `${Math.abs(minutes)} min late`;
-    return `${minutes} min early`;
-  };
-
-  const filteredPendingDataa = pendingData
-    .filter((item) => {
-      const q = searchItem.toLowerCase();
-      return (
-        String(item.ticketId || "").toLowerCase().includes(q) ||
-        String(item.clientName || "").toLowerCase().includes(q) ||
-        String(item.companyName || "").toLowerCase().includes(q) ||
-        String(item.phoneNumber || "").toLowerCase().includes(q) ||
-        String(item.mentionIssue || "").toLowerCase().includes(q) ||
-        String(item.invoiceNoSpare || "").toLowerCase().includes(q)
-      );
-    })
-    .reverse();
-
-  const filteredHistoryDataa = historyData
-    .filter((item) => {
-      const q = searchItem.toLowerCase();
-      return (
-        String(item.ticketId || "").toLowerCase().includes(q) ||
-        String(item.clientName || "").toLowerCase().includes(q) ||
-        String(item.companyName || "").toLowerCase().includes(q) ||
-        String(item.phoneNumber || "").toLowerCase().includes(q) ||
-        String(item.mentionIssue || "").toLowerCase().includes(q) ||
-        String(item.invoiceNoSpare || "").toLowerCase().includes(q)
-      );
-    })
-    .reverse();
-
-  const userName = localStorage.getItem("currentUsername");
-  const roleStorage = localStorage.getItem("o2d-auth-storage");
-  const parsedData = roleStorage ? JSON.parse(roleStorage) : null;
-  const role = parsedData?.state?.user?.role;
-
   // A ticket meeting both conditions shows in both tabs; one with neither
   // (enquiry type edited after the invoice) stays reachable under Spare.
-  const filteredSparePending = filteredPendingDataa.filter((t) => t.isSpare || !t.isWarehouse);
-  const filteredWarehousePending = filteredPendingDataa.filter((t) => t.isWarehouse);
-
-  const filteredHistoryData = filteredHistoryDataa;
-
-  const renderPendingRows = (filteredPendingData) => (
-  <>
-                <div className="relative overflow-x-auto">
-                  <div className="max-h-[calc(103vh-200px)] overflow-y-auto">
-                    <table className="hidden sm:block w-full">
-                      <thead className="sticky top-0 z-10">
-                        <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Action</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Date</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Ticket ID</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">Company Name</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Person Name</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Phone Number</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">Issue</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Spare Invoice No.</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Spare Invoice Copy</th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-blue-100">
-                        {filteredPendingData.length === 0 ? (
-                          <tr>
-                            <td colSpan={9} className="text-center py-8 bg-white" data-testid="text-no-pending">
-                              {fetchLoading ? (
-                                <div className="flex justify-center items-center text-blue-700">
-                                  <LoaderIcon className="animate-spin w-8 h-8" />
-                                </div>
-                              ) : (
-                                <h1 className="text-blue-700">No pending spare dispatches found.</h1>
-                              )}
-                            </td>
-                          </tr>
-                        ) : (
-                          filteredPendingData.map((ticket, ind) => (
-                            <tr key={ticket.ticketId} className={ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"}>
-                              <td className="px-4 py-3">
-                                <Button
-                                  size="sm"
-                                  onClick={() => handleClick(ticket)}
-                                  variant="outline"
-                                  className="bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 hover:from-blue-100 hover:to-indigo-100 hover:text-blue-700 transition-all duration-300 border border-blue-200 hover:border-blue-300 rounded-lg px-3 py-1.5 shadow-sm hover:shadow-md group"
-                                  data-testid={`button-dispatch-${ticket.ticketId}`}
-                                >
-                                  <span className="font-medium">Process</span>
-                                </Button>
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">{formatDate(ticket.timeStemp)}</td>
-                              <td className="px-4 py-3 font-medium text-blue-800">{ticket.ticketId}</td>
-                              <td className="px-4 py-3 text-blue-900">{ticket.companyName || "-"}</td>
-                              <td className="px-4 py-3 text-blue-900">{ticket.clientName}</td>
-                              <td className="px-4 py-3 text-blue-900">{ticket.phoneNumber}</td>
-                              <td className="px-4 py-3 text-blue-900 truncate max-w-xs hover:whitespace-normal">{ticket.mentionIssue || "-"}</td>
-                              <td className="px-4 py-3 text-blue-900 font-medium">{ticket.invoiceNoSpare || "-"}</td>
-                              <td className="px-4 py-3">
-                                {ticket.attachmentSpare ? (
-                                  <a
-                                    href={ticket.attachmentSpare}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
-                                  >
-                                    View
-                                  </a>
-                                ) : (
-                                  "-"
-                                )}
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-
-                    {/* Mobile Card View */}
-                    <div className="sm:hidden space-y-4">
-                      {filteredPendingData.length === 0 ? (
-                        <div className="text-center py-8 bg-white" data-testid="text-no-pending">
-                          {fetchLoading ? (
-                            <div className="flex justify-center items-center text-blue-700">
-                              <LoaderIcon className="animate-spin w-8 h-8" />
-                            </div>
-                          ) : (
-                            <h1 className="text-blue-700">No pending spare dispatches found.</h1>
-                          )}
-                        </div>
-                      ) : (
-                        filteredPendingData.map((ticket, ind) => (
-                          <Card
-                            key={ticket.ticketId}
-                            className={`${ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"} border-l-4 border-l-blue-500`}
-                          >
-                            <CardContent className="p-4 space-y-3">
-                              <div className="flex justify-between items-start">
-                                <div>
-                                  <h3 className="font-bold text-blue-800 text-lg">{ticket.ticketId}</h3>
-                                  <p className="text-sm text-gray-600 font-medium">Company: {ticket.companyName || "N/A"}</p>
-                                  <p className="text-sm text-gray-600">Person: {ticket.clientName}</p>
-                                </div>
-                                <Button
-                                  size="sm"
-                                  onClick={() => handleClick(ticket)}
-                                  variant="outline"
-                                  className="bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 hover:from-blue-100 hover:to-indigo-100 border border-blue-200"
-                                >
-                                  Process
-                                </Button>
-                              </div>
-                              <div className="grid grid-cols-2 gap-3 text-sm">
-                                <div>
-                                  <p className="text-gray-500 font-medium">Phone</p>
-                                  <p className="text-blue-900">{ticket.phoneNumber}</p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-500 font-medium">Spare Invoice No.</p>
-                                  <p className="text-blue-900">{ticket.invoiceNoSpare || "N/A"}</p>
-                                </div>
-                              </div>
-                              <div>
-                                <p className="text-gray-500 font-medium text-sm">Issue</p>
-                                <p className="text-blue-900 line-clamp-2">{ticket.mentionIssue || "N/A"}</p>
-                              </div>
-                              {ticket.attachmentSpare && (
-                                <div className="text-sm">
-                                  <p className="text-gray-500 font-medium">Spare Invoice Copy</p>
-                                  <a href={ticket.attachmentSpare} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">View</a>
-                                </div>
-                              )}
-                            </CardContent>
-                          </Card>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                </div>
-  </>
-  );
+  const list = useClientList({
+    key: "spare-dispatch",
+    data: {
+      "pending-spare": pendingData.filter((t) => t.isSpare || !t.isWarehouse),
+      "pending-warehouse": pendingData.filter((t) => t.isWarehouse),
+      history: historyData,
+    },
+    tabLabels: { "pending-spare": "Pending (Spare)", "pending-warehouse": "Pending (Warehouse)", history: "History" },
+    loading: fetchLoading,
+    searchKeys: ["ticketId", "clientName", "companyName", "phoneNumber", "mentionIssue", "invoiceNoSpare"],
+    columns: COLUMNS,
+  });
 
   return (
-    <div className="space-y-2">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <Card className="border-0 shadow-lg bg-gradient-to-br from-blue-50 to-indigo-50">
-          <CardHeader className="bg-gradient-to-r from-blue-50/50 to-indigo-50/50 rounded-t-lg border-b border-blue-100 px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
-            <div className="flex flex-wrap items-center gap-4">
-              <TabsList className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200">
-                <TabsTrigger
-                  value="pending-spare"
-                  data-testid="tab-pending-spare"
-                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-                >
-                  Pending (Spare) ({filteredSparePending.length})
-                </TabsTrigger>
-                <TabsTrigger
-                  value="pending-warehouse"
-                  data-testid="tab-pending-warehouse"
-                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-                >
-                  Pending (Warehouse) ({filteredWarehousePending.length})
-                </TabsTrigger>
-                <TabsTrigger
-                  value="history"
-                  data-testid="tab-history"
-                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-                >
-                  History ({filteredHistoryData.length})
-                </TabsTrigger>
-              </TabsList>
-            </div>
-
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 flex-1 md:justify-end w-full md:w-auto">
-              <div className="relative flex-1 max-w-md w-full">
-                <Input
-                  id="searchFilter"
-                  placeholder="Search by ticket ID, client, company or phone..."
-                  className="pl-10 py-2 w-full rounded-md border-blue-200 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white"
-                  data-testid="input-search-filter"
-                  onChange={(e) => setSearchItem(e.target.value)}
-                />
-              </div>
-            </div>
-          </CardHeader>
-
-          <CardContent>
-            <div className="mt-2">
-              <TabsContent value="pending-spare" className="mt-0">
-                {renderPendingRows(filteredSparePending)}
-              </TabsContent>
-
-              <TabsContent value="pending-warehouse" className="mt-0">
-                {renderPendingRows(filteredWarehousePending)}
-              </TabsContent>
-
-              <TabsContent value="history" className="mt-0">
-                <div className="relative overflow-x-auto">
-                  <div className="max-h-[calc(103vh-200px)] overflow-y-auto">
-                    <table className="hidden sm:block w-full">
-                      <thead className="sticky top-0 z-10">
-                        <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Date</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Ticket ID</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">Company Name</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Person Name</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Phone Number</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">Issue</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Spare Invoice No.</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Spare Invoice Copy</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Transporter Name</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Docket/Bilty No.</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Dispatch Date</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">Courier/Transport Details</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">Bilty Copy</th>
-                          <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">Delay</th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-blue-100">
-                        {filteredHistoryData.length === 0 ? (
-                          <tr>
-                            <td colSpan={14} className="text-center py-8 bg-white" data-testid="text-no-history">
-                              {fetchLoading ? (
-                                <div className="flex justify-center items-center text-blue-700">
-                                  <LoaderIcon className="animate-spin w-8 h-8" />
-                                </div>
-                              ) : (
-                                <h1 className="text-blue-700">No spare dispatch history found.</h1>
-                              )}
-                            </td>
-                          </tr>
-                        ) : (
-                          filteredHistoryData.map((ticket, ind) => (
-                            <tr key={ind} className={ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"}>
-                              <td className="px-4 py-3 text-blue-900">{formatDate(ticket.timeStemp)}</td>
-                              <td className="px-4 py-3 font-medium text-blue-800">{ticket.ticketId}</td>
-                              <td className="px-4 py-3 text-blue-900">{ticket.companyName || "-"}</td>
-                              <td className="px-4 py-3 text-blue-900">{ticket.clientName}</td>
-                              <td className="px-4 py-3 text-blue-900">{ticket.phoneNumber}</td>
-                              <td className="px-4 py-3 text-blue-900 truncate max-w-xs hover:whitespace-normal">{ticket.mentionIssue || "-"}</td>
-                              <td className="px-4 py-3 text-blue-900 font-medium">{ticket.invoiceNoSpare || "-"}</td>
-                              <td className="px-4 py-3">
-                                {ticket.attachmentSpare ? (
-                                  <a
-                                    href={ticket.attachmentSpare}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
-                                  >
-                                    View
-                                  </a>
-                                ) : (
-                                  "-"
-                                )}
-                              </td>
-                              <td className="px-4 py-3 text-blue-900">{ticket.transporterName}</td>
-                              <td className="px-4 py-3 text-blue-900">{ticket.docketBiltyNo}</td>
-                              <td className="px-4 py-3 text-blue-900">{formatDate(ticket.dispatchDate) || ""}</td>
-                              <td className="px-4 py-3 text-blue-900 truncate max-w-xs hover:whitespace-normal">{ticket.courierTransportDetails}</td>
-                              <td className="px-4 py-3">
-                                {ticket.biltyCopyAttachment ? (
-                                  <a
-                                    href={ticket.biltyCopyAttachment}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
-                                  >
-                                    View
-                                  </a>
-                                ) : (
-                                  ""
-                                )}
-                              </td>
-                              <td className="px-4 py-3">
-                                <span
-                                  className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                    ticket.delayMinutes < 0
-                                      ? "bg-red-100 text-red-800"
-                                      : "bg-emerald-100 text-emerald-800"
-                                  }`}
-                                >
-                                  {formatDelay(ticket.delayMinutes)}
-                                </span>
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-
-                    {/* Mobile Card View */}
-                    <div className="sm:hidden space-y-4">
-                      {filteredHistoryData.length === 0 ? (
-                        <div className="text-center py-8 bg-white" data-testid="text-no-history">
-                          {fetchLoading ? (
-                            <div className="flex justify-center items-center text-blue-700">
-                              <LoaderIcon className="animate-spin w-8 h-8" />
-                            </div>
-                          ) : (
-                            <h1 className="text-blue-700">No spare dispatch history found.</h1>
-                          )}
-                        </div>
-                      ) : (
-                        filteredHistoryData.map((ticket, ind) => (
-                          <Card
-                            key={ind}
-                            className={`${ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"} border-l-4 border-l-blue-500`}
-                          >
-                            <CardContent className="p-4 space-y-3">
-                              <div>
-                                <h3 className="font-bold text-blue-800 text-lg">{ticket.ticketId}</h3>
-                                <p className="text-sm text-gray-600 font-medium">Company: {ticket.companyName || "N/A"}</p>
-                                <p className="text-sm text-gray-600">Person: {ticket.clientName}</p>
-                              </div>
-                              <div className="grid grid-cols-2 gap-3 text-sm">
-                                <div>
-                                  <p className="text-gray-500 font-medium">Phone</p>
-                                  <p className="text-blue-900">{ticket.phoneNumber}</p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-500 font-medium">Spare Invoice No.</p>
-                                  <p className="text-blue-900">{ticket.invoiceNoSpare || "N/A"}</p>
-                                </div>
-                              </div>
-                              <div>
-                                <p className="text-gray-500 font-medium text-sm">Issue</p>
-                                <p className="text-blue-900 line-clamp-2">{ticket.mentionIssue || "N/A"}</p>
-                              </div>
-                              {ticket.attachmentSpare && (
-                                <div className="text-sm">
-                                  <p className="text-gray-500 font-medium">Spare Invoice Copy</p>
-                                  <a href={ticket.attachmentSpare} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">View</a>
-                                </div>
-                              )}
-                              <div className="grid grid-cols-2 gap-3 text-sm">
-                                <div>
-                                  <p className="text-gray-500 font-medium">Transporter Name</p>
-                                  <p className="text-blue-900">{ticket.transporterName || "N/A"}</p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-500 font-medium">Docket/Bilty No.</p>
-                                  <p className="text-blue-900">{ticket.docketBiltyNo || "N/A"}</p>
-                                </div>
-                              </div>
-                              <div className="grid grid-cols-2 gap-3 text-sm">
-                                <div>
-                                  <p className="text-gray-500 font-medium">Dispatch Date</p>
-                                  <p className="text-blue-900">{formatDate(ticket.dispatchDate) || "N/A"}</p>
-                                </div>
-                                <div>
-                                  <p className="text-gray-500 font-medium">Delay</p>
-                                  <span
-                                    className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                                      ticket.delayMinutes < 0
-                                        ? "bg-red-100 text-red-800"
-                                        : "bg-emerald-100 text-emerald-800"
-                                    }`}
-                                  >
-                                    {formatDelay(ticket.delayMinutes)}
-                                  </span>
-                                </div>
-                              </div>
-                              <div>
-                                <p className="text-gray-500 font-medium text-sm">Courier/Transport Details</p>
-                                <p className="text-blue-900 line-clamp-2">{ticket.courierTransportDetails || "N/A"}</p>
-                              </div>
-                              {ticket.biltyCopyAttachment && (
-                                <div>
-                                  <p className="text-gray-500 font-medium text-sm">Bilty Copy</p>
-                                  <a
-                                    href={ticket.biltyCopyAttachment}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-blue-600 hover:text-blue-800 text-sm"
-                                  >
-                                    View File
-                                  </a>
-                                </div>
-                              )}
-                            </CardContent>
-                          </Card>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </TabsContent>
-            </div>
-          </CardContent>
-        </Card>
-      </Tabs>
+    <div className="space-y-3">
+      <ListToolbar list={list} searchPlaceholder="Search by ticket ID, client, company or phone..." />
+      <ListTable
+        list={list}
+        ctx={{ onProcess: handleClick }}
+        rowKey={(r, tab) => tab + "-" + r.ticketId}
+        cardTitle={(r) => r.ticketId}
+        emptyTitle={{
+          "pending-spare": "No pending spare dispatches found.",
+          "pending-warehouse": "No pending warehouse dispatches found.",
+          history: "No dispatch history found.",
+        }}
+        ariaLabel="Spare dispatch tickets"
+      />
 
       {/* Spare Dispatch Details Modal */}
       <Modal

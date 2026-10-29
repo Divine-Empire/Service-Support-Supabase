@@ -19,7 +19,6 @@ import {
   Truck,
   XCircle,
   Database,
-  Timer,
   UserCog,
 } from "lucide-react";
 
@@ -47,8 +46,20 @@ export const navigation = [
   { name: "Calibration Certificate", href: "/calibrationCertificate", icon: Award },
   { name: "Report", href: "/report", icon: ClipboardList },
   { name: "Cancel", label: "Cancelled Tickets", href: "/cancel", icon: XCircle },
-  { name: "Master", href: "/master", icon: Database, adminOnly: true },
-  { name: "TAT Config", href: "/tat-config", icon: Timer, adminOnly: true },
+  {
+    name: "Master",
+    href: "/master",
+    icon: Database,
+    adminOnly: true,
+    children: [
+      { label: "Dropdown", href: "/master/dropdown" },
+      { label: "Company Details", href: "/master/company" },
+      { label: "Item Master", href: "/master/items" },
+      { label: "Engineer List", href: "/master/engineers" },
+      { label: "Recipients for Mail", href: "/master/recipients" },
+      { label: "TAT Master", href: "/master/tat" },
+    ],
+  },
   { name: "Settings", href: "/settings", icon: UserCog, adminOnly: true },
 ];
 
@@ -83,6 +94,12 @@ export function landingPath(user) {
   return (assigned || items[0])?.href || "/";
 }
 
+// Menu item for the header title; a sub-page reads "Master · Dropdown".
 export function navItemForPath(pathname) {
-  return navigation.find((item) => item.href === pathname);
+  for (const item of navigation) {
+    if (item.href === pathname) return item;
+    const child = item.children?.find((c) => c.href === pathname);
+    if (child) return { ...child, label: navLabel(item) + " · " + child.label };
+  }
+  return undefined;
 }

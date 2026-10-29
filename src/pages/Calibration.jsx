@@ -32,7 +32,6 @@ const COLUMNS = [
   { key: "attachmentNabl", label: "Attachment (NABL)", defaultVisible: false, tabs: ["pending"], cell: (r) => linkCell(r.attachmentNabl) },
   { key: "invoiceNo", label: "Invoice Number", defaultVisible: true, strong: true, tabs: ["history"], text: (r) => r.invoiceNo },
   { key: "invoiceCopy", label: "Invoice Copy", defaultVisible: true, tabs: ["history"], cell: (r) => linkCell(r.invoiceCopy) },
-  { key: "date", label: "Date", defaultVisible: true, text: (r) => formatDate(r.timeStemp) },
   { key: "invoiceDate", label: "Invoice Date", defaultVisible: true, text: (r) => formatDate(r.invoiceDate) },
   { key: "ticketId", label: "Ticket ID", defaultVisible: true, strong: true, text: (r) => r.ticketId },
   { key: "enquiryType", label: "Enquiry Type", defaultVisible: true, text: (r) => r.enquiryType },

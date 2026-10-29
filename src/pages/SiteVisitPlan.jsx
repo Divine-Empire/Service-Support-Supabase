@@ -655,6 +655,7 @@ export default function SiteVisitPlan() {
     <div className="space-y-3">
       <ListToolbar
         list={list}
+        filtersInDialog
         searchPlaceholder="Search by ticket ID, client, company or phone..."
         actions={
           <>
@@ -665,7 +666,7 @@ export default function SiteVisitPlan() {
               className="gap-2"
             >
               <Calendar className="h-4 w-4" />
-              View Visit Calendar
+              Visit Calendar
             </Button>
             <Button
               variant="outline"

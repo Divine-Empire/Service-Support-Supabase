@@ -7,6 +7,17 @@ export const renderValue = (col, row, ctx) => {
   return v === "" || v === null || v === undefined ? <span className="text-muted-foreground">-</span> : v;
 };
 
+// Wrapped cell: at most 2 lines at the column width, full text on hover (native tooltip).
+function WrapCell({ col, row, ctx }) {
+  const raw = col.text ? col.text(row) : col.cell ? null : row[col.key];
+  const full = typeof raw === "string" ? raw : undefined;
+  return (
+    <div className="line-clamp-2 break-words" title={full}>
+      {renderValue(col, row, ctx)}
+    </div>
+  );
+}
+
 /**
  * DataTable driven by a list hook + column definitions: one definition renders the desktop
  * table row AND the mobile card, so the two can no longer drift apart.
@@ -39,9 +50,9 @@ export default function ListTable({ list, rowKey, emptyTitle = "No records found
             <td
               key={c.key}
               className={`px-3.5 py-2.5 align-top text-sm text-foreground ${c.strong ? "font-semibold" : ""} ${c.wrap ? "whitespace-normal" : "whitespace-nowrap"} ${c.cellClassName || ""}`}
-              style={c.width ? { minWidth: c.width } : undefined}
+              style={c.width ? (c.wrap ? { minWidth: c.width, maxWidth: c.width } : { minWidth: c.width }) : undefined}
             >
-              {renderValue(c, row, ctx)}
+              {c.wrap ? <WrapCell col={c} row={row} ctx={ctx} /> : renderValue(c, row, ctx)}
             </td>
           ))}
         </tr>

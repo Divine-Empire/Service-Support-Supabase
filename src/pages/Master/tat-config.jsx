@@ -191,12 +191,6 @@ export default function TatConfig() {
     (name) => !stages.some((s) => s.stage_name === name)
   );
 
-  const openCreateModal = () => {
-    setIsEditMode(false);
-    setFormData(emptyForm);
-    setShowModal(true);
-  };
-
   const openEditModal = (stage) => {
     setIsEditMode(true);
     const { days, hours, minutes } = minutesToDuration(stage.duration_minutes);
@@ -418,17 +412,6 @@ export default function TatConfig() {
               </TabsList>
             </div>
 
-            {activeTab === "stages" && (
-              <Button
-                onClick={openCreateModal}
-                disabled={availableStageNames.length === 0}
-                title={availableStageNames.length === 0 ? "All stages already configured" : undefined}
-                className="h-9 shrink-0 gap-1.5"
-              >
-                <Plus className="h-4 w-4" aria-hidden="true" />
-                New Stage
-              </Button>
-            )}
             {activeTab === "holidays" && (
               <Button onClick={openCreateHolidayModal} className="h-9 shrink-0 gap-1.5">
                 <Plus className="h-4 w-4" aria-hidden="true" />

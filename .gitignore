@@ -24,8 +24,7 @@ dist-ssr
 *.sw?
 
 .env
-Code.gs
+graphify-out
+SERVICE-SUPPORT-REFACTOR-PLAN.md
 /supabase
-Flow.txt
-Engineer-Dashboard
 task.txt

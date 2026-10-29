@@ -9,45 +9,13 @@ import {
   SelectValue,
 } from "../../components/ui/select";
 import { Modal } from "../../components/ui/modal";
-import { DataTable, FilterSearch, ListTable, ListToolbar, StatusBadge, StatusTabs } from "../../components/shared";
+import { DataTable, FilterSearch, ListTable, ListToolbar, StatusBadge } from "../../components/shared";
 import { useClientList } from "../../hooks/useClientList";
 import { useToast } from "../../hooks/use-toast";
 import { Loader2Icon, Plus, Pencil, Trash2 } from "lucide-react";
 import { supabase } from "../../lib/supabase/client";
 import { ltoSupabase } from "../../lib/supabase/ltoClient";
-import { fetchDropdownRows } from "../../lib/supabase/dropdown";
 import useAuthStore from "../../store/authStore";
-
-// Renamed in migration 0043 to match the renamed tickets columns:
-// 'category' now holds the NABL/Service/Spare-style values (source for
-// Ticket-and-Enquiry.jsx's "Category" field, formerly "Enquiry-Type"),
-// 'sub_category' holds the machine-group values (source for its
-// "Sub-Category" field, formerly "Category"), and 'enquiry_type' is a
-// brand new, initially-empty category sourcing the brand new "Enquiry
-// Type" field (used for TAT/planning on stages after Invoice).
-//
-// 'item_name' USED to be a category here too, but the item catalog (~3,500
-// rows) now lives in its own "Items" tab below, reading/writing `lto_items`
-// directly (see items.js) instead of being just another free-text dropdown
-// category — see the Items tab section further down.
-const CATEGORY_LABELS = {
-  call_type: "Call Type",
-  source_of_enquiry: "Source of Enquiry",
-  enquiry_receiver_name: "Enquiry Receiver Name",
-  category: "Category (Requirement Service Type)",
-  sub_category: "Sub-Category (Machine Group)",
-  enquiry_type: "Enquiry Type",
-  service_location: "Service Location",
-  machine_name: "Machine Name",
-};
-
-const PAGE_TABS = [
-  { id: "dropdown", label: "Dropdown" },
-  { id: "company", label: "Company Details" },
-  { id: "items", label: "Items" },
-  { id: "engineerContacts", label: "Engineer Contacts" },
-  { id: "approvalRecipients", label: "Approval Recipients" },
-];
 
 const DASH = <span className="text-muted-foreground">-</span>;
 
@@ -70,63 +38,11 @@ function RowActions({ name, onEdit, onDelete }) {
   );
 }
 
-export default function Master() {
-  const [activeTab, setActiveTab] = useState("dropdown");
+// The Master sub-pages that share this file: Item Master, Engineer List, Recipients for Mail.
+// (Dropdown, Company Details and TAT Master have their own pages.) Only the section being
+// shown loads its data.
+export default function MasterSections({ section }) {
   const { toast } = useToast();
-
-  // ── Dropdown tab state ──────────────────────────────────────────────
-  const [dropdownRows, setDropdownRows] = useState([]);
-  const [dropdownLoading, setDropdownLoading] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState("");
-  const [newValue, setNewValue] = useState("");
-  const [isAddingValue, setIsAddingValue] = useState(false);
-  const [editingRow, setEditingRow] = useState(null);
-  const [editingValue, setEditingValue] = useState("");
-  const [isSavingEdit, setIsSavingEdit] = useState(false);
-  const [deleteDropdownTarget, setDeleteDropdownTarget] = useState(null);
-  const [isDeletingDropdown, setIsDeletingDropdown] = useState(false);
-  const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState("");
-
-  const fetchDropdown = async () => {
-    setDropdownLoading(true);
-    try {
-      const data = await fetchDropdownRows(null, "*");
-      setDropdownRows(data || []);
-      if (!selectedCategory && data && data.length > 0) {
-        setSelectedCategory(data[0].category);
-      }
-    } catch (error) {
-      console.error("Error fetching dropdown data:", error);
-      toast({ title: "Error", description: "Failed to load dropdown data", variant: "destructive" });
-    } finally {
-      setDropdownLoading(false);
-    }
-  };
-
-  // ── Company Details tab state ───────────────────────────────────────
-  // Read-only: sourced live from the production Lead-To-Order-Supabase-New
-  // project's client master. Editing now happens there, not in this testing
-  // project — see [[servicesupport_migration_project]] memory.
-  const [companies, setCompanies] = useState([]);
-  const [companyLoading, setCompanyLoading] = useState(false);
-
-  const fetchCompanies = async () => {
-    setCompanyLoading(true);
-    try {
-      const { data, error } = await ltoSupabase
-        .from("lto_client_master")
-        .select("company_name, state, state_code, gst_number, billing_address, company_group_name")
-        .order("company_name", { ascending: true });
-      if (error) throw error;
-      setCompanies(data || []);
-    } catch (error) {
-      console.error("Error fetching company details:", error);
-      toast({ title: "Error", description: "Failed to load company details", variant: "destructive" });
-    } finally {
-      setCompanyLoading(false);
-    }
-  };
 
   // ── Items tab state ──────────────────────────────────────────────────
   // Full CRUD on `lto_items` — the SAME shared item catalog table
@@ -322,6 +238,7 @@ export default function Master() {
   const [newEngineerName, setNewEngineerName] = useState("");
   const [newEngineerPhone, setNewEngineerPhone] = useState("");
   const [isAddingEngineerContact, setIsAddingEngineerContact] = useState(false);
+  const [addEngineerOpen, setAddEngineerOpen] = useState(false);
   const [deleteEngineerTarget, setDeleteEngineerTarget] = useState(null);
   const [isDeletingEngineerContact, setIsDeletingEngineerContact] = useState(false);
 
@@ -341,6 +258,7 @@ export default function Master() {
   const [newRecipientEmail, setNewRecipientEmail] = useState("");
   const [newRecipientType, setNewRecipientType] = useState("cc");
   const [isAddingRecipient, setIsAddingRecipient] = useState(false);
+  const [addRecipientOpen, setAddRecipientOpen] = useState(false);
   const [editingRecipient, setEditingRecipient] = useState(null);
   const [editingRecipientType, setEditingRecipientType] = useState("cc");
   const [isSavingRecipientEdit, setIsSavingRecipientEdit] = useState(false);
@@ -383,11 +301,10 @@ export default function Master() {
   };
 
   useEffect(() => {
-    fetchDropdown();
-    fetchCompanies();
-    fetchEngineerContacts();
-    fetchApprovalRecipients();
-  }, []);
+    if (section === "engineers") fetchEngineerContacts();
+    if (section === "recipients") fetchApprovalRecipients();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section]);
 
   // Items tab: debounce the raw search input so we don't fire a query per
   // keystroke, then re-fetch whenever the page OR the debounced term changes.
@@ -403,92 +320,9 @@ export default function Master() {
   }, [debouncedItemSearch]);
 
   useEffect(() => {
-    fetchItems();
+    if (section === "items") fetchItems();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemPage, debouncedItemSearch]);
-
-  // ── Dropdown tab handlers ───────────────────────────────────────────
-  const categories = [...new Set(dropdownRows.map((r) => r.category))];
-  const valuesForCategory = dropdownRows.filter((r) => r.category === selectedCategory);
-
-  const handleAddValue = async (e) => {
-    e.preventDefault();
-    const category = showNewCategoryInput ? newCategoryName.trim() : selectedCategory;
-    const value = newValue.trim();
-    if (!category) {
-      toast({ title: "Missing category", description: "Please select or enter a category", variant: "destructive" });
-      return;
-    }
-    if (!value) {
-      toast({ title: "Missing value", description: "Please enter a value", variant: "destructive" });
-      return;
-    }
-
-    setIsAddingValue(true);
-    try {
-      const { error } = await supabase.from("sss_dropdown").insert({ category, value });
-      if (error) throw error;
-      toast({ title: "Success", description: "Value added successfully" });
-      setNewValue("");
-      setNewCategoryName("");
-      setShowNewCategoryInput(false);
-      setSelectedCategory(category);
-      fetchDropdown();
-    } catch (error) {
-      console.error("Error adding value:", error);
-      toast({ title: "Error", description: "Failed to add value", variant: "destructive" });
-    } finally {
-      setIsAddingValue(false);
-    }
-  };
-
-  const startEditRow = (row) => {
-    setEditingRow(row);
-    setEditingValue(row.value);
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editingRow) return;
-    const value = editingValue.trim();
-    if (!value) {
-      toast({ title: "Missing value", description: "Value cannot be empty", variant: "destructive" });
-      return;
-    }
-    setIsSavingEdit(true);
-    try {
-      const { error } = await supabase
-        .from("sss_dropdown")
-        .update({ value })
-        .eq("uuid", editingRow.uuid);
-      if (error) throw error;
-      toast({ title: "Success", description: "Value updated successfully" });
-      setEditingRow(null);
-      setEditingValue("");
-      fetchDropdown();
-    } catch (error) {
-      console.error("Error updating value:", error);
-      toast({ title: "Error", description: "Failed to update value", variant: "destructive" });
-    } finally {
-      setIsSavingEdit(false);
-    }
-  };
-
-  const handleDeleteDropdownValue = async () => {
-    if (!deleteDropdownTarget) return;
-    setIsDeletingDropdown(true);
-    try {
-      const { error } = await supabase.from("sss_dropdown").delete().eq("uuid", deleteDropdownTarget.uuid);
-      if (error) throw error;
-      toast({ title: "Success", description: "Value deleted successfully" });
-      setDeleteDropdownTarget(null);
-      fetchDropdown();
-    } catch (error) {
-      console.error("Error deleting value:", error);
-      toast({ title: "Error", description: "Failed to delete value", variant: "destructive" });
-    } finally {
-      setIsDeletingDropdown(false);
-    }
-  };
+  }, [section, itemPage, debouncedItemSearch]);
 
   // ── Engineer Contacts tab handlers ──────────────────────────────────
   // This tab IS the engineer source of truth now — engineers are added and
@@ -521,6 +355,7 @@ export default function Master() {
       toast({ title: "Success", description: "Engineer added successfully" });
       setNewEngineerName("");
       setNewEngineerPhone("");
+      setAddEngineerOpen(false);
       fetchEngineerContacts();
     } catch (error) {
       console.error("Error adding engineer:", error);
@@ -618,6 +453,7 @@ export default function Master() {
       toast({ title: "Success", description: "Recipient saved successfully" });
       setNewRecipientEmail("");
       setNewRecipientType("cc");
+      setAddRecipientOpen(false);
       fetchApprovalRecipients();
     } catch (error) {
       console.error("Error saving recipient:", error);
@@ -674,57 +510,6 @@ export default function Master() {
 
   // ── Lists (kit) ─────────────────────────────────────────────────────
   // Each non-Items tab is its own client-side list with a single "all" tab.
-  const dropdownList = useClientList({
-    key: "master-dropdown",
-    data: { all: showNewCategoryInput ? [] : valuesForCategory },
-    loading: dropdownLoading,
-    tabLabels: { all: "Values" },
-    searchKeys: ["value"],
-    sort: "none",
-    columns: [
-      { key: "value", label: "Value", fixed: true, strong: true, cell: (row) => (
-        editingRow?.uuid === row.uuid ? (
-          <Input
-            aria-label="Edit value"
-            value={editingValue}
-            onChange={(e) => setEditingValue(e.target.value)}
-            className="h-8 min-w-[160px]"
-            autoFocus
-          />
-        ) : row.value
-      ) },
-      { key: "actions", label: "Actions", fixed: true, headerClassName: "text-right w-28", cellClassName: "text-right", cell: (row) => (
-        editingRow?.uuid === row.uuid ? (
-          <div className="flex justify-end gap-1">
-            <Button size="sm" onClick={handleSaveEdit} disabled={isSavingEdit} className="h-7 px-2">
-              {isSavingEdit ? <Loader2Icon className="animate-spin w-3 h-3" /> : "Save"}
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => setEditingRow(null)} className="h-7 px-2">Cancel</Button>
-          </div>
-        ) : (
-          <RowActions name={row.value} onEdit={() => startEditRow(row)} onDelete={() => setDeleteDropdownTarget(row)} />
-        )
-      ) },
-    ],
-  });
-
-  const companyList = useClientList({
-    key: "master-company",
-    data: { all: companies },
-    loading: companyLoading,
-    tabLabels: { all: "Companies" },
-    searchKeys: ["company_name", "gst_number"],
-    sort: "none",
-    columns: [
-      { key: "company_name", label: "Company Name", strong: true },
-      { key: "state", label: "State" },
-      { key: "state_code", label: "State Code" },
-      { key: "gst_number", label: "GST Number" },
-      { key: "billing_address", label: "Billing Address", wrap: true, width: 240 },
-      { key: "company_group_name", label: "Company Group Name" },
-    ],
-  });
-
   const engineerList = useClientList({
     key: "master-engineers",
     data: { all: engineerContacts },
@@ -733,6 +518,9 @@ export default function Master() {
     searchKeys: ["engineer_name", "phone_number", "email"],
     sort: "none",
     columns: [
+      { key: "actions", label: "Actions", fixed: true, headerClassName: "text-right w-24", cellClassName: "text-right", cell: (c) => (
+        <RowActions name={c.engineer_name} onEdit={() => openDetailsModal(c)} onDelete={() => setDeleteEngineerTarget(c)} />
+      ) },
       { key: "engineer_name", label: "Engineer Name", strong: true },
       { key: "phone_number", label: "WhatsApp Number" },
       { key: "email", label: "Email" },
@@ -741,9 +529,6 @@ export default function Master() {
       { key: "account_number", label: "Account Number" },
       { key: "ifsc_code", label: "IFSC Code" },
       { key: "branch", label: "Branch" },
-      { key: "actions", label: "Actions", fixed: true, headerClassName: "text-right w-24", cellClassName: "text-right", cell: (c) => (
-        <RowActions name={c.engineer_name} onEdit={() => openDetailsModal(c)} onDelete={() => setDeleteEngineerTarget(c)} />
-      ) },
     ],
   });
 
@@ -755,6 +540,18 @@ export default function Master() {
     searchKeys: ["email"],
     sort: "none",
     columns: [
+      { key: "actions", label: "Actions", fixed: true, headerClassName: "text-right w-28", cellClassName: "text-right", cell: (r) => (
+        editingRecipient?.email === r.email ? (
+          <div className="flex justify-end gap-1">
+            <Button size="sm" onClick={handleSaveRecipientEdit} disabled={isSavingRecipientEdit} className="h-7 px-2">
+              {isSavingRecipientEdit ? <Loader2Icon className="animate-spin w-3 h-3" /> : "Save"}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setEditingRecipient(null)} className="h-7 px-2">Cancel</Button>
+          </div>
+        ) : (
+          <RowActions name={r.email} onEdit={() => startEditRecipient(r)} onDelete={() => setDeleteRecipientTarget(r)} />
+        )
+      ) },
       { key: "email", label: "Email", fixed: true, strong: true },
       { key: "recipient_type", label: "Type", headerClassName: "w-32", cell: (r) => (
         editingRecipient?.email === r.email ? (
@@ -773,18 +570,6 @@ export default function Master() {
           </StatusBadge>
         )
       ) },
-      { key: "actions", label: "Actions", fixed: true, headerClassName: "text-right w-28", cellClassName: "text-right", cell: (r) => (
-        editingRecipient?.email === r.email ? (
-          <div className="flex justify-end gap-1">
-            <Button size="sm" onClick={handleSaveRecipientEdit} disabled={isSavingRecipientEdit} className="h-7 px-2">
-              {isSavingRecipientEdit ? <Loader2Icon className="animate-spin w-3 h-3" /> : "Save"}
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => setEditingRecipient(null)} className="h-7 px-2">Cancel</Button>
-          </div>
-        ) : (
-          <RowActions name={r.email} onEdit={() => startEditRecipient(r)} onDelete={() => setDeleteRecipientTarget(r)} />
-        )
-      ) },
     ],
   });
 
@@ -792,101 +577,11 @@ export default function Master() {
 
   return (
     <div className="space-y-4">
-      <div className="overflow-x-auto scrollbar-hide">
-        <StatusTabs variant="underline" label="Master data sections" tabs={PAGE_TABS} activeTab={activeTab} onChange={setActiveTab} className="min-w-max" />
-      </div>
-
-      {/* ── Dropdown Tab ─────────────────────────────────────── */}
-      {activeTab === "dropdown" && (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-[240px_1fr]">
-          <div className="max-h-48 space-y-1 md:max-h-[70vh] overflow-y-auto rounded-lg border bg-card p-3">
-            <p className="px-2 pb-2 text-xs font-semibold uppercase text-muted-foreground">Categories</p>
-            {categories.map((cat) => (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => {
-                  setSelectedCategory(cat);
-                  setShowNewCategoryInput(false);
-                }}
-                className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                  selectedCategory === cat && !showNewCategoryInput
-                    ? "bg-primary font-medium text-primary-foreground"
-                    : "text-foreground hover:bg-accent"
-                }`}
-              >
-                {CATEGORY_LABELS[cat] || cat}
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => setShowNewCategoryInput(true)}
-              className={`flex w-full items-center gap-1 rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                showNewCategoryInput
-                  ? "bg-primary font-medium text-primary-foreground"
-                  : "text-primary hover:bg-accent"
-              }`}
-            >
-              <Plus className="h-4 w-4" aria-hidden="true" /> New Category
-            </button>
-          </div>
-
-          <div className="min-w-0 space-y-3">
-            <form onSubmit={handleAddValue} className="flex flex-col gap-2 sm:flex-row">
-              {showNewCategoryInput && (
-                <Input
-                  aria-label="New category key"
-                  placeholder="New category key (e.g. payment_mode)"
-                  value={newCategoryName}
-                  onChange={(e) => setNewCategoryName(e.target.value)}
-                  className="sm:w-64"
-                />
-              )}
-              <Input
-                aria-label="New value"
-                placeholder="Enter new value"
-                value={newValue}
-                onChange={(e) => setNewValue(e.target.value)}
-                className="flex-1"
-              />
-              <Button type="submit" disabled={isAddingValue} className="shrink-0">
-                {isAddingValue && <Loader2Icon className="animate-spin w-4 h-4" />}
-                Add
-              </Button>
-            </form>
-            <ListToolbar list={dropdownList} searchPlaceholder="Search values..." showColumns={false} />
-            <ListTable
-              list={dropdownList}
-              rowKey={(r) => r.uuid}
-              emptyTitle={showNewCategoryInput ? "Add the first value for your new category above." : "No values yet for this category."}
-              ariaLabel="Dropdown values"
-              minWidth="min-w-0"
-            />
-          </div>
-        </div>
-      )}
-
-      {/* ── Company Details Tab ──────────────────────────────── */}
-      {/* Read-only — sourced live from the production
-          Lead-To-Order-Supabase-New project's client master. */}
-      {activeTab === "company" && (
-        <div className="space-y-3">
-          <ListToolbar list={companyList} searchPlaceholder="Search by company name or GST number..." />
-          <ListTable
-            list={companyList}
-            rowKey={(c) => `${c.company_name}|${c.gst_number}|${c.state}|${c.billing_address}`}
-            emptyTitle="No companies found."
-            ariaLabel="Companies"
-            minWidth="min-w-[1100px]"
-          />
-        </div>
-      )}
-
       {/* ── Items Tab ────────────────────────────────────────── */}
       {/* Full CRUD on `lto_items` — the SAME shared item catalog
           Lead-To-Order-Supabase-New reads/writes (see ltoClient.js).
           Every add/edit stamps user_who_updated + updated_at. */}
-      {activeTab === "items" && (
+      {section === "items" && (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <FilterSearch value={itemSearch} onChange={setItemSearch} placeholder="Search items by name or code..." className="min-w-[220px]" />
@@ -955,29 +650,17 @@ export default function Master() {
       {/* Single source of truth for engineers app-wide — every page's
           "Engineer Assign" field reads from this table (see
           engineers.js). Add/remove an engineer here, nowhere else. */}
-      {activeTab === "engineerContacts" && (
+      {section === "engineers" && (
         <div className="space-y-3">
-          <form onSubmit={handleAddEngineerContact} className="flex flex-col gap-2 sm:flex-row">
-            <Input
-              aria-label="Engineer name"
-              placeholder="Engineer name"
-              value={newEngineerName}
-              onChange={(e) => setNewEngineerName(e.target.value)}
-              className="sm:w-64"
-            />
-            <Input
-              aria-label="WhatsApp number"
-              placeholder="Enter WhatsApp number"
-              value={newEngineerPhone}
-              onChange={(e) => setNewEngineerPhone(e.target.value)}
-              className="flex-1"
-            />
-            <Button type="submit" disabled={isAddingEngineerContact} className="shrink-0">
-              {isAddingEngineerContact && <Loader2Icon className="animate-spin w-4 h-4" />}
-              Add
-            </Button>
-          </form>
-          <ListToolbar list={engineerList} searchPlaceholder="Search engineers..." />
+          <ListToolbar
+            list={engineerList}
+            searchPlaceholder="Search engineers..."
+            actions={
+              <Button type="button" onClick={() => setAddEngineerOpen(true)} className="h-9 shrink-0 gap-1.5">
+                <Plus className="h-4 w-4" aria-hidden="true" /> Add Engineer
+              </Button>
+            }
+          />
           <ListTable
             list={engineerList}
             rowKey={(c) => c.engineer_name}
@@ -994,32 +677,18 @@ export default function Master() {
           needed to add/remove a recipient. The assigned engineer's
           own email (Engineer Contacts tab) is added to CC on top of
           whatever's listed here automatically. */}
-      {activeTab === "approvalRecipients" && (
+      {section === "recipients" && (
         <div className="space-y-3">
-          <form onSubmit={handleAddRecipient} className="flex flex-col gap-2 sm:flex-row">
-            <Input
-              type="email"
-              aria-label="Recipient email address"
-              placeholder="Enter email address"
-              value={newRecipientEmail}
-              onChange={(e) => setNewRecipientEmail(e.target.value)}
-              className="flex-1"
-            />
-            <Select value={newRecipientType} onValueChange={setNewRecipientType}>
-              <SelectTrigger className="sm:w-32" aria-label="Recipient type">
-                <SelectValue placeholder="Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="to">To</SelectItem>
-                <SelectItem value="cc">Cc</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button type="submit" disabled={isAddingRecipient} className="shrink-0">
-              {isAddingRecipient && <Loader2Icon className="animate-spin w-4 h-4" />}
-              Add
-            </Button>
-          </form>
-          <ListToolbar list={recipientList} searchPlaceholder="Search recipients..." showColumns={false} />
+          <ListToolbar
+            list={recipientList}
+            searchPlaceholder="Search recipients..."
+            showColumns={false}
+            actions={
+              <Button type="button" onClick={() => setAddRecipientOpen(true)} className="h-9 shrink-0 gap-1.5">
+                <Plus className="h-4 w-4" aria-hidden="true" /> Add Recipient
+              </Button>
+            }
+          />
           <ListTable
             list={recipientList}
             rowKey={(r) => r.email}
@@ -1030,26 +699,75 @@ export default function Master() {
         </div>
       )}
 
-      {/* Dropdown value delete confirmation */}
-      <Modal
-        isOpen={!!deleteDropdownTarget}
-        onClose={() => setDeleteDropdownTarget(null)}
-        title="Delete Value"
-        size="sm"
-      >
-        <div className="p-2 space-y-4">
-          <p className="text-foreground">
-            Delete <span className="font-semibold">{deleteDropdownTarget?.value}</span> from{" "}
-            <span className="font-semibold">{CATEGORY_LABELS[deleteDropdownTarget?.category] || deleteDropdownTarget?.category}</span>?
-          </p>
-          <div className="flex justify-end space-x-4">
-            <Button type="button" variant="outline" onClick={() => setDeleteDropdownTarget(null)}>Cancel</Button>
-            <Button type="button" onClick={handleDeleteDropdownValue} disabled={isDeletingDropdown} variant="destructive">
-              {isDeletingDropdown && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
-              Delete
+      {/* Add Engineer modal */}
+      <Modal isOpen={addEngineerOpen} onClose={() => setAddEngineerOpen(false)} title="Add Engineer" size="md">
+        <form onSubmit={handleAddEngineerContact} className="space-y-4">
+          <div className="space-y-1">
+            <label htmlFor="add-engineer-name" className="text-sm font-medium text-foreground">Engineer Name *</label>
+            <Input
+              id="add-engineer-name"
+              placeholder="Engineer name"
+              value={newEngineerName}
+              onChange={(e) => setNewEngineerName(e.target.value)}
+              autoFocus
+              required
+            />
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="add-engineer-phone" className="text-sm font-medium text-foreground">WhatsApp Number *</label>
+            <Input
+              id="add-engineer-phone"
+              placeholder="Enter WhatsApp number"
+              value={newEngineerPhone}
+              onChange={(e) => setNewEngineerPhone(e.target.value)}
+              required
+            />
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <Button type="button" variant="outline" onClick={() => setAddEngineerOpen(false)} disabled={isAddingEngineerContact}>Cancel</Button>
+            <Button type="submit" disabled={isAddingEngineerContact}>
+              {isAddingEngineerContact && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
+              Add Engineer
             </Button>
           </div>
-        </div>
+        </form>
+      </Modal>
+
+      {/* Add Recipient modal */}
+      <Modal isOpen={addRecipientOpen} onClose={() => setAddRecipientOpen(false)} title="Add Recipient" size="md">
+        <form onSubmit={handleAddRecipient} className="space-y-4">
+          <div className="space-y-1">
+            <label htmlFor="add-recipient-email" className="text-sm font-medium text-foreground">Email Address *</label>
+            <Input
+              id="add-recipient-email"
+              type="email"
+              placeholder="Enter email address"
+              value={newRecipientEmail}
+              onChange={(e) => setNewRecipientEmail(e.target.value)}
+              autoFocus
+              required
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-foreground">Type</label>
+            <Select value={newRecipientType} onValueChange={setNewRecipientType}>
+              <SelectTrigger aria-label="Recipient type">
+                <SelectValue placeholder="Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="to">To</SelectItem>
+                <SelectItem value="cc">Cc</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <Button type="button" variant="outline" onClick={() => setAddRecipientOpen(false)} disabled={isAddingRecipient}>Cancel</Button>
+            <Button type="submit" disabled={isAddingRecipient}>
+              {isAddingRecipient && <Loader2Icon className="animate-spin w-4 h-4 mr-2" />}
+              Add Recipient
+            </Button>
+          </div>
+        </form>
       </Modal>
 
       {/* Item add/edit modal */}

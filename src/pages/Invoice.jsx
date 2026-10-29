@@ -1,23 +1,15 @@
-import { useState, useEffect } from "react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-} from "../components/ui/card";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { MultiSelect } from "../components/ui/multi-select";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "../components/ui/tabs";
 import { Modal } from "../components/ui/modal";
 import { useToast } from "../hooks/use-toast";
-import { Loader2Icon, LoaderIcon, Eye } from "lucide-react";
+import { ListToolbar, ListTable, StatusBadge } from "../components/shared";
+import FilterDialog, { FilterSection } from "../components/shared/FilterDialog";
+import { useClientList } from "../hooks/useClientList";
+import { Loader2Icon, Eye } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -28,13 +20,73 @@ import {
 import { supabase } from "../lib/supabase/client";
 import { fetchDropdownRows } from "../lib/supabase/dropdown";
 import { computeStagePlanned } from "../lib/supabase/stagePlanning";
+import { formatDate, formatDelayLabel, delayTone } from "../lib/format";
+
+const linkCell = (url, label = "View") =>
+  url ? (
+    <a href={url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-primary hover:underline">
+      {label}
+    </a>
+  ) : null;
+
+const rupees = (v) => "₹" + (v || "0");
+
+// Pending: ticket + order details. History: the posted invoice (numbers, amounts, files, delay).
+const COLUMNS = [
+  { key: "action", label: "Action", fixed: true, cell: (r, { tab, onInvoice, onEdit }) =>
+    tab === "pending" ? (
+      <Button size="sm" variant="outline" onClick={() => onInvoice(r)} data-testid={`button-invoice-${r.ticketId}`}>Invoice</Button>
+    ) : (
+      <Button size="sm" variant="outline" onClick={() => onEdit(r)} data-testid={`button-edit-history-${r.ticketId}`}>Edit</Button>
+    ) },
+  { key: "ticketId", label: "Ticket ID", defaultVisible: true, strong: true, text: (r) => r.ticketId },
+  { key: "enquiryType", label: "Enquiry Type", defaultVisible: true, text: (r) => r.enquiryType },
+  { key: "quotationNo", label: "Quotation No.", defaultVisible: true, text: (r) => r.quotationNo },
+  { key: "clientName", label: "Client Name", defaultVisible: true, text: (r) => r.clientName },
+  { key: "phoneNumber", label: "Phone Number", defaultVisible: true, text: (r) => r.phoneNumber },
+  { key: "companyName", label: "Company Name", defaultVisible: true, wrap: true, width: 220, text: (r) => r.companyName },
+  { key: "siteAddress", label: "Site Address", defaultVisible: false, tabs: ["pending"], wrap: true, width: 220, text: (r) => r.siteAddress },
+  { key: "gstNo", label: "GST Number", defaultVisible: false, tabs: ["pending"], text: (r) => r.gstNo },
+  { key: "gstAddress", label: "Billing Address", defaultVisible: false, tabs: ["pending"], wrap: true, width: 220, text: (r) => r.gstAddress },
+  { key: "paymentTerm", label: "Payment Term", defaultVisible: true, tabs: ["pending"], text: (r) => r.paymentTerm },
+  { key: "clientApproval", label: "Client Approval", defaultVisible: true, tabs: ["pending"], cell: (r) => linkCell(r.clientApproval) },
+  { key: "seniorApproval", label: "Senior Approval", defaultVisible: true, tabs: ["pending"], cell: (r) => linkCell(r.seniorApproval) },
+  { key: "advance", label: "Advance Details", defaultVisible: true, tabs: ["pending"], cell: (r, { onAdvance }) => (
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={() => onAdvance(r)}
+      aria-label={`Advance details for ${r.ticketId}`}
+      className="h-7 px-2"
+      data-testid={`button-advance-details-${r.ticketId}`}
+    >
+      <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+    </Button>
+  ) },
+  { key: "quotationPdf", label: "Quotation PDF", defaultVisible: true, tabs: ["pending"], cell: (r) => linkCell(r.quotationPdfLink, "View PDF") },
+  { key: "invoiceDate", label: "Invoice Date", defaultVisible: true, tabs: ["history"], text: (r) => formatDate(r.invoiceDate) },
+  { key: "invoicePostedBy", label: "Invoice Posted By", defaultVisible: true, tabs: ["history"], text: (r) => r.invoicePostedBy },
+  { key: "invoiceNoNABL", label: "Invoice No (NABL)", defaultVisible: true, tabs: ["history"], text: (r) => r.invoiceNoNABL },
+  { key: "invoiceNoSERVICE", label: "Invoice No (SERVICE)", defaultVisible: true, tabs: ["history"], text: (r) => r.invoiceNoSERVICE },
+  { key: "invoiceNoSPARE", label: "Invoice No (SPARE)", defaultVisible: true, tabs: ["history"], text: (r) => r.invoiceNoSPARE },
+  { key: "invoiceAmountNABLBasic", label: "Invoice Amount NABL (Basic)", defaultVisible: true, tabs: ["history"], text: (r) => rupees(r.invoiceAmountNABLBasic) },
+  { key: "invoiceAmountNABLGst", label: "Invoice Amount NABL (GST)", defaultVisible: false, tabs: ["history"], text: (r) => rupees(r.invoiceAmountNABLGst) },
+  { key: "serviceAmountBasic", label: "Service Amount (Basic)", defaultVisible: true, tabs: ["history"], text: (r) => rupees(r.serviceAmountBasic) },
+  { key: "serviceAmountGst", label: "Service Amount (GST)", defaultVisible: false, tabs: ["history"], text: (r) => rupees(r.serviceAmountGst) },
+  { key: "spareAmountBasic", label: "Spare Amount (Basic)", defaultVisible: true, tabs: ["history"], text: (r) => rupees(r.spareAmountBasic) },
+  { key: "spareAmountGst", label: "Spare Amount (GST)", defaultVisible: false, tabs: ["history"], text: (r) => rupees(r.spareAmountGst) },
+  { key: "attachmentService", label: "Attachment Service", defaultVisible: true, tabs: ["history"], cell: (r) => linkCell(r.attachmentService) },
+  { key: "attachmentSpare", label: "Attachment Spare", defaultVisible: true, tabs: ["history"], cell: (r) => linkCell(r.attachmentSpare) },
+  { key: "attachmentNABL", label: "Attachment NABL", defaultVisible: true, tabs: ["history"], cell: (r) => linkCell(r.attachmentNABL) },
+  { key: "delay", label: "Delay", defaultVisible: true, tabs: ["history"], cell: (r) => (
+    <StatusBadge tone={delayTone(r.delayMinutes)}>{formatDelayLabel(r.delayMinutes)}</StatusBadge>
+  ) },
+];
 
 export default function Invoice() {
-  const [activeTab, setActiveTab] = useState("pending");
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [formData, setFormData] = useState({});
-  const [searchItem, setSearchItem] = useState("");
   // History-tab-only filters. invoice_date is a plain `date` column
   // (YYYY-MM-DD), so string comparison is inclusive on both ends and
   // timezone-safe.
@@ -613,897 +665,75 @@ export default function Invoice() {
     }
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return "";
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return dateString;
-    const day = String(date.getDate()).padStart(2, "0");
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const year = date.getFullYear();
-    return `${day}/${month}/${year}`;
-  };
-
-  // Minutes late (negative) or early (positive) — the ORIGINAL delay
-  // convention, matching predecessor Order Received. See
-  // invoice.delay_minutes / migration 0036.
-  const formatDelay = (minutes) => {
-    if (minutes === null || minutes === undefined) return "N/A";
-    if (minutes < 0) return `${Math.abs(minutes)} min late`;
-    return `${minutes} min early`;
-  };
-
-  const filteredPendingDataa = pendingData
-    .filter((item) => {
-      const q = searchItem.toLowerCase();
-      return (
-        String(item.ticketId || "").toLowerCase().includes(q) ||
-        String(item.clientName || "").toLowerCase().includes(q) ||
-        String(item.companyName || "").toLowerCase().includes(q) ||
-        String(item.quotationNo || "").toLowerCase().includes(q) ||
-        String(item.phoneNumber || "").toLowerCase().includes(q)
-      );
-    })
-    .reverse();
-
+  // History-only filters (invoice date range, enquiry type) narrow the data before the list
+  // hook sees it, so tab counts, search and paging all follow them.
   const historyEnquiryTypeOptions = [
     ...new Set(historyData.map((i) => i.enquiryType).filter(Boolean)),
   ].sort((a, b) => a.localeCompare(b));
 
-  const filteredHistoryDataa = historyData
-    .filter((item) => {
-      const d = String(item.invoiceDate || "").slice(0, 10);
-      if (invoiceDateFrom && (!d || d < invoiceDateFrom)) return false;
-      if (invoiceDateTo && (!d || d > invoiceDateTo)) return false;
-      if (
-        enquiryTypeFilter.length > 0 &&
-        !enquiryTypeFilter.includes(item.enquiryType)
-      )
-        return false;
-      return true;
-    })
-    .filter((item) => {
-      const q = searchItem.toLowerCase();
-      return (
-        String(item.ticketId || "").toLowerCase().includes(q) ||
-        String(item.clientName || "").toLowerCase().includes(q) ||
-        String(item.companyName || "").toLowerCase().includes(q) ||
-        String(item.quotationNo || "").toLowerCase().includes(q) ||
-        String(item.phoneNumber || "").toLowerCase().includes(q)
-      );
-    })
-    .reverse();
+  const filteredHistory = useMemo(
+    () =>
+      historyData.filter((item) => {
+        const d = String(item.invoiceDate || "").slice(0, 10);
+        if (invoiceDateFrom && (!d || d < invoiceDateFrom)) return false;
+        if (invoiceDateTo && (!d || d > invoiceDateTo)) return false;
+        if (enquiryTypeFilter.length > 0 && !enquiryTypeFilter.includes(item.enquiryType)) return false;
+        return true;
+      }),
+    [historyData, invoiceDateFrom, invoiceDateTo, enquiryTypeFilter]
+  );
 
-  const userName = localStorage.getItem("currentUsername");
+  const activeFilterCount =
+    (invoiceDateFrom ? 1 : 0) + (invoiceDateTo ? 1 : 0) + (enquiryTypeFilter.length > 0 ? 1 : 0);
+  const clearHistoryFilters = () => {
+    setInvoiceDateFrom("");
+    setInvoiceDateTo("");
+    setEnquiryTypeFilter([]);
+  };
 
-  const roleStorage = localStorage.getItem("o2d-auth-storage");
-  const parsedData = JSON.parse(roleStorage);
-  const role = parsedData.state.user.role;
-
-  const filteredPendingData = filteredPendingDataa;
-
-  const filteredHistoryData = filteredHistoryDataa;
+  const list = useClientList({
+    key: "invoice",
+    data: { pending: pendingData, history: filteredHistory },
+    loading: fetchLoading,
+    searchKeys: ["ticketId", "clientName", "companyName", "quotationNo", "phoneNumber"],
+    columns: COLUMNS,
+  });
 
   return (
-    <div className="space-y-2">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <Card className="border-0 shadow-lg bg-gradient-to-br from-blue-50 to-indigo-50">
-          <CardHeader className="bg-gradient-to-r from-blue-50/50 to-indigo-50/50 rounded-t-lg border-b border-blue-100 px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
-            {/* Left Side: Tabs triggers */}
-            <div className="flex flex-wrap items-center gap-4">
-              <TabsList className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200">
-                <TabsTrigger
-                  value="pending"
-                  data-testid="tab-pending"
-                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-                >
-                  Pending ({filteredPendingData.length})
-                </TabsTrigger>
-                <TabsTrigger
-                  value="history"
-                  data-testid="tab-history"
-                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-                >
-                  History ({filteredHistoryData.length})
-                </TabsTrigger>
-              </TabsList>
-            </div>
-
-            {/* Right Side: Search Input */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 flex-1 md:justify-end w-full md:w-auto">
-              <div className="relative flex-1 max-w-md w-full">
-                <Input
-                  id="searchFilter"
-                  placeholder="Search by ticket ID, client, company, phone or quotation no..."
-                  className="pl-10 py-2 w-full rounded-md border-blue-200 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white"
-                  data-testid="input-search-filter"
-                  onChange={(e) => setSearchItem(e.target.value)}
-                />
-              </div>
-              {activeTab === "history" && (
-                <div className="flex flex-wrap items-end gap-2">
-                  <div className="flex flex-col">
-                    <span className="text-[10px] text-gray-500">Invoice Date From</span>
-                    <Input
-                      type="date"
-                      className="h-10 w-[150px] bg-white border-blue-200"
-                      value={invoiceDateFrom}
-                      onChange={(e) => setInvoiceDateFrom(e.target.value)}
-                    />
+    <div className="space-y-3">
+      <ListToolbar
+        list={list}
+        searchPlaceholder="Search by ticket ID, client, company, phone or quotation no..."
+        extraFilters={
+          list.tab === "history" && (
+            <FilterDialog activeCount={activeFilterCount} onClear={clearHistoryFilters}>
+              <FilterSection title="Invoice date">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="invoice-date-from" className="text-xs text-muted-foreground">From</Label>
+                    <Input id="invoice-date-from" type="date" value={invoiceDateFrom} onChange={(e) => setInvoiceDateFrom(e.target.value)} />
                   </div>
-                  <div className="flex flex-col">
-                    <span className="text-[10px] text-gray-500">Invoice Date To</span>
-                    <Input
-                      type="date"
-                      className="h-10 w-[150px] bg-white border-blue-200"
-                      value={invoiceDateTo}
-                      onChange={(e) => setInvoiceDateTo(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex flex-col w-[180px]">
-                    <span className="text-[10px] text-gray-500">Enquiry Type</span>
-                    <MultiSelect
-                      options={historyEnquiryTypeOptions}
-                      value={enquiryTypeFilter}
-                      onChange={setEnquiryTypeFilter}
-                      placeholder="All"
-                    />
-                  </div>
-                  {(invoiceDateFrom || invoiceDateTo || enquiryTypeFilter.length > 0) && (
-                    <Button
-                      variant="outline"
-                      className="h-10"
-                      onClick={() => {
-                        setInvoiceDateFrom("");
-                        setInvoiceDateTo("");
-                        setEnquiryTypeFilter([]);
-                      }}
-                    >
-                      Reset
-                    </Button>
-                  )}
-                  <span className="pb-2 text-xs font-medium text-blue-700 whitespace-nowrap">
-                    Showing {filteredHistoryData.length} of {historyData.length}
-                  </span>
-                </div>
-              )}
-            </div>
-          </CardHeader>
-
-          <CardContent>
-            <div className="mt-2">
-              <TabsContent value="pending" className="mt-0">
-                <div className="relative overflow-x-auto">
-                  <div className="max-h-[calc(103vh-200px)] overflow-y-auto">
-                  <table className="hidden sm:block w-full">
-                    <thead className="sticky top-0 z-10">
-                      <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
-                          Action
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
-                          Ticket ID
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[130px] sticky top-0">
-                          Enquiry Type
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Quotation No.
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Client Name
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Phone Number
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Company Name
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
-                          Site Address
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          GST Number
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[200px] sticky top-0">
-                          Billing Address
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Payment Term
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
-                          Client Approval
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
-                          Senior Approval
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
-                          Advance Details
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Quotation Pdf Link
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-blue-100">
-                      {filteredPendingData.length === 0 ? (
-                        <tr>
-                          <td
-                            colSpan={15}
-                            className="text-center py-8 bg-white"
-                            data-testid="text-no-pending"
-                          >
-                            {fetchLoading ? (
-                              <div className="flex justify-center items-center text-blue-700">
-                                <LoaderIcon className="animate-spin w-8 h-8" />
-                              </div>
-                            ) : (
-                              <h1 className="text-blue-700">
-                                No pending invoices found.
-                              </h1>
-                            )}
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredPendingData.map((ticket, ind) => (
-                          <tr
-                            key={ticket.ticketId}
-                            className={
-                              ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"
-                            }
-                          >
-                            <td className="px-4 py-3">
-                              <Button
-                                size="sm"
-                                onClick={() => handleInvoiceClick(ticket)}
-                                variant="outline"
-                                className="bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 hover:from-blue-100 hover:to-indigo-100 hover:text-blue-700 transition-all duration-300 border border-blue-200 hover:border-blue-300 rounded-lg px-3 py-1.5 shadow-sm hover:shadow-md group"
-                                data-testid={`button-invoice-${ticket.ticketId}`}
-                              >
-                                <span className="font-medium">Invoice</span>
-                              </Button>
-                            </td>
-                            <td className="px-4 py-3 font-medium text-blue-800">
-                              {ticket.ticketId}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.enquiryType || "-"}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.quotationNo}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.clientName}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.phoneNumber || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.companyName || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.siteAddress || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.gstNo || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.gstAddress || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.paymentTerm || ""}
-                            </td>
-                            <td className="px-4 py-3">
-                              {ticket.clientApproval ? (
-                                <a
-                                  href={ticket.clientApproval}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
-                                >
-                                  View
-                                </a>
-                              ) : (
-                                ""
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
-                              {ticket.seniorApproval ? (
-                                <a
-                                  href={ticket.seniorApproval}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
-                                >
-                                  View
-                                </a>
-                              ) : (
-                                ""
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => setAdvanceDetailsTicket(ticket)}
-                                className="h-7 px-2 border-purple-200 text-purple-700 hover:bg-purple-50"
-                                data-testid={`button-advance-details-${ticket.ticketId}`}
-                              >
-                                <Eye className="w-3.5 h-3.5" />
-                              </Button>
-                            </td>
-                            <td className="px-4 py-3">
-                              {ticket.quotationPdfLink ? (
-                                <a
-                                  href={ticket.quotationPdfLink}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
-                                >
-                                  View PDF
-                                </a>
-                              ) : (
-                                ""
-                              )}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-
-                  {/* Mobile Card View */}
-                  <div className="sm:hidden space-y-4">
-                    {filteredPendingData.length === 0 ? (
-                      <div
-                        className="text-center py-8 bg-white"
-                        data-testid="text-no-pending"
-                      >
-                        {fetchLoading ? (
-                          <div className="flex justify-center items-center text-blue-700">
-                            <LoaderIcon className="animate-spin w-8 h-8" />
-                          </div>
-                        ) : (
-                          <h1 className="text-blue-700">
-                            No pending invoices found.
-                          </h1>
-                        )}
-                      </div>
-                    ) : (
-                      filteredPendingData.map((ticket, ind) => (
-                        <Card
-                          key={ticket.ticketId}
-                          className={`${ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"
-                            } border-l-4 border-l-blue-500`}
-                        >
-                          <CardContent className="p-4 space-y-3">
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <h3 className="font-bold text-blue-800 text-lg">
-                                  {ticket.ticketId}
-                                </h3>
-                                <p className="text-sm text-gray-600">
-                                  {ticket.clientName}
-                                </p>
-                              </div>
-                              <Button
-                                size="sm"
-                                onClick={() => handleInvoiceClick(ticket)}
-                                variant="outline"
-                                className="bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 hover:from-blue-100 hover:to-indigo-100 border border-blue-200"
-                              >
-                                Invoice
-                              </Button>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Quotation No.
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.quotationNo}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Phone
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.phoneNumber || "N/A"}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div>
-                              <p className="text-gray-500 font-medium text-sm">
-                                Company Name
-                              </p>
-                              <p className="text-blue-900">
-                                {ticket.companyName || "N/A"}
-                              </p>
-                            </div>
-
-                            <div>
-                              <p className="text-gray-500 font-medium text-sm">
-                                Enquiry Type
-                              </p>
-                              <p className="text-blue-900">
-                                {ticket.enquiryType || "N/A"}
-                              </p>
-                            </div>
-
-                            <div>
-                              <p className="text-gray-500 font-medium text-sm">
-                                Site Address
-                              </p>
-                              <p className="text-blue-900">
-                                {ticket.siteAddress || "N/A"}
-                              </p>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  GST Number
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.gstNo || "N/A"}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Payment Term
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.paymentTerm || "N/A"}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div>
-                              <p className="text-gray-500 font-medium text-sm">
-                                Billing Address
-                              </p>
-                              <p className="text-blue-900">
-                                {ticket.gstAddress || "N/A"}
-                              </p>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3 text-sm items-end">
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Client Approval
-                                </p>
-                                {ticket.clientApproval ? (
-                                  <a href={ticket.clientApproval} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 text-xs">View</a>
-                                ) : (
-                                  <p className="text-blue-900 text-xs">N/A</p>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-3">
-                                <div>
-                                  <p className="text-gray-500 font-medium">
-                                    Senior Approval
-                                  </p>
-                                  {ticket.seniorApproval ? (
-                                    <a href={ticket.seniorApproval} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 text-xs">View</a>
-                                  ) : (
-                                    <p className="text-blue-900 text-xs">N/A</p>
-                                  )}
-                                </div>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => setAdvanceDetailsTicket(ticket)}
-                                  className="h-7 px-2 border-purple-200 text-purple-700 hover:bg-purple-50"
-                                >
-                                  <Eye className="w-3.5 h-3.5" />
-                                </Button>
-                              </div>
-                            </div>
-
-                            <div>
-                              <p className="text-gray-500 font-medium text-sm">
-                                Quotation PDF
-                              </p>
-                              {ticket.quotationPdfLink ? (
-                                <a
-                                  href={ticket.quotationPdfLink}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-blue-600 hover:text-blue-800 text-xs"
-                                >
-                                  View PDF
-                                </a>
-                              ) : (
-                                <p className="text-blue-900 text-xs">N/A</p>
-                              )}
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))
-                    )}
+                  <div className="space-y-1">
+                    <Label htmlFor="invoice-date-to" className="text-xs text-muted-foreground">To</Label>
+                    <Input id="invoice-date-to" type="date" value={invoiceDateTo} onChange={(e) => setInvoiceDateTo(e.target.value)} />
                   </div>
                 </div>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="history" className="mt-0">
-              <div className="relative overflow-x-auto">
-                <div className="max-h-[calc(103vh-200px)] overflow-y-auto">
-                  <table className="hidden sm:block w-full">
-                    <thead className="sticky top-0 z-10">
-                      <tr className="bg-gradient-to-r from-blue-600 to-indigo-600">
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[100px] sticky top-0">
-                          Action
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[120px] sticky top-0">
-                          Ticket ID
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[130px] sticky top-0">
-                          Enquiry Type
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Quotation No
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Client Name
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Phone Number
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Company Name
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Invoice Date
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[180px] sticky top-0">
-                          Invoice Posted By
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Invoice No (NABL)
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Invoice No (SERVICE)
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Invoice No (SPARE)
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[170px] sticky top-0">
-                          Invoice Amount NABL (Basic)
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[160px] sticky top-0">
-                          Invoice Amount NABL (GST)
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Service Amount (Basic)
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Service Amount (GST)
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Spare Amount (Basic)
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Spare Amount (GST)
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Attachment Service
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Attachment Spare
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[150px] sticky top-0">
-                          Attachment NABL
-                        </th>
-                        <th className="text-white border-b border-blue-500 px-4 py-3 text-left w-[130px] sticky top-0">
-                          Delay
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-blue-100">
-                      {filteredHistoryData.length === 0 ? (
-                        <tr>
-                          <td
-                            colSpan={21}
-                            className="text-center py-8 bg-white"
-                            data-testid="text-no-history"
-                          >
-                            {fetchLoading ? (
-                              <div className="flex justify-center items-center text-blue-700">
-                                <LoaderIcon className="animate-spin w-8 h-8" />
-                              </div>
-                            ) : (
-                              <h1 className="text-blue-700">
-                                No invoice history found.
-                              </h1>
-                            )}
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredHistoryData.map((ticket, ind) => (
-                          <tr
-                            key={ind}
-                            className={
-                              ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"
-                            }
-                          >
-                            <td className="px-4 py-3">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleEditClick(ticket)}
-                                className="bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 hover:from-blue-100 hover:to-indigo-100 hover:text-blue-700 transition-all duration-300 border border-blue-200 hover:border-blue-300 rounded-lg px-3 py-1.5 shadow-sm hover:shadow-md"
-                                data-testid={`button-edit-history-${ticket.ticketId}`}
-                              >
-                                <span className="font-medium">Edit</span>
-                              </Button>
-                            </td>
-                            <td className="px-4 py-3 font-medium text-blue-800">
-                              {ticket.ticketId || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.enquiryType || "-"}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.quotationNo || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.clientName || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.phoneNumber || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.companyName || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.invoiceDate ? formatDate(ticket.invoiceDate) : ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.invoicePostedBy || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.invoiceNoNABL || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.invoiceNoSERVICE || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              {ticket.invoiceNoSPARE || ""}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              ₹{ticket.invoiceAmountNABLBasic || "0"}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              ₹{ticket.invoiceAmountNABLGst || "0"}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              ₹{ticket.serviceAmountBasic || "0"}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              ₹{ticket.serviceAmountGst || "0"}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              ₹{ticket.spareAmountBasic || "0"}
-                            </td>
-                            <td className="px-4 py-3 text-blue-900">
-                              ₹{ticket.spareAmountGst || "0"}
-                            </td>
-                            <td className="px-4 py-3">
-                              {ticket.attachmentService ? (
-                                <a
-                                  href={ticket.attachmentService}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
-                                >
-                                  View
-                                </a>
-                              ) : (
-                                ""
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
-                              {ticket.attachmentSpare ? (
-                                <a
-                                  href={ticket.attachmentSpare}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
-                                >
-                                  View
-                                </a>
-                              ) : (
-                                ""
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
-                              {ticket.attachmentNABL ? (
-                                <a
-                                  href={ticket.attachmentNABL}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
-                                >
-                                  View
-                                </a>
-                              ) : (
-                                ""
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
-                              <span
-                                className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                  ticket.delayMinutes < 0
-                                    ? "bg-red-100 text-red-800"
-                                    : "bg-emerald-100 text-emerald-800"
-                                }`}
-                              >
-                                {formatDelay(ticket.delayMinutes)}
-                              </span>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-
-                  {/* Mobile Card View */}
-                  <div className="sm:hidden space-y-4">
-                    {filteredHistoryData.length === 0 ? (
-                      <div
-                        className="text-center py-8 bg-white"
-                        data-testid="text-no-history"
-                      >
-                        {fetchLoading ? (
-                          <div className="flex justify-center items-center text-blue-700">
-                            <LoaderIcon className="animate-spin w-8 h-8" />
-                          </div>
-                        ) : (
-                          <h1 className="text-blue-700">
-                            No invoice history found.
-                          </h1>
-                        )}
-                      </div>
-                    ) : (
-                      filteredHistoryData.map((ticket, ind) => (
-                        <Card
-                          key={ind}
-                          className={`${ind % 2 === 0 ? "bg-blue-50/50" : "bg-white"
-                            } border-l-4 border-l-blue-500`}
-                        >
-                          <CardContent className="p-4 space-y-3">
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <h3 className="font-bold text-blue-800 text-lg">
-                                  {ticket.ticketId}
-                                </h3>
-                                <p className="text-sm text-gray-600">
-                                  {ticket.clientName}
-                                </p>
-                              </div>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleEditClick(ticket)}
-                                className="bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 hover:from-blue-100 hover:to-indigo-100 border border-blue-200"
-                              >
-                                Edit
-                              </Button>
-                            </div>
-
-                            <div>
-                              <p className="text-gray-500 font-medium text-sm">
-                                Enquiry Type
-                              </p>
-                              <p className="text-blue-900">
-                                {ticket.enquiryType || "N/A"}
-                              </p>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Invoice Date
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.invoiceDate ? formatDate(ticket.invoiceDate) : "N/A"}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Posted By
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.invoicePostedBy || "N/A"}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Invoice No (NABL)
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.invoiceNoNABL || "N/A"}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Invoice No (SERVICE)
-                                </p>
-                                <p className="text-blue-900">
-                                  {ticket.invoiceNoSERVICE || "N/A"}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Service Amount
-                                </p>
-                                <p className="text-blue-900">
-                                  ₹{ticket.serviceAmountBasic || "0"} + ₹{ticket.serviceAmountGst || "0"} GST
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Spare Amount
-                                </p>
-                                <p className="text-blue-900">
-                                  ₹{ticket.spareAmountBasic || "0"} + ₹{ticket.spareAmountGst || "0"} GST
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Attachments
-                                </p>
-                                <div className="flex gap-2 text-xs">
-                                  {ticket.attachmentService && (
-                                    <a href={ticket.attachmentService} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">Service</a>
-                                  )}
-                                  {ticket.attachmentSpare && (
-                                    <a href={ticket.attachmentSpare} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">Spare</a>
-                                  )}
-                                  {ticket.attachmentNABL && (
-                                    <a href={ticket.attachmentNABL} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">NABL</a>
-                                  )}
-                                </div>
-                              </div>
-                              <div>
-                                <p className="text-gray-500 font-medium">
-                                  Delay
-                                </p>
-                                <span
-                                  className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                                    ticket.delayMinutes < 0
-                                      ? "bg-red-100 text-red-800"
-                                      : "bg-emerald-100 text-emerald-800"
-                                  }`}
-                                >
-                                  {formatDelay(ticket.delayMinutes)}
-                                </span>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-            </TabsContent>
-          </div>
-        </CardContent>
-      </Card>
-    </Tabs>
+              </FilterSection>
+              <FilterSection title="Enquiry type">
+                <MultiSelect options={historyEnquiryTypeOptions} value={enquiryTypeFilter} onChange={setEnquiryTypeFilter} placeholder="All" />
+              </FilterSection>
+            </FilterDialog>
+          )
+        }
+      />
+      <ListTable
+        list={list}
+        ctx={{ onInvoice: handleInvoiceClick, onEdit: handleEditClick, onAdvance: setAdvanceDetailsTicket }}
+        rowKey={(r, tab) => (tab === "history" ? "h-" + r.ticketUuid : "p-" + r.ticketId)}
+        cardTitle={(r) => r.ticketId}
+        emptyTitle={{ pending: "No pending invoices found.", history: "No invoice history found." }}
+        ariaLabel="Invoices"
+      />
 
       {/* Invoice Modal */}
       <Modal

@@ -533,7 +533,7 @@ export default function TADA() {
 
   return (
     <div className="space-y-3">
-      <ListToolbar list={list} searchPlaceholder="Search by ticket ID, client, company or phone..." />
+      <ListToolbar list={list} filtersInDialog searchPlaceholder="Search by ticket ID, client, company or phone..." />
       <ListTable
         list={list}
         ctx={{

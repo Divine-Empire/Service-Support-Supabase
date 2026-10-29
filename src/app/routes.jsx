@@ -26,7 +26,9 @@ const SpareDispatchDetails = lazy(() => import("../pages/SpareDispatchDetails"))
 const CancelledTickets = lazy(() => import("../pages/Cancelled_Tickets"));
 const Report = lazy(() => import("../pages/Report"));
 const Settings = lazy(() => import("../pages/Master/Settings"));
-const Master = lazy(() => import("../pages/Master/Dropdown"));
+const MasterDropdown = lazy(() => import("../pages/Master/DropdownMaster"));
+const MasterCompany = lazy(() => import("../pages/Master/CompanyDetails"));
+const MasterSections = lazy(() => import("../pages/Master/MasterSections"));
 const TatConfig = lazy(() => import("../pages/Master/tat-config"));
 
 const admin = (element) => <ProtectedRoute requiredRole="admin">{element}</ProtectedRoute>;
@@ -67,8 +69,14 @@ export default function AppRoutes() {
         <Route path="sparedispatch" element={<SpareDispatchDetails />} />
         <Route path="cancel" element={<CancelledTickets />} />
         <Route path="report" element={<Report />} />
-        <Route path="master" element={admin(<Master />)} />
-        <Route path="tat-config" element={admin(<TatConfig />)} />
+        <Route path="master" element={<Navigate to="/master/dropdown" replace />} />
+        <Route path="master/dropdown" element={admin(<MasterDropdown />)} />
+        <Route path="master/company" element={admin(<MasterCompany />)} />
+        <Route path="master/items" element={admin(<MasterSections section="items" />)} />
+        <Route path="master/engineers" element={admin(<MasterSections section="engineers" />)} />
+        <Route path="master/recipients" element={admin(<MasterSections section="recipients" />)} />
+        <Route path="master/tat" element={admin(<TatConfig />)} />
+        <Route path="tat-config" element={<Navigate to="/master/tat" replace />} />
         <Route path="settings" element={admin(<Settings />)} />
       </Route>
 

@@ -45,7 +45,7 @@ export const PENDING_COLUMNS = [
   col("gstNo", "GST No.", (r) => r.gstNo),
   col("machineName", "Machine Name", (r) => r.machineName),
   col("category", "Category", (r) => r.category, { defaultVisible: true }),
-  col("mentionIssue", "Mention Issue", (r) => r.mentionIssue, { width: 200 }),
+  col("mentionIssue", "Mention Issue", (r) => r.mentionIssue, { wrap: true, width: 220 }),
   col("serviceLocation", "Service Location", (r) => r.serviceLocation),
   col("quotationNo", "Quotation No.", (r) => r.quotationNo, { defaultVisible: true, width: 120, strong: true }),
   col("basicAmount", "Basic Amount", (r) => r.basicAmount),
@@ -59,9 +59,9 @@ export const PENDING_COLUMNS = [
   col("sharedBy", "Shared By", (r) => r.quotationShareByPersonName),
   col("shareThrough", "Share Through", (r) => r.ShareThrough),
   col("lastCallDate", "Last Call Date", (r) => formatDate(r.lastCallDate), { defaultVisible: true }),
-  col("lastRemarks", "Last Remarks", (r) => r.lastRemarks, { defaultVisible: true, width: 200 }),
+  col("lastRemarks", "Last Remarks", (r) => r.lastRemarks, { defaultVisible: true, wrap: true, width: 220 }),
   col("nextCallDate", "Next Call Date", (r) => formatDate(r.nextCallDate), { defaultVisible: true }),
-  col("nextAction", "Next Action", (r) => r.nextAction, { defaultVisible: true, width: 200 }),
+  col("nextAction", "Next Action", (r) => r.nextAction, { defaultVisible: true, wrap: true, width: 200 }),
 ];
 
 // History-tab rows (raw sss_follow_up rows enriched with ticket details).
@@ -81,7 +81,7 @@ export const HISTORY_COLUMNS = [
   col("gstNo", "GST No.", (r) => r.gstNo),
   col("machineName", "Machine Name", (r) => r.machineName),
   col("category", "Category", (r) => r.category),
-  col("mentionIssue", "Mention Issue", (r) => r.mentionIssue, { width: 200 }),
+  col("mentionIssue", "Mention Issue", (r) => r.mentionIssue, { wrap: true, width: 220 }),
   col("serviceLocation", "Service Location", (r) => r.serviceLocation),
   col("quotationNo", "Quotation No.", (r) => r.quotationNo, { defaultVisible: true, strong: true }),
   col("stage", "Stage", (r) => r.stage, { defaultVisible: true, strong: true }),
@@ -91,7 +91,8 @@ export const HISTORY_COLUMNS = [
   }),
   col("customerSay", "What Did The Customer Say", (r) => r.what_did_the_customer_say, {
     defaultVisible: true,
-    width: 220,
+    wrap: true,
+    width: 240,
   }),
   col("nextAction", "Next Action", (r) => r.next_action, { defaultVisible: true }),
   col("nextDate", "Next Date Of Call", (r) => formatDate(r.next_date_of_call), { defaultVisible: true }),
