@@ -16,6 +16,14 @@ export const formatDateTime = (value) => {
   return `${formatDate(d)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 };
 
+// dd-mm-yyyy hh:mm (local, 24h). Empty string for a missing/invalid value.
+export const formatDateTimeShort = (value) => {
+  if (!value) return "";
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return "";
+  return `${pad2(d.getDate())}-${pad2(d.getMonth() + 1)}-${d.getFullYear()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+};
+
 // A Date / ISO string, or an "HH:MM" (24h, as TimePicker12 stores it) -> "hh:mm AM/PM".
 // Anything that is not a time is returned unchanged ("" for empty).
 export const formatTime12hr = (value) => {

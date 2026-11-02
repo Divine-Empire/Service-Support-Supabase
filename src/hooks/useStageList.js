@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useQuery, useQueries, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { fetchViewPage, countView, distinctValues } from "../lib/pagedView";
 import { useDebounced } from "./useDebounced";
+import { useColumnPrefs } from "./useColumnPrefs";
 
 // One hook per Pending / History style list page (same role as Engineer's useStageList and
 // OTP_Supabase's). It owns the UI state — tab, search, filters, page, page size, visible
@@ -26,16 +27,6 @@ import { useDebounced } from "./useDebounced";
 export const PAGE_SIZES = [10, 20, 50, 100];
 
 const DEFAULT_LABELS = { pending: "Pending", history: "History" };
-
-function loadColumns(storageKey) {
-  try {
-    const saved = JSON.parse(localStorage.getItem(storageKey) || "null");
-    if (saved && typeof saved === "object" && !Array.isArray(saved)) return saved;
-  } catch {
-    /* ignore corrupt saved value */
-  }
-  return {};
-}
 
 export function useStageList({
   key,
@@ -109,25 +100,8 @@ export function useStageList({
   const filterOptions = Object.fromEntries(filterSpec.map((f, i) => [f.key, facetQueries[i].data || []]));
 
   // ── columns ─────────────────────────────────────────────────────────────
-  // Visible-column choice is remembered per browser, as { [columnKey]: boolean }.
-  // A column the user never touched follows its `defaultVisible`.
-  const storageKey = `sss-columns:${key}`;
-  const [saved, setSaved] = useState(() => loadColumns(storageKey));
-  const persist = (next) => {
-    setSaved(next);
-    try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* storage unavailable */ }
-  };
-  // Columns may be limited to a tab (`tabs: ['history']`); the panel lists only this tab's.
-  const tabColumns = columns.filter((c) => !c.tabs || c.tabs.includes(tab));
-  const isVisible = (c) => c.fixed || (c.key in saved ? !!saved[c.key] : c.defaultVisible !== false);
-  const visibleKeys = tabColumns.filter(isVisible).map((c) => c.key);
-  const toggleColumn = (k) => persist({ ...saved, [k]: !visibleKeys.includes(k) });
-  const resetColumns = () => {
-    const next = { ...saved };
-    for (const c of tabColumns) delete next[c.key];
-    persist(next);
-  };
-  const activeColumns = tabColumns.filter(isVisible);
+  // Visible-column choice is remembered per user, stage and tab (see useColumnPrefs).
+  const { columnPanel, activeColumns } = useColumnPrefs({ stageKey: key, tab, columns });
 
   // ── derived ─────────────────────────────────────────────────────────────
   const total = pageQuery.data?.total ?? 0;
@@ -171,7 +145,7 @@ export function useStageList({
     reload,
     exportParams,
     // props for the shared ColumnSelector: <ColumnSelector {...list.columnPanel} />
-    columnPanel: { columns: tabColumns, visibleKeys, onToggle: toggleColumn, onReset: resetColumns },
+    columnPanel,
     activeColumns,
   };
 }

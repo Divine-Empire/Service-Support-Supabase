@@ -34,13 +34,8 @@ const COLUMNS = [
   { key: "quotationCopy", label: "Quotation Copy", defaultVisible: false, cell: (r) => linkCell(r.quotationPdfLink) },
   { key: "invoiceNo", label: "Invoice Number", defaultVisible: true, strong: true, text: (r) => r.invoiceNo },
   { key: "invoiceCopy", label: "Invoice Copy", defaultVisible: false, cell: (r) => linkCell(r.invoiceCopy) },
-  { key: "certificateTypeName", label: "Certificate Type/Name", defaultVisible: true, tabs: ["history"], text: (r) => r.certificateTypeName },
   { key: "numberOfCertificates", label: "No. of Certificates", defaultVisible: false, tabs: ["history"], text: (r) => r.numberOfCertificatesDocuments },
-  { key: "destinationAddress", label: "Destination Address", defaultVisible: false, tabs: ["history"], wrap: true, width: 200, text: (r) => r.fullDestinationAddress },
-  { key: "dateOfDispatch", label: "Date of Dispatch", defaultVisible: true, tabs: ["history"], text: (r) => formatDate(r.dateOfDispatch) },
-  { key: "courierCompany", label: "Courier Company", defaultVisible: true, tabs: ["history"], text: (r) => r.courierCompanyName },
   { key: "trackingNo", label: "Tracking No.", defaultVisible: false, tabs: ["history"], text: (r) => r.courierTrackingNumber },
-  { key: "expectedDelivery", label: "Expected Delivery", defaultVisible: true, tabs: ["history"], text: (r) => formatDate(r.expectedDeliveryDate) },
   { key: "attachment", label: "Attachment", defaultVisible: false, tabs: ["history"], cell: (r) => linkCell(r.attachment) },
   { key: "delay", label: "Delay", defaultVisible: true, tabs: ["history"], cell: (r) => (
     <StatusBadge tone={delayTone(r.delayMinutes)}>{formatDelayLabel(r.delayMinutes)}</StatusBadge>
@@ -139,13 +134,8 @@ export default function CalibrationCertificate() {
         if (cert) {
           history.push({
             ...base,
-            certificateTypeName: cert.certificate_type_name || "",
             numberOfCertificatesDocuments: cert.number_of_certificates_documents ?? "",
-            fullDestinationAddress: cert.full_destination_address || "",
-            dateOfDispatch: cert.date_of_dispatch || "",
-            courierCompanyName: cert.courier_company_name || "",
             courierTrackingNumber: cert.courier_tracking_number || "",
-            expectedDeliveryDate: cert.expected_delivery_date || "",
             attachment: cert.attachment || "",
             delayMinutes: cert.delay_minutes,
           });
@@ -183,7 +173,6 @@ export default function CalibrationCertificate() {
     searchKeys: ["ticketId", "clientName", "companyName", "phoneNumber", "quotationNo", "invoiceNo"],
     filters: [
       { key: "enquiryType", label: "Enquiry Type", allLabel: "All Enquiry Types", get: (r) => r.enquiryType },
-      { key: "courier", label: "Courier", allLabel: "All Couriers", get: (r) => r.courierCompanyName, tabs: ["history"] },
     ],
     columns: COLUMNS,
   });
@@ -191,17 +180,12 @@ export default function CalibrationCertificate() {
   const handleClick = (ticket) => {
     setSelectedTicket(ticket);
     setFormData({
-      ticketId: ticket.ticketId,
+      quotationNo: ticket.quotationNo || "",
       clientName: ticket.clientName,
       phoneNumber: ticket.phoneNumber,
       companyName: ticket.companyName || "",
-      certificateTypeName: "",
       numberOfCertificatesDocuments: "",
-      fullDestinationAddress: "",
-      dateOfDispatch: "",
-      courierCompanyName: "",
       courierTrackingNumber: "",
-      expectedDeliveryDate: "",
     });
     setAttachmentFile(null);
     setShowModal(true);
@@ -233,32 +217,12 @@ export default function CalibrationCertificate() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!formData.certificateTypeName) {
-      toast({ title: "Validation Error", description: "Please enter Certificate Type/Name", variant: "destructive" });
-      return;
-    }
     if (!formData.numberOfCertificatesDocuments) {
       toast({ title: "Validation Error", description: "Please enter Number of Certificates/Documents", variant: "destructive" });
       return;
     }
-    if (!formData.dateOfDispatch) {
-      toast({ title: "Validation Error", description: "Please select Date of Dispatch", variant: "destructive" });
-      return;
-    }
-    if (!formData.courierCompanyName) {
-      toast({ title: "Validation Error", description: "Please enter Courier Company Name", variant: "destructive" });
-      return;
-    }
     if (!formData.courierTrackingNumber) {
       toast({ title: "Validation Error", description: "Please enter Courier Tracking Number", variant: "destructive" });
-      return;
-    }
-    if (!formData.fullDestinationAddress) {
-      toast({ title: "Validation Error", description: "Please enter Full Destination Address", variant: "destructive" });
-      return;
-    }
-    if (!formData.expectedDeliveryDate) {
-      toast({ title: "Validation Error", description: "Please select Expected Delivery Date", variant: "destructive" });
       return;
     }
     if (!attachmentFile) {
@@ -276,13 +240,8 @@ export default function CalibrationCertificate() {
       const { error } = await supabase.from("sss_calibration_certificate").insert({
         ticket_id: selectedTicket.ticketId,
         ticket_uuid: selectedTicket.ticketUuid,
-        certificate_type_name: formData.certificateTypeName || null,
         number_of_certificates_documents: formData.numberOfCertificatesDocuments || null,
-        full_destination_address: formData.fullDestinationAddress || null,
-        date_of_dispatch: formData.dateOfDispatch || null,
-        courier_company_name: formData.courierCompanyName || null,
         courier_tracking_number: formData.courierTrackingNumber || null,
-        expected_delivery_date: formData.expectedDeliveryDate || null,
         attachment: attachmentUrl,
         // No <next_stage>_planned column — nothing comes after this stage yet.
       });
@@ -329,8 +288,8 @@ export default function CalibrationCertificate() {
       >
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <Label htmlFor="cc-ticketId">Ticket ID</Label>
-            <Input id="cc-ticketId" value={formData.ticketId || ""} disabled className="bg-slate-50" />
+            <Label htmlFor="cc-quotationNo">Quotation Number</Label>
+            <Input id="cc-quotationNo" value={formData.quotationNo || ""} disabled className="bg-slate-50" />
           </div>
           <div>
             <Label htmlFor="cc-clientName">Client Name</Label>
@@ -346,17 +305,6 @@ export default function CalibrationCertificate() {
           </div>
 
           <div>
-            <Label htmlFor="cc-type">Certificate Type/Name *</Label>
-            <Input
-              id="cc-type"
-              placeholder="Enter certificate type"
-              value={formData.certificateTypeName || ""}
-              onChange={(e) => handleInputChange("certificateTypeName", e.target.value)}
-              data-testid="input-certificate-type"
-              required
-            />
-          </div>
-          <div>
             <Label htmlFor="cc-count">Number of Certificates/Documents *</Label>
             <Input
               id="cc-count"
@@ -370,28 +318,6 @@ export default function CalibrationCertificate() {
             />
           </div>
           <div>
-            <Label htmlFor="cc-dispatch">Date of Dispatch *</Label>
-            <Input
-              id="cc-dispatch"
-              type="date"
-              value={formData.dateOfDispatch || ""}
-              onChange={(e) => handleInputChange("dateOfDispatch", e.target.value)}
-              data-testid="input-dispatch-date"
-              required
-            />
-          </div>
-          <div>
-            <Label htmlFor="cc-courier">Courier Company Name *</Label>
-            <Input
-              id="cc-courier"
-              placeholder="Enter courier company"
-              value={formData.courierCompanyName || ""}
-              onChange={(e) => handleInputChange("courierCompanyName", e.target.value)}
-              data-testid="input-courier-company"
-              required
-            />
-          </div>
-          <div>
             <Label htmlFor="cc-tracking">Courier Tracking Number *</Label>
             <Input
               id="cc-tracking"
@@ -399,28 +325,6 @@ export default function CalibrationCertificate() {
               value={formData.courierTrackingNumber || ""}
               onChange={(e) => handleInputChange("courierTrackingNumber", e.target.value)}
               data-testid="input-tracking-number"
-              required
-            />
-          </div>
-          <div className="md:col-span-2">
-            <Label htmlFor="cc-address">Full Destination Address *</Label>
-            <Input
-              id="cc-address"
-              placeholder="Enter full address"
-              value={formData.fullDestinationAddress || ""}
-              onChange={(e) => handleInputChange("fullDestinationAddress", e.target.value)}
-              data-testid="input-destination-address"
-              required
-            />
-          </div>
-          <div>
-            <Label htmlFor="cc-delivery">Expected Delivery Date *</Label>
-            <Input
-              id="cc-delivery"
-              type="date"
-              value={formData.expectedDeliveryDate || ""}
-              onChange={(e) => handleInputChange("expectedDeliveryDate", e.target.value)}
-              data-testid="input-delivery-date"
               required
             />
           </div>

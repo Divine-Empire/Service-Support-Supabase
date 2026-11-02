@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { supabase } from "../lib/supabase/client";
+import { clearColumnPrefs } from "../lib/columnPrefs";
 
 const useAuthStore = create(
   persist(
@@ -49,6 +50,7 @@ const useAuthStore = create(
       },
 
       logout: () => {
+        clearColumnPrefs();
         set({
           isAuthenticated: false,
           user: null,

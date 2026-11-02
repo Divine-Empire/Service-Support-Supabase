@@ -9,7 +9,8 @@ import { useToast } from "../hooks/use-toast";
 import { Loader2Icon } from "lucide-react";
 import { supabase } from "../lib/supabase/client";
 import { computeStagePlanned } from "../lib/supabase/stagePlanning";
-import { formatDate, formatDelayLabel, delayTone } from "../lib/format";
+import { formatDate, formatDateTimeShort, formatDelayLabel, delayTone } from "../lib/format";
+import { CalibrationStatusCell, CalibrationStatusBadge } from "./calibrationStatus";
 
 const linkCell = (url) =>
   url ? (
@@ -34,6 +35,10 @@ const COLUMNS = [
   { key: "invoiceCopy", label: "Invoice Copy", defaultVisible: true, tabs: ["history"], cell: (r) => linkCell(r.invoiceCopy) },
   { key: "invoiceDate", label: "Invoice Date", defaultVisible: true, text: (r) => formatDate(r.invoiceDate) },
   { key: "ticketId", label: "Ticket ID", defaultVisible: true, strong: true, text: (r) => r.ticketId },
+  { key: "calibrationPlanned", label: "Calibration Planned", defaultVisible: true, text: (r) => formatDateTimeShort(r.calibrationPlanned) },
+  { key: "status", label: "Status", defaultVisible: true, cell: (r, { tab, onStatusSave }) =>
+    tab === "pending" ? <CalibrationStatusCell row={r} onSave={onStatusSave} /> : <CalibrationStatusBadge status={r.calibrationStatus} /> },
+  { key: "statusUpdated", label: "Status Updated", defaultVisible: true, text: (r) => formatDateTimeShort(r.calibrationStatusUpdatedAt) },
   { key: "enquiryType", label: "Enquiry Type", defaultVisible: true, text: (r) => r.enquiryType },
   { key: "serviceLocation", label: "Service Location", defaultVisible: true, cell: (r) =>
     r.serviceLocation ? <StatusBadge tone="info">{r.serviceLocation}</StatusBadge> : null },
@@ -68,6 +73,10 @@ export default function Calibration() {
     setFetchLoading(true);
     setLoadError(null);
     try {
+      // Draft Copy Shared for more than 72 h -> Confirmation Pending (server-side, idempotent).
+      // A failure here must not block the list.
+      await supabase.rpc("sss_calibration_escalate_status");
+
       // Tickets ready for Calibration (invoice.calibration_planned set —
       // true for tickets with enquiry_type = 'NABL' or 'NON-NABL').
       const { data: invoiceRows, error: invoiceError } = await supabase
@@ -107,7 +116,7 @@ export default function Calibration() {
 
       const { data: invoiceFullRows } = await supabase
         .from("sss_invoice")
-        .select("ticket_id, invoice_date, invoice_no_nabl, invoice_no_service, invoice_no_spare, attachment_nabl, attachment_service, attachment_spare")
+        .select("ticket_id, invoice_date, invoice_no_nabl, invoice_no_service, invoice_no_spare, attachment_nabl, attachment_service, attachment_spare, calibration_planned, calibration_status, calibration_status_updated_at")
         .in("ticket_id", ticketIds);
 
       const calibrationByTicket = new Map((calibrationRows || []).map((c) => [c.ticket_id, c]));
@@ -133,6 +142,9 @@ export default function Calibration() {
           serviceLocation: t.service_location || "",
           quotationNo: q?.quotation_no || "",
           quotationPdfLink: q?.quotation_pdf_link || "",
+          calibrationPlanned: inv?.calibration_planned || "",
+          calibrationStatus: inv?.calibration_status || "",
+          calibrationStatusUpdatedAt: inv?.calibration_status_updated_at || "",
           invoiceDate: inv?.invoice_date || "",
           invoiceNo: inv?.invoice_no_nabl || inv?.invoice_no_service || inv?.invoice_no_spare || "",
           invoiceCopy: inv?.attachment_nabl || inv?.attachment_service || inv?.attachment_spare || "",
@@ -196,10 +208,35 @@ export default function Calibration() {
     columns: COLUMNS,
   });
 
+  // Inline Status edit (Pending tab). The DB trigger stamps calibration_status_updated_at.
+  const handleStatusSave = async (row, value) => {
+    const { data, error } = await supabase
+      .from("sss_invoice")
+      .update({ calibration_status: value })
+      .eq("ticket_uuid", row.ticketUuid)
+      .select("calibration_status, calibration_status_updated_at")
+      .maybeSingle();
+    if (error || !data) {
+      console.error("Error saving calibration status:", error);
+      toast({ title: "Error", description: "Failed to update status", variant: "destructive" });
+      return;
+    }
+    const patch = (r) =>
+      r.ticketUuid === row.ticketUuid
+        ? {
+            ...r,
+            calibrationStatus: data.calibration_status || "",
+            calibrationStatusUpdatedAt: data.calibration_status_updated_at || "",
+          }
+        : r;
+    setPendingData((prev) => prev.map(patch));
+    setHistoryData((prev) => prev.map(patch));
+  };
+
   const handleCalibrationClick = (ticket) => {
     setSelectedTicket(ticket);
     setFormData({
-      ticketId: ticket.ticketId,
+      quotationNo: ticket.quotationNo || "",
       clientName: ticket.clientName,
       phoneNumber: ticket.phoneNumber,
       companyName: ticket.companyName || "",
@@ -316,7 +353,7 @@ export default function Calibration() {
       <ListToolbar list={list} searchPlaceholder="Search by ticket ID, client, company or phone..." />
       <ListTable
         list={list}
-        ctx={{ onCalibrate: handleCalibrationClick }}
+        ctx={{ onCalibrate: handleCalibrationClick, onStatusSave: handleStatusSave }}
         rowKey={(r) => r.ticketId}
         cardTitle={(r) => r.ticketId}
         emptyTitle={{ pending: "No pending calibrations found.", history: "No calibration history found." }}
@@ -332,8 +369,8 @@ export default function Calibration() {
       >
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <Label htmlFor="cal-ticketId">Ticket ID</Label>
-            <Input id="cal-ticketId" value={formData.ticketId || ""} disabled className="bg-slate-50" />
+            <Label htmlFor="cal-quotationNo">Quotation Number</Label>
+            <Input id="cal-quotationNo" value={formData.quotationNo || ""} disabled className="bg-slate-50" />
           </div>
           <div>
             <Label htmlFor="cal-clientName">Client Name</Label>

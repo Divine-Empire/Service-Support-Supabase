@@ -6,13 +6,14 @@ const TONES = {
   danger: { badge: 'bg-destructive/10 text-destructive border-destructive/25', dot: 'bg-destructive' },
   info: { badge: 'bg-info/10 text-info border-info/25', dot: 'bg-info' },
   neutral: { badge: 'bg-secondary text-muted-foreground border-border', dot: 'bg-muted-foreground' },
+  purple: { badge: 'bg-purple-500/10 text-purple-700 border-purple-500/25', dot: 'bg-purple-500' },
 };
 
 /**
  * One status pattern for the whole app: tinted background, a dot and the status text.
  * The text always carries the meaning, so colour is never the only signal.
  *
- * tone: 'success' | 'warning' | 'danger' | 'info' | 'neutral'
+ * tone: 'success' | 'warning' | 'danger' | 'info' | 'neutral' | 'purple'
  */
 const StatusBadge = ({ tone = 'neutral', children, className = '' }) => {
   const t = TONES[tone] || TONES.neutral;

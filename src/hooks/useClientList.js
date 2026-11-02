@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useColumnPrefs } from "./useColumnPrefs";
 
 // The UI half of useStageList for pages whose data is still loaded in the browser
 // (one fetch, then Pending / History split in JS). It returns the SAME shape, so a page
@@ -21,16 +22,6 @@ import { useState, useEffect, useMemo } from "react";
 export { PAGE_SIZES } from "./useStageList";
 
 const norm = (v) => String(v ?? "").toLowerCase();
-
-function loadSaved(storageKey) {
-  try {
-    const saved = JSON.parse(localStorage.getItem(storageKey) || "null");
-    if (saved && typeof saved === "object" && !Array.isArray(saved)) return saved;
-  } catch {
-    /* ignore corrupt saved value */
-  }
-  return {};
-}
 
 export function useClientList({
   key,
@@ -103,22 +94,8 @@ export function useClientList({
   const rows = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   // ── columns ─────────────────────────────────────────────────────────────
-  const storageKey = `sss-columns:${key}`;
-  const [saved, setSaved] = useState(() => loadSaved(storageKey));
-  const persist = (next) => {
-    setSaved(next);
-    try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* storage unavailable */ }
-  };
-  const tabColumns = columns.filter((c) => !c.tabs || c.tabs.includes(tab));
-  const isVisible = (c) => c.fixed || (c.key in saved ? !!saved[c.key] : c.defaultVisible !== false);
-  const visibleKeys = tabColumns.filter(isVisible).map((c) => c.key);
-  const toggleColumn = (k) => persist({ ...saved, [k]: !visibleKeys.includes(k) });
-  const resetColumns = () => {
-    const next = { ...saved };
-    for (const c of tabColumns) delete next[c.key];
-    persist(next);
-  };
-  const activeColumns = tabColumns.filter(isVisible);
+  // Visible-column choice is remembered per user, stage and tab (see useColumnPrefs).
+  const { columnPanel, activeColumns } = useColumnPrefs({ stageKey: key, tab, columns });
 
   const chips = [
     ...(search.trim() ? [{ key: "search", label: `Search: ${search.trim()}`, onRemove: () => setSearch("") }] : []),
@@ -140,7 +117,7 @@ export function useClientList({
     fetching: loading,
     error,
     retry: onRetry,
-    columnPanel: { columns: tabColumns, visibleKeys, onToggle: toggleColumn, onReset: resetColumns },
+    columnPanel,
     activeColumns,
   };
 }

@@ -600,6 +600,8 @@ export const SCHEMA_MAPPING = {
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "created_at", type: "timestamptz", note: "Defaults to now() at insert time; doubles as this stage's completion timestamp." },
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "calibration_planned", type: "timestamptz", note: "Readiness stamp for Calibration.jsx — only set when tickets.enquiry_type='NABL'. See description above." },
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "spare_dispatch_planned", type: "timestamptz", note: "Migration 0045. Readiness stamp for SpareDispatchDetails.jsx — only set when tickets.enquiry_type='SPARE'. See description above." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "calibration_status", type: "text", note: "Migration 0060. Calibration Pending status: 'Draft Copy Shared' / 'Confirmation Pending' / free text (Other). Edited inline on Calibration; Draft Copy Shared older than 72 h flips to Confirmation Pending via sss_calibration_escalate_status() (called when the page opens)." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "calibration_status_updated_at", type: "timestamptz", note: "Migration 0060. Trigger-stamped whenever calibration_status changes. Never written by the frontend." },
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "delay_minutes", type: "integer", note: "Trigger-computed only, see description above. Never written by the frontend." },
     ],
     notFields: [
@@ -662,13 +664,8 @@ export const SCHEMA_MAPPING = {
     fields: [
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "ticket_uuid", type: "uuid", note: "FK -> tickets(uuid), the real relational key. Unique — a ticket can only pass through this stage once." },
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "ticket_id", type: "text", note: "Plain denormalized column (not the FK) — populated at insert, used for display/search." },
-      { sheetColumn: null, sheetIndex: null, sheetField: "certificateTypeName", supabaseColumn: "certificate_type_name", type: "text" },
       { sheetColumn: null, sheetIndex: null, sheetField: "numberOfCertificatesDocuments", supabaseColumn: "number_of_certificates_documents", type: "integer" },
-      { sheetColumn: null, sheetIndex: null, sheetField: "fullDestinationAddress", supabaseColumn: "full_destination_address", type: "text" },
-      { sheetColumn: null, sheetIndex: null, sheetField: "dateOfDispatch", supabaseColumn: "date_of_dispatch", type: "date" },
-      { sheetColumn: null, sheetIndex: null, sheetField: "courierCompanyName", supabaseColumn: "courier_company_name", type: "text" },
       { sheetColumn: null, sheetIndex: null, sheetField: "courierTrackingNumber", supabaseColumn: "courier_tracking_number", type: "text" },
-      { sheetColumn: null, sheetIndex: null, sheetField: "expectedDeliveryDate", supabaseColumn: "expected_delivery_date", type: "date" },
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "attachment", type: "text", note: "File URL in the 'ticket_enquiry' Supabase Storage bucket (path prefix 'calibration_certificate/')." },
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "created_at", type: "timestamptz", note: "Defaults to now() at insert time; doubles as this stage's completion timestamp." },
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "delay_minutes", type: "integer", note: "Trigger-computed only, see description above. Never written by the frontend." },
