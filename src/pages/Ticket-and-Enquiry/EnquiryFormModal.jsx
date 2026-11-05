@@ -1,49 +1,27 @@
 import { useState, useEffect, useMemo } from "react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../components/ui/card";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
-import TimePicker12 from "../components/ui/time-picker-12";
+import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
+import TimePicker12 from "../../components/ui/time-picker-12";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../components/ui/select";
-import { Modal } from "../components/ui/modal";
-import { useToast } from "../hooks/use-toast";
-import {
-  ClipboardList,
-  Loader2Icon,
-  Plus,
-  Calendar,
-  RotateCcw,
-} from "lucide-react";
-import { Textarea } from "../components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "../components/ui/dialog";
-import { supabase } from "../lib/supabase/client";
-import { ltoSupabase } from "../lib/supabase/ltoClient";
-import { fetchDropdownRows } from "../lib/supabase/dropdown";
-import { fetchEngineerNames } from "../lib/supabase/engineers";
-import { computeStagePlanned } from "../lib/supabase/stagePlanning";
+} from "../../components/ui/select";
+import { Modal } from "../../components/ui/modal";
+import { Textarea } from "../../components/ui/textarea";
+import { ClipboardList, Loader2Icon } from "lucide-react";
+import { useToast } from "../../hooks/use-toast";
+import { supabase } from "../../lib/supabase/client";
+import { computeStagePlanned } from "../../lib/supabase/stagePlanning";
 import {
   sendServiceRequestRegisteredNotification,
   sendVideoCallScheduledNotifications,
-} from "../lib/notifications/whatsapp";
-import { ListToolbar, ListTable, StatusBadge } from "../components/shared";
-import { useClientList } from "../hooks/useClientList";
-import { formatDate, formatTime12hr } from "../lib/format";
+} from "../../lib/notifications/whatsapp";
+import { formatDate, formatTime12hr } from "../../lib/format";
 
 const EMPTY_FORM = {
   clientType: "New",
@@ -71,116 +49,63 @@ const EMPTY_FORM = {
   remarks: "",
 };
 
-// Once a ticket reaches one of these stages, editing it here no longer
-// makes sense (billing/downstream paperwork has already started on it) —
-// it's dropped from this page's list entirely, not just its Edit button.
-// "Cancelled" is set by the sss_cancelled_tickets trigger (migration 0054).
-const EDIT_EXCLUDED_STAGES = ["Invoice", "Calibration", "Calibration Certificate", "Spare Dispatch Details", "Cancelled"];
+const splitList = (v) => (v ? v.split(",").map((s) => s.trim()).filter(Boolean) : []);
 
-const COLUMNS = [
-  { key: "actions", label: "Actions", fixed: true, cell: (r, { onEdit }) => (
-    <Button variant="outline" size="sm" onClick={() => onEdit(r)}>Edit</Button>
-  ) },
-  { key: "currentStage", label: "Current Stage", defaultVisible: true, cell: (r) => (
-    r.currentStage ? <StatusBadge tone="info">{r.currentStage}</StatusBadge> : ""
-  ) },
-  { key: "date", label: "Date", defaultVisible: true, text: (r) => formatDate(r.timeStemp) },
-  { key: "ticketId", label: "Ticket-ID", defaultVisible: true, strong: true, text: (r) => r.ticketId },
-  { key: "sourceOfEnquiry", label: "Source of enquiry", defaultVisible: false, text: (r) => r.sourceOfEnquiry },
-  { key: "callType", label: "Call type", defaultVisible: false, text: (r) => r.callType },
-  { key: "enquiryReceiverName", label: "Enquiry Receiver Name", defaultVisible: false, text: (r) => r.enquiryReceiverName },
-  { key: "clientType", label: "Client Type", defaultVisible: false, text: (r) => r.clientType },
-  { key: "companyName", label: "Company Name", defaultVisible: true, wrap: true, width: 180, text: (r) => r.companyName },
-  { key: "clientName", label: "Client Name", defaultVisible: true, text: (r) => r.clientName },
-  { key: "phoneNumber", label: "Phone Number", defaultVisible: true, text: (r) => r.phoneNumber },
-  { key: "siteAddress", label: "Site Address", defaultVisible: false, wrap: true, width: 200, text: (r) => r.siteAddress },
-  { key: "gstNo", label: "GST No.", defaultVisible: false, text: (r) => r.gstNo },
-  { key: "machineName", label: "Machine Name", defaultVisible: true, wrap: true, width: 200, text: (r) => r.machineName },
-  { key: "enquiryType", label: "Enquiry Type", defaultVisible: false, text: (r) => r.enquiryType },
-  { key: "category", label: "Category", defaultVisible: true, text: (r) => r.category },
-  { key: "mentionIssue", label: "Mention Issue", defaultVisible: true, wrap: true, width: 250, text: (r) => r.mentionIssue },
-  { key: "serviceLocation", label: "Service Location", defaultVisible: true, text: (r) => r.serviceLocation },
-];
-
-export default function TicketAndEnquiry() {
-  const [pendingData, setPendingData] = useState([]);
-  const [fetchLoading, setFetchLoading] = useState(false);
+// New / edit enquiry form. `ticket` = the row being edited, or null for a new enquiry. Render it
+// only while open; onClose closes it, onSaved runs after a successful save (page reloads).
+export default function EnquiryFormModal({ ticket, masterData, companyDetails, onClose, onSaved }) {
+  const { toast } = useToast();
+  const isEditMode = !!ticket;
+  const editingTicket = ticket;
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [masterData, setMasterData] = useState({});
-  const [loadError, setLoadError] = useState(null);
-
-  // Filter States
-  const [dateRange, setDateRange] = useState({ start: "", end: "" });
-  const [isDateModalOpen, setIsDateModalOpen] = useState(false);
-
-  // New Enquiry Form States
-  const [showNewEnquiryForm, setShowNewEnquiryForm] = useState(false);
-  const [newEnquiryData, setNewEnquiryData] = useState(EMPTY_FORM);
-  const [newFormSelectedMachines, setNewFormSelectedMachines] = useState([]);
+  // Unique company names for the suggestion list (the client master repeats names).
+  const companyNames = useMemo(
+    () => [...new Set(companyDetails.map((c) => c.company_name).filter(Boolean))],
+    [companyDetails]
+  );
+  const [newEnquiryData, setNewEnquiryData] = useState(() =>
+    ticket
+      ? {
+        clientType: ticket.clientType || "New",
+        sourceOfEnquiry: ticket.sourceOfEnquiry || "",
+        callType: ticket.callType || "",
+        enquiryReceiverName: ticket.enquiryReceiverName || "",
+        companyName: ticket.companyName || "",
+        clientName: ticket.clientName || "",
+        phoneNumber: ticket.phoneNumber || "",
+        siteAddress: ticket.siteAddress || "",
+        gstNo: ticket.gstNo || "",
+        gstAddress: ticket.gstAddress || "",
+        machineName: ticket.machineName || "",
+        enquiryType: ticket.enquiryType || "",
+        category: ticket.category || "",
+        mentionIssue: ticket.mentionIssue || "",
+        serviceLocation: ticket.serviceLocation || "",
+        challanCopy: ticket.challanCopy || "",
+        machinePhoto: ticket.machinePhoto || "",
+        videoCall: ticket.videoCall || "",
+        subCategory: ticket.subCategory || "",
+        videoCallTime: ticket.videoCallTime || "",
+        engineerAssign: ticket.engineerAssign || "",
+        enquiryItemList: ticket.enquiryItemList || "",
+        remarks: ticket.remarks || "",
+        }
+      : EMPTY_FORM
+  );
+  const [newFormSelectedMachines, setNewFormSelectedMachines] = useState(() => splitList(ticket?.machineName));
   const [showMachineDropdown, setShowMachineDropdown] = useState(false);
   const [machineSearchQuery, setMachineSearchQuery] = useState("");
-  const [newFormSelectedCategories, setNewFormSelectedCategories] = useState([]);
+  const [newFormSelectedCategories, setNewFormSelectedCategories] = useState(() => splitList(ticket?.subCategory));
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [categorySearchQuery, setCategorySearchQuery] = useState("");
-  const [isEditMode, setIsEditMode] = useState(false);
-  const [editingTicket, setEditingTicket] = useState(null);
-  // Warehouse attachments are only uploaded on final form submit (not on
-  // file selection) — picking a file just holds it here until then, so
-  // cancelling the form never leaves an orphaned upload behind.
+  // Warehouse attachments are only uploaded on final submit (not on file selection): picking a
+  // file just holds it here, so closing the form never leaves an orphaned upload behind.
   const [warehouseFiles, setWarehouseFiles] = useState({
     challanCopy: null,
     machinePhoto: null,
   });
   // Same held-until-submit pattern as warehouseFiles above.
   const [enquiryItemListFile, setEnquiryItemListFile] = useState(null);
-
-  const [companyDetails, setCompanyDetails] = useState([]);
-
-  const { toast } = useToast();
-
-  const handleEditClick = (ticket) => {
-    setIsEditMode(true);
-    setEditingTicket(ticket);
-    setNewEnquiryData({
-      clientType: ticket.clientType || "New",
-      sourceOfEnquiry: ticket.sourceOfEnquiry || "",
-      callType: ticket.callType || "",
-      enquiryReceiverName: ticket.enquiryReceiverName || "",
-      companyName: ticket.companyName || "",
-      clientName: ticket.clientName || "",
-      phoneNumber: ticket.phoneNumber || "",
-      siteAddress: ticket.siteAddress || "",
-      gstNo: ticket.gstNo || "",
-      gstAddress: ticket.gstAddress || "",
-      machineName: ticket.machineName || "",
-      enquiryType: ticket.enquiryType || "",
-      category: ticket.category || "",
-      mentionIssue: ticket.mentionIssue || "",
-      serviceLocation: ticket.serviceLocation || "",
-      challanCopy: ticket.challanCopy || "",
-      machinePhoto: ticket.machinePhoto || "",
-      videoCall: ticket.videoCall || "",
-      subCategory: ticket.subCategory || "",
-      videoCallTime: ticket.videoCallTime || "",
-      engineerAssign: ticket.engineerAssign || "",
-      enquiryItemList: ticket.enquiryItemList || "",
-      remarks: ticket.remarks || "",
-    });
-
-    const machines = ticket.machineName
-      ? ticket.machineName.split(",").map((m) => m.trim()).filter(Boolean)
-      : [];
-    setNewFormSelectedMachines(machines);
-
-    const categories = ticket.subCategory
-      ? ticket.subCategory.split(",").map((c) => c.trim()).filter(Boolean)
-      : [];
-    setNewFormSelectedCategories(categories);
-    setWarehouseFiles({ challanCopy: null, machinePhoto: null });
-    setEnquiryItemListFile(null);
-
-    setShowNewEnquiryForm(true);
-  };
 
   // Just holds the picked file for later — actual upload happens at submit
   // time in handleNewEnquirySubmit, so cancelling the form uploads nothing.
@@ -229,147 +154,6 @@ export default function TicketAndEnquiry() {
     const { data } = supabase.storage.from("ticket_enquiry").getPublicUrl(path);
     return data.publicUrl;
   };
-
-  const fetchData = async () => {
-    setFetchLoading(true);
-    setLoadError(null);
-    try {
-      const { data, error } = await supabase
-        .from("sss_tickets")
-        .select("*")
-        .order("created_at", { ascending: true });
-
-      if (error) throw error;
-
-      const allData = (data || []).map((row) => ({
-        ticketId: row.ticket_id,
-        timeStemp: row.created_at || "",
-        sourceOfEnquiry: row.source_of_enquiry || "",
-        callType: row.call_type || "",
-        enquiryReceiverName: row.enquiry_receiver_name || "",
-        clientType: row.client_type || "",
-        companyName: row.company_name || "",
-        clientName: row.client_name || "",
-        phoneNumber: row.phone_number || "",
-        siteAddress: row.site_address || "",
-        gstNo: row.gst_no || "",
-        gstAddress: row.gst_address || "",
-        machineName: row.machine_name || "",
-        enquiryType: row.enquiry_type || "",
-        category: row.category || "",
-        mentionIssue: row.mention_issue || "",
-        serviceLocation: row.service_location || "",
-        challanCopy: row.challan_copy || "",
-        machinePhoto: row.machine_photo || "",
-        videoCall: row.video_call || "",
-        subCategory: row.sub_category || "",
-        videoCallTime: row.video_call_time || "",
-        engineerAssign: row.engineer_assign || "",
-        otp: row.otp || "",
-        CREName: row.cre_name || "",
-        currentStage: row.current_stage || "",
-        enquiryItemList: row.enquiry_item_list || "",
-        remarks: row.remarks || "",
-      }));
-
-      // Show all tickets in the system
-      setPendingData(allData);
-    } catch (error) {
-      console.error("Error fetching data:", error);
-      setLoadError(error.message || "Failed to load data");
-      toast({
-        title: "Error",
-        description: "Failed to load data",
-        variant: "destructive",
-      });
-    } finally {
-      setFetchLoading(false);
-    }
-  };
-
-  // Maps public.dropdown's `category` keys to the display keys the rest of
-  // this component's JSX already expects (masterData[0]["Call type"], etc.)
-  // Maps public.dropdown's `category` keys to the display keys the rest of
-  // this component's JSX expects. Renamed in migration 0043 to match the
-  // renamed tickets columns: dropdown category='category' now holds the
-  // NABL/Service/Spare-style values (source for the "Category" field,
-  // formerly "Enquiry-Type"), 'sub_category' holds the machine-group values
-  // (source for "Sub-Category", formerly "Category"), and 'enquiry_type' is
-  // a brand new, initially-empty category sourcing the brand new "Enquiry
-  // Type" field.
-  const DROPDOWN_CATEGORY_TO_KEY = {
-    call_type: "Call type",
-    source_of_enquiry: "Source of enquiry",
-    enquiry_receiver_name: "Enquiry Receiver Name",
-    category: "Category",
-    sub_category: "Sub-Category",
-    enquiry_type: "Enquiry Type",
-    service_location: "Service Location",
-    machine_name: "Machine Name",
-  };
-
-  const fetchDropdown = async () => {
-    try {
-      const [data, engineerNames] = await Promise.all([
-        fetchDropdownRows(Object.keys(DROPDOWN_CATEGORY_TO_KEY)),
-        fetchEngineerNames(),
-      ]);
-
-      const structuredData = {};
-      (data || []).forEach(({ category, value }) => {
-        const key = DROPDOWN_CATEGORY_TO_KEY[category];
-        if (!key) return;
-        if (!structuredData[key]) structuredData[key] = [];
-        structuredData[key].push(value);
-      });
-
-      if (!structuredData["Call type"] || structuredData["Call type"].filter(Boolean).length === 0) {
-        structuredData["Call type"] = ["Incoming", "Outgoing"];
-      }
-
-      // Engineer names now come from Master > Engineer Contacts, not the
-      // old 'engineer_assign_name' dropdown category — see engineers.js.
-      structuredData["Engineer Assign Name"] = engineerNames;
-
-      setMasterData([structuredData]);
-    } catch (error) {
-      console.error("Error fetching dropdown data:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load dropdown data",
-        variant: "destructive",
-      });
-    }
-  };
-
-  // Sourced live from the production Lead-To-Order-Supabase-New project's
-  // client master, not this project's own (now-retired) company_details
-  // table — see [[servicesupport_migration_project]] memory.
-  const fetchCompanyDetails = async () => {
-    try {
-      const { data, error } = await ltoSupabase
-        .from("lto_client_master")
-        .select("company_name, billing_address, gst_number")
-        .order("company_name", { ascending: true });
-
-      if (error) throw error;
-      setCompanyDetails(data || []);
-    } catch (error) {
-      console.error("Error fetching company details:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load company details",
-        variant: "destructive",
-      });
-    }
-  };
-
-  useEffect(() => {
-    fetchDropdown();
-    fetchCompanyDetails();
-    fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -568,15 +352,8 @@ export default function TicketAndEnquiry() {
             title: "Success",
             description: `Enquiry updated successfully for Ticket ID: ${editingTicket.ticketId}`,
           });
-          setShowNewEnquiryForm(false);
-          setNewEnquiryData(EMPTY_FORM);
-          setNewFormSelectedMachines([]);
-          setNewFormSelectedCategories([]);
-          setWarehouseFiles({ challanCopy: null, machinePhoto: null });
-          setEnquiryItemListFile(null);
-          setIsEditMode(false);
-          setEditingTicket(null);
-          fetchData();
+          onClose();
+          onSaved();
         } else {
           throw new Error(result.error || "Failed to update enquiry");
         }
@@ -698,13 +475,8 @@ export default function TicketAndEnquiry() {
             });
           }
 
-          setShowNewEnquiryForm(false);
-          setNewEnquiryData(EMPTY_FORM);
-          setNewFormSelectedMachines([]);
-          setNewFormSelectedCategories([]);
-          setWarehouseFiles({ challanCopy: null, machinePhoto: null });
-          setEnquiryItemListFile(null);
-          fetchData();
+          onClose();
+          onSaved();
         } else {
           throw new Error(result.error || "Failed to create enquiry");
         }
@@ -721,156 +493,10 @@ export default function TicketAndEnquiry() {
     }
   };
 
-  const editableData = useMemo(
-    () => pendingData.filter((item) => !EDIT_EXCLUDED_STAGES.includes(item.currentStage)),
-    [pendingData]
-  );
-
-  // Date range narrows the rows before the list hook (same semantics as before);
-  // search and category go through the hook.
-  const dateFilteredData = useMemo(
-    () =>
-      editableData.filter((item) => {
-        if (item.timeStemp) {
-          let ticketDateObj = null;
-          if (typeof item.timeStemp === "string" && item.timeStemp.includes("/")) {
-            const datePart = item.timeStemp.split(" ")[0];
-            const parts = datePart.split("/");
-            if (parts.length === 3) {
-              ticketDateObj = new Date(parts[2], parts[1] - 1, parts[0]);
-            }
-          } else {
-            ticketDateObj = new Date(item.timeStemp);
-          }
-
-          if (ticketDateObj && !isNaN(ticketDateObj.getTime())) {
-            ticketDateObj.setHours(0, 0, 0, 0);
-
-            if (dateRange.start) {
-              const fromDateObj = new Date(dateRange.start);
-              fromDateObj.setHours(0, 0, 0, 0);
-              if (ticketDateObj < fromDateObj) return false;
-            }
-
-            if (dateRange.end) {
-              const toDateObj = new Date(dateRange.end);
-              toDateObj.setHours(23, 59, 59, 999);
-              if (ticketDateObj > toDateObj) return false;
-            }
-          }
-        } else if (dateRange.start || dateRange.end) {
-          return false;
-        }
-        return true;
-      }),
-    [editableData, dateRange]
-  );
-
-  const list = useClientList({
-    key: "tickets",
-    data: { all: dateFilteredData },
-    tabLabels: { all: "All Tickets" },
-    loading: fetchLoading,
-    error: loadError,
-    onRetry: fetchData,
-    searchKeys: ["ticketId", "clientName", "companyName", "phoneNumber"],
-    filters: [{ key: "category", label: "Category", allLabel: "All Categories", get: (r) => r.category }],
-    columns: COLUMNS,
-  });
-
-  const handleNewEnquiryClick = () => {
-    setIsEditMode(false);
-    setEditingTicket(null);
-    // Note: this reset has always lacked gstAddress and carried a stray serialNumOfMachines; kept as-is.
-    setNewEnquiryData({
-      clientType: "New",
-      sourceOfEnquiry: "",
-      callType: "",
-      enquiryReceiverName: "",
-      companyName: "",
-      clientName: "",
-      phoneNumber: "",
-      siteAddress: "",
-      gstNo: "",
-      machineName: "",
-      enquiryType: "",
-      category: "",
-      mentionIssue: "",
-      serviceLocation: "",
-      challanCopy: "",
-      machinePhoto: "",
-      videoCall: "",
-      subCategory: "",
-      videoCallTime: "",
-      engineerAssign: "",
-      serialNumOfMachines: "",
-      enquiryItemList: "",
-      remarks: "",
-    });
-    setNewFormSelectedMachines([]);
-    setNewFormSelectedCategories([]);
-    setWarehouseFiles({ challanCopy: null, machinePhoto: null });
-    setEnquiryItemListFile(null);
-    setShowNewEnquiryForm(true);
-  };
-
-  const hasDateRange = !!(dateRange.start || dateRange.end);
-
   return (
-    <div className="space-y-3">
-      <ListToolbar
-        list={list}
-        searchPlaceholder="Search Ticket, Client..."
-        extraFilters={
-          <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsDateModalOpen(true)}
-              className={`whitespace-nowrap ${hasDateRange ? "border-primary bg-brand-50" : ""}`}
-            >
-              <Calendar className="h-4 w-4" aria-hidden="true" />
-              {hasDateRange ? (
-                <span className="text-xs font-semibold">
-                  {dateRange.start && dateRange.end
-                    ? `${formatDate(dateRange.start)} - ${formatDate(dateRange.end)}`
-                    : (dateRange.start ? `From ${formatDate(dateRange.start)}` : `To ${formatDate(dateRange.end)}`)}
-                </span>
-              ) : "Date Range"}
-            </Button>
-            {hasDateRange && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setDateRange({ start: "", end: "" })}
-                className="px-2 text-xs"
-                title="Clear date range"
-              >
-                <RotateCcw className="h-4 w-4" aria-hidden="true" />
-                Clear dates
-              </Button>
-            )}
-          </div>
-        }
-        actions={
-          <Button size="sm" onClick={handleNewEnquiryClick} className="shrink-0">
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            New Enquiry
-          </Button>
-        }
-      />
-      <ListTable
-        list={list}
-        ctx={{ onEdit: handleEditClick }}
-        rowKey={(r) => r.ticketId}
-        cardTitle={(r) => r.companyName || "No Company"}
-        emptyTitle="No enquiries found."
-        ariaLabel="Tickets and enquiries"
-      />
-
       <Modal
-        isOpen={showNewEnquiryForm}
-        onClose={() => setShowNewEnquiryForm(false)}
+        isOpen
+        onClose={onClose}
         title={
           <div className="flex items-center space-x-2">
             <ClipboardList className="w-5 h-5 text-brand-600" />
@@ -927,8 +553,8 @@ export default function TicketAndEnquiry() {
                       required
                     />
                     <datalist id="new-company-suggestions">
-                      {companyDetails.map((c) => (
-                        <option key={c.company_name} value={c.company_name} />
+                      {companyNames.map((name) => (
+                        <option key={name} value={name} />
                       ))}
                     </datalist>
                   </div>
@@ -1537,7 +1163,7 @@ export default function TicketAndEnquiry() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => setShowNewEnquiryForm(false)}
+              onClick={onClose}
               disabled={isSubmitting}
             >
               Cancel
@@ -1554,54 +1180,5 @@ export default function TicketAndEnquiry() {
           </div>
         </form>
       </Modal>
-
-      <Dialog open={isDateModalOpen} onOpenChange={setIsDateModalOpen}>
-        <DialogContent className="sm:max-w-[425px] bg-white border-brand-100">
-          <DialogHeader>
-            <DialogTitle className="text-brand-800 flex items-center">
-              <Calendar className="mr-2 h-5 w-5 text-brand-600" />
-              Filter by Date Range
-            </DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-6 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="start" className="text-brand-700 font-medium">Start Date</Label>
-              <Input
-                id="start"
-                type="date"
-                className="border-brand-200 focus:ring-brand-500"
-                value={dateRange.start}
-                onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="end" className="text-brand-700 font-medium">End Date</Label>
-              <Input
-                id="end"
-                type="date"
-                className="border-brand-200 focus:ring-brand-500"
-                value={dateRange.end}
-                onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-              />
-            </div>
-          </div>
-          <div className="flex justify-between gap-3 mt-2">
-            <Button
-              variant="outline"
-              onClick={() => setDateRange({ start: "", end: "" })}
-              className="border-brand-200 text-brand-600 hover:bg-brand-50"
-            >
-              Reset Range
-            </Button>
-            <Button
-              onClick={() => setIsDateModalOpen(false)}
-              className="px-8"
-            >
-              Apply Filter
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </div>
   );
 }

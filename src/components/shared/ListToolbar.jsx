@@ -2,6 +2,8 @@ import StatusTabs from "./StatusTabs";
 import { FilterSearch, FilterChips, filterControlClass } from "./FilterBar";
 import { ColumnSelector } from "./ColumnSelector";
 import FilterDialog, { FilterSection } from "./FilterDialog";
+import { MultiSelect } from "../ui/multi-select";
+import { isFilterActive } from "../../hooks/useClientList";
 
 /**
  * The toolbar every list page shares: tabs, search, the page's filters, the column picker,
@@ -14,8 +16,17 @@ import FilterDialog, { FilterSection } from "./FilterDialog";
  */
 export default function ListToolbar({ list, searchPlaceholder = "Search...", actions, extraFilters, showColumns = true, filtersInDialog = false }) {
   const specs = list.filterSpec || [];
-  const activeCount = specs.filter((f) => list.filterValues[f.key] !== "all").length;
-  const selectFor = (f, full) => (
+  const activeCount = specs.filter((f) => isFilterActive(f, list.filterValues[f.key])).length;
+  const selectFor = (f, full) => f.multi ? (
+    <MultiSelect
+      key={f.key}
+      options={list.filterOptions[f.key] || []}
+      value={list.filterValues[f.key] || []}
+      onChange={(v) => list.setFilter(f.key, v)}
+      placeholder={f.allLabel || `All ${f.label}`}
+      className={full ? "w-full" : "w-[200px]"}
+    />
+  ) : (
     <select
       key={f.key}
       aria-label={f.label}

@@ -62,6 +62,7 @@ export const PENDING_COLUMNS = [
   col("lastRemarks", "Last Remarks", (r) => r.lastRemarks, { defaultVisible: true, wrap: true, width: 220 }),
   col("nextCallDate", "Next Call Date", (r) => formatDate(r.nextCallDate), { defaultVisible: true }),
   col("nextAction", "Next Action", (r) => r.nextAction, { defaultVisible: true, wrap: true, width: 200 }),
+  col("lastUpdatedBy", "Last Updated By", (r) => r.lastUpdatedBy ?? r.last_updated_by ?? "", { defaultVisible: true, width: 160 }),
 ];
 
 // History-tab rows (raw sss_follow_up rows enriched with ticket details).
@@ -107,6 +108,7 @@ export const HISTORY_COLUMNS = [
   }),
   col("seniorApprovedBy", "Senior Approved By", (r) => r.senior_approved_by),
   col("holdReleasedOn", "Hold Released On", (r) => formatDate(r.hold_released_at)),
+  col("lastUpdatedBy", "Last Updated By", (r) => r.lastUpdatedBy ?? r.last_updated_by ?? "", { defaultVisible: true, width: 160 }),
 ];
 
 // Hold Orders tab (rows from holdData). The checkbox column is fixed.

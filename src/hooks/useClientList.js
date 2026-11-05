@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useColumnPrefs } from "./useColumnPrefs";
+import { useSessionState } from "./useSessionState";
 
 // The UI half of useStageList for pages whose data is still loaded in the browser
 // (one fetch, then Pending / History split in JS). It returns the SAME shape, so a page
@@ -23,6 +24,10 @@ export { PAGE_SIZES } from "./useStageList";
 
 const norm = (v) => String(v ?? "").toLowerCase();
 
+// A filter with `multi: true` holds an array of selected values ([] = no filter); others hold "all" or a value.
+export const emptyFilter = (f) => (f.multi ? [] : "all");
+export const isFilterActive = (f, v) => (f.multi ? Array.isArray(v) && v.length > 0 : !!v && v !== "all");
+
 export function useClientList({
   key,
   data,
@@ -38,20 +43,25 @@ export function useClientList({
   initialTab = Object.keys(data)[0],
 }) {
   const tabIds = Object.keys(data);
-  const [tab, setTabState] = useState(initialTab);
-  const [search, setSearchState] = useState("");
-  const [filterValues, setFilterValues] = useState(() => Object.fromEntries(filterSpec.map((f) => [f.key, "all"])));
+  // Tab, search, filters and page size are remembered for the browser tab (sessionStorage),
+  // per user and stage, so a refetch / remount after processing a record keeps them.
+  const emptyFilters = () => Object.fromEntries(filterSpec.map((f) => [f.key, emptyFilter(f)]));
+  const [tab, setTabState] = useSessionState(key, "tab", initialTab, (v) => tabIds.includes(v));
+  const [search, setSearchState] = useSessionState(key, "search", "", (v) => typeof v === "string");
+  const [filterValues, setFilterValues] = useSessionState(key, "filters", emptyFilters(), (v) =>
+    v && typeof v === "object" && filterSpec.every((f) => (f.multi ? Array.isArray(v[f.key]) : typeof v[f.key] === "string"))
+  );
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSizeState] = useState(defaultPageSize);
+  const [pageSize, setPageSizeState] = useSessionState(key, "pageSize", defaultPageSize, (v) => Number.isInteger(v) && v > 0);
 
   const resetPage = () => setPage(1);
   const setTab = (t) => { setTabState(t); resetPage(); };
   const setSearch = (v) => { setSearchState(v); resetPage(); };
-  const setFilter = (k, v) => { setFilterValues((p) => ({ ...p, [k]: v })); resetPage(); };
+  const setFilter = (k, v) => { setFilterValues({ ...filterValues, [k]: v }); resetPage(); };
   const setPageSize = (n) => { setPageSizeState(n); resetPage(); };
   const clearAll = () => {
     setSearchState("");
-    setFilterValues(Object.fromEntries(filterSpec.map((f) => [f.key, "all"])));
+    setFilterValues(emptyFilters());
     resetPage();
   };
 
@@ -68,7 +78,9 @@ export function useClientList({
       if (q && !matches(row)) return false;
       for (const f of activeFilters) {
         const v = filterValues[f.key];
-        if (v && v !== "all" && String(f.get(row) ?? "") !== v) return false;
+        if (f.multi) {
+          if (Array.isArray(v) && v.length > 0 && !v.includes(String(f.get(row) ?? ""))) return false;
+        } else if (v && v !== "all" && String(f.get(row) ?? "") !== v) return false;
       }
       return true;
     });
@@ -85,6 +97,27 @@ export function useClientList({
     })
   );
 
+  // A remembered value that no longer exists in the data (its rows were all processed) would
+  // leave a hidden filter on an empty list — drop it once the data has loaded.
+  useEffect(() => {
+    if (loading || tabIds.every((t) => (data[t] || []).length === 0)) return;
+    let changed = false;
+    const next = { ...filterValues };
+    for (const f of filterSpec) {
+      const opts = filterOptions[f.key] || [];
+      const v = filterValues[f.key];
+      if (f.multi) {
+        const kept = (v || []).filter((x) => opts.includes(x));
+        if (kept.length !== (v || []).length) { next[f.key] = kept; changed = true; }
+      } else if (v && v !== "all" && !opts.includes(v)) {
+        next[f.key] = "all";
+        changed = true;
+      }
+    }
+    if (changed) setFilterValues(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, loading]);
+
   const total = filtered.length;
   const totalPages = Math.max(Math.ceil(total / pageSize), 1);
   // Keep the page in range if the data shrank underneath us (e.g. after a submit).
@@ -100,8 +133,12 @@ export function useClientList({
   const chips = [
     ...(search.trim() ? [{ key: "search", label: `Search: ${search.trim()}`, onRemove: () => setSearch("") }] : []),
     ...activeFilters
-      .filter((f) => filterValues[f.key] && filterValues[f.key] !== "all")
-      .map((f) => ({ key: f.key, label: `${f.label}: ${filterValues[f.key]}`, onRemove: () => setFilter(f.key, "all") })),
+      .filter((f) => isFilterActive(f, filterValues[f.key]))
+      .map((f) => ({
+        key: f.key,
+        label: `${f.label}: ${f.multi ? filterValues[f.key].join(", ") : filterValues[f.key]}`,
+        onRemove: () => setFilter(f.key, emptyFilter(f)),
+      })),
   ];
 
   const tabs = tabIds.map((id) => ({ id, label: tabLabels[id] ?? id, count: (data[id] || []).length }));

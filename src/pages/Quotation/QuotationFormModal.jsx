@@ -1,354 +1,53 @@
 import { useState, useEffect, useRef } from "react";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
-import { Textarea } from "../components/ui/textarea";
-import { Modal } from "../components/ui/modal";
-import { useToast } from "../hooks/use-toast";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
+import { Textarea } from "../../components/ui/textarea";
+import { Modal } from "../../components/ui/modal";
 import { Loader2Icon, LoaderIcon } from "lucide-react";
-import MakeQuotation from "./Quotation/MakeQuotation";
-import { supabase } from "../lib/supabase/client";
-import { fetchDropdownRows } from "../lib/supabase/dropdown";
-import { sendQuotationSharedNotification } from "../lib/notifications/whatsapp";
-import { ListToolbar, ListTable, StatusBadge } from "../components/shared";
-import { useClientList } from "../hooks/useClientList";
-import useAuth from "../hooks/useAuth";
+import { useToast } from "../../hooks/use-toast";
+import { supabase } from "../../lib/supabase/client";
+import { sendQuotationSharedNotification } from "../../lib/notifications/whatsapp";
 
-// Kept local: an unparseable value is shown as-is (lib/format returns "").
-const formatDate = (dateString) => {
-  if (!dateString) return "";
-  const date = new Date(dateString);
-  if (isNaN(date.getTime())) return dateString;
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const year = date.getFullYear();
-  return `${day}/${month}/${year}`;
-};
-
-const linkCell = (url, label) =>
-  url ? (
-    <a href={url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-      {label}
-    </a>
-  ) : (
-    ""
-  );
-
-const itemListCell = (r, { onItems }) => (
-  <Button size="sm" variant="outline" onClick={() => onItems(r.itemQty)}>
-    Show Item List
-  </Button>
-);
-
-// Pending: Quotation action + enquiry/video-call columns. History: what was quoted/shared
-// (admin-only Edit). Pending and History intentionally overlap (see fetchData).
-const COLUMNS = [
-  { key: "quote", label: "Action", fixed: true, tabs: ["pending"], cell: (r, { onQuote }) => (
-    <Button size="sm" variant="outline" onClick={() => onQuote(r)} data-testid={`button-quotation-${r.ticketId}`}>
-      Quotation
-    </Button>
-  ) },
-  { key: "edit", label: "Action", fixed: true, tabs: ["history"], cell: (r, { onEdit }) => (
-    <Button
-      size="sm"
-      variant="outline"
-      onClick={() => onEdit(r)}
-      title="Edit this ticket's quotation — e.g. to pull in a revised Make Quotation PDF"
-    >
-      Edit
-    </Button>
-  ) },
-  { key: "date", label: "Date", defaultVisible: true, strong: true, text: (r) => formatDate(r.timeStemp) },
-  { key: "ticketId", label: "Ticket-ID", defaultVisible: true, strong: true, text: (r) => r.ticketId },
-  { key: "enquiryType", label: "Enquiry Type", defaultVisible: true, text: (r) => r.enquiryType },
-  { key: "sourceOfEnquiry", label: "Source of enquiry", defaultVisible: false, text: (r) => r.sourceOfEnquiry },
-  { key: "callType", label: "Call type", defaultVisible: false, text: (r) => r.callType },
-  { key: "enquiryReceiverName", label: "Enquiry Receiver Name", defaultVisible: false, text: (r) => r.enquiryReceiverName },
-  { key: "clientType", label: "Client Type", defaultVisible: false, text: (r) => r.clientType },
-  { key: "companyName", label: "Company Name", defaultVisible: true, text: (r) => r.companyName },
-  { key: "clientName", label: "Client Name", defaultVisible: true, text: (r) => r.clientName },
-  { key: "phoneNumber", label: "Phone Number", defaultVisible: true, text: (r) => r.phoneNumber },
-  { key: "siteAddress", label: "Site Address", defaultVisible: false, wrap: true, width: 200, text: (r) => r.siteAddress },
-  { key: "gstNo", label: "GST No.", defaultVisible: false, text: (r) => r.gstNo },
-  { key: "machineName", label: "Machine Name", defaultVisible: false, text: (r) => r.machineName },
-  { key: "category", label: "Category", defaultVisible: false, text: (r) => r.category },
-  { key: "mentionIssue", label: "Mention Issue", defaultVisible: false, wrap: true, width: 200, text: (r) => r.mentionIssue },
-  { key: "serviceLocation", label: "Service Location", defaultVisible: false, text: (r) => r.serviceLocation },
-  { key: "enquiryItemList", label: "Enquiry-Item-List", defaultVisible: false, tabs: ["pending"], cell: (r) => linkCell(r.enquiryItemList, "View") },
-  { key: "otpStatus", label: "OTP Status", defaultVisible: false, tabs: ["pending"], cell: (r) => (
-    r.otpVarificationStatus ? <StatusBadge>{r.otpVarificationStatus}</StatusBadge> : ""
-  ) },
-  { key: "quotationNo", label: "Quotation No.", defaultVisible: true, text: (r) => r.quotationNo },
-  { key: "basicValue", label: "Quotation Basic Value", defaultVisible: true, tabs: ["pending"], text: (r) => (
-    r.basicAmount !== null && r.basicAmount !== undefined ? String(r.basicAmount).trim() || "0" : "N/A"
-  ) },
-  { key: "basicAmount", label: "Basic Amount", defaultVisible: true, tabs: ["history"], text: (r) => `₹${r.basicAmount || "0"}` },
-  { key: "totalAmount", label: "Total Amount", defaultVisible: true, tabs: ["history"], text: (r) => `₹${r.totalQutation || "0"}` },
-  { key: "shareBy", label: "Share By", defaultVisible: false, tabs: ["history"], text: (r) => r.quotationShareBy },
-  { key: "shareThrough", label: "Share Through", defaultVisible: false, tabs: ["history"], text: (r) => r.shareThrough },
-  { key: "quotationPdf", label: "Quotation PDF", defaultVisible: true, cell: (r) => linkCell(r.quotationPdfLink, "View PDF") },
-  { key: "videoCallRemarks", label: "Video Call Remarks", defaultVisible: false, tabs: ["pending"], wrap: true, width: 200, text: (r) => r.videoCallRemarks },
-  { key: "remarks", label: "Remarks", defaultVisible: false, tabs: ["history"], wrap: true, width: 200, text: (r) => r.remarks },
-  { key: "itemList", label: "Item List", defaultVisible: true, cell: itemListCell },
-];
-// The History "Edit" action is admin-only.
-const COLUMNS_NON_ADMIN = COLUMNS.filter((c) => c.key !== "edit");
-
-export default function Quotation() {
-  const [showQuotationModal, setShowQuotationModal] = useState(false);
-  const [masterData, setMasterData] = useState({});
-  const [selectedTicket, setSelectedTicket] = useState(null);
-  const [formData, setFormData] = useState({});
-
-  const [pendingData, setPendingData] = useState([]);
-  const [historyData, setHistoryData] = useState([]);
-  const [fetchLoading, setFetchLoading] = useState(false);
-  const [loadError, setLoadError] = useState(null);
+// Create / Revise Quotation (and Cancel Ticket) form for one ticket. Render it only while a ticket
+// is selected. historyEdit = opened from History's admin-only Edit (hides "Cancel Ticket").
+// onClose closes it; onSaved reloads the page's lists; onCancelled(ticketId) drops the ticket from Pending.
+export default function QuotationFormModal({ ticket, historyEdit, masterData, onClose, onSaved, onCancelled }) {
+  const selectedTicket = ticket;
+  const isHistoryEditMode = historyEdit;
+  const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingQuotation, setIsUploadingQuotation] = useState(false);
   const [quotationPdfFile, setQuotationPdfFile] = useState(null);
-  // Latest Quotation No. the user picked — lets the async items lookup in
-  // handleQuotationNoChange drop a stale response after a quick A -> B switch.
+  // Latest Quotation No. the user picked: lets the async items lookup in handleQuotationNoChange
+  // drop a stale response after a quick A -> B switch.
   const latestQuotationNoRef = useRef("");
   const [isCancelled, setIsCancelled] = useState(false);
-  // Whether the Create/Revise modal was opened from History's admin-only
-  // "Edit" action — hides the "Cancel Ticket" option in that mode.
-  const [isHistoryEditMode, setIsHistoryEditMode] = useState(false);
-  const [showMakeQuotationModal, setShowMakeQuotationModal] = useState(false);
-  const [showItemListModal, setShowItemListModal] = useState(false);
-  const [selectedItemList, setSelectedItemList] = useState([]);
-  // Quotations previously built (via "Make Quotation") for the ticket
-  // currently open in the Create/Revise Quotation modal — powers the
-  // Quotation No. dropdown and its Basic/Total/PDF autofill.
+  const [cancelSubmit, setCancelSubmit] = useState(false);
+  // Quotations previously built (via "Make Quotation") for this ticket: powers the Quotation No.
+  // dropdown and its Basic/Total/PDF autofill.
   const [generatedQuotations, setGeneratedQuotations] = useState([]);
-  const { toast } = useToast();
-  const { isAdmin } = useAuth();
-
-  const fetchData = async () => {
-    setFetchLoading(true);
-    setLoadError(null);
-    try {
-      // Tickets ready for Quotation (warranty_check.quotation_planned set).
-      const { data: warrantyRows, error: warrantyError } = await supabase
-        .from("sss_warranty_check")
-        .select("ticket_id, quotation_planned")
-        .not("quotation_planned", "is", null);
-
-      if (warrantyError) throw warrantyError;
-
-      const ticketIds = (warrantyRows || []).map((w) => w.ticket_id);
-
-      if (ticketIds.length === 0) {
-        setPendingData([]);
-        setHistoryData([]);
-        return;
-      }
-
-      const { data: ticketsData, error: ticketsError } = await supabase
-        .from("sss_tickets")
-        .select("*")
-        .in("ticket_id", ticketIds)
-        .order("created_at", { ascending: true });
-
-      if (ticketsError) throw ticketsError;
-
-      const { data: quotationRows, error: quotationError } = await supabase
-        .from("sss_quotation")
-        .select("*")
-        .in("ticket_id", ticketIds);
-
-      if (quotationError) throw quotationError;
-
-      const quotationByTicket = new Map(
-        (quotationRows || []).map((q) => [q.ticket_id, q])
-      );
-
-      // Latest Video-Call attempt per ticket, for the "OTP Status" column and
-      // the item list (a ticket only reaches Quotation via Video-Call's 'no'
-      // outcome, or by skipping Video-Call entirely).
-      const { data: videoCallRows, error: videoCallError } = await supabase
-        .from("sss_video_call")
-        .select("ticket_id, regeneration_status, item_qty, remarks, created_at")
-        .in("ticket_id", ticketIds)
-        .order("created_at", { ascending: false });
-
-      if (videoCallError) throw videoCallError;
-
-      const latestVideoCallByTicket = new Map();
-      (videoCallRows || []).forEach((v) => {
-        if (!latestVideoCallByTicket.has(v.ticket_id)) {
-          latestVideoCallByTicket.set(v.ticket_id, v);
-        }
-      });
-
-      // Latest Follow-Up entry per ticket — the one and only closing signal
-      // for this stage's "pending" list: once a ticket's latest follow_up
-      // row is stage = 'Order Received', it's considered fully handed off
-      // and drops out of Quotation's pending (still stays in history if it
-      // was ever quoted).
-      const { data: followUpRows, error: followUpError } = await supabase
-        .from("sss_follow_up")
-        .select("ticket_id, stage, created_at")
-        .in("ticket_id", ticketIds)
-        .order("created_at", { ascending: false });
-
-      if (followUpError) throw followUpError;
-
-      const latestFollowUpByTicket = new Map();
-      (followUpRows || []).forEach((f) => {
-        if (!latestFollowUpByTicket.has(f.ticket_id)) {
-          latestFollowUpByTicket.set(f.ticket_id, f);
-        }
-      });
-
-      // Aside from the Order-Received closing signal above, there's no
-      // other closing signal for this stage (revising a quotation never
-      // removes a ticket from pending) — pending and history are two
-      // independent views over the same gated set, not a partition: pending
-      // = every gated ticket whose latest follow_up isn't 'Order Received';
-      // history = the subset that's been quoted at least once, for browsing
-      // past quotations (unaffected by Order Received).
-      const pending = [];
-      const history = [];
-
-      (ticketsData || []).forEach((t) => {
-        const latestVideoCall = latestVideoCallByTicket.get(t.ticket_id);
-        const q = quotationByTicket.get(t.ticket_id);
-        const latestFollowUp = latestFollowUpByTicket.get(t.ticket_id);
-
-        const base = {
-          ticketId: t.ticket_id,
-          ticketUuid: t.uuid,
-          timeStemp: t.created_at || "",
-          enquiryType: t.enquiry_type || "",
-          sourceOfEnquiry: t.source_of_enquiry || "",
-          callType: t.call_type || "",
-          enquiryReceiverName: t.enquiry_receiver_name || "",
-          clientType: t.client_type || "",
-          companyName: t.company_name || "",
-          clientName: t.client_name || "",
-          phoneNumber: t.phone_number || "",
-          siteAddress: t.site_address || "",
-          gstNo: t.gst_no || "",
-          machineName: t.machine_name || "",
-          category: t.category || "",
-          mentionIssue: t.mention_issue || "",
-          serviceLocation: t.service_location || "",
-          CREName: t.cre_name || "",
-          engineerAssign: t.engineer_assign || "",
-          enquiryItemList: t.enquiry_item_list || "",
-          otpVarificationStatus: latestVideoCall?.regeneration_status || "",
-          itemQty: latestVideoCall?.item_qty ? JSON.stringify(latestVideoCall.item_qty) : "",
-          videoCallRemarks: latestVideoCall?.remarks || "",
-          hasQuotation: !!q,
-          quotationNo: q?.quotation_no || "",
-          basicAmount: q?.basic_amount ?? "",
-          totalQutation: q?.total_amount ?? "",
-          quotationPdfLink: q?.quotation_pdf_link || "",
-          quotationShareBy: q?.quotation_share_by || "",
-          shareThrough: q?.share_through || "",
-          remarks: q?.remarks || "",
-          delayMinutes: q?.delay_minutes,
-        };
-
-        if (latestFollowUp?.stage !== "Order Received") {
-          pending.push(base);
-        }
-        if (q) history.push(base);
-      });
-
-      setPendingData(pending);
-      setHistoryData(history);
-    } catch (error) {
-      console.error("Error fetching data:", error);
-      setLoadError(error.message || "Failed to load data");
-      toast({
-        title: "Error",
-        description: "Failed to load data",
-        variant: "destructive",
-      });
-    } finally {
-      setFetchLoading(false);
-    }
-  };
-
-  const DROPDOWN_CATEGORY_TO_KEY = {
-    quotation_share_by: "Quotation Share by",
-  };
-
-  const fetchMasterSheet = async () => {
-    try {
-      const data = await fetchDropdownRows(Object.keys(DROPDOWN_CATEGORY_TO_KEY));
-
-      const structuredData = {};
-      (data || []).forEach(({ category, value }) => {
-        const key = DROPDOWN_CATEGORY_TO_KEY[category];
-        if (!key) return;
-        if (!structuredData[key]) structuredData[key] = [];
-        structuredData[key].push(value);
-      });
-
-      setMasterData([structuredData]);
-    } catch (error) {
-      console.error("Error fetching master data:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load master data",
-        variant: "destructive",
-      });
-    }
-  };
+  const [formData, setFormData] = useState(() => ({
+    ticketId: ticket.ticketId,
+    clientName: ticket.clientName,
+    phoneNumber: ticket.phoneNumber,
+    enquiryReceiverName: ticket.enquiryReceiverName || "",
+    machineName: ticket.machineName || "",
+    siteAddress: ticket.siteAddress || "",
+    // Prefill from the existing quotation when revising; blank for a first-time quote.
+    quotationNo: ticket.quotationNo || "",
+    basicAmount: ticket.basicAmount || "",
+    totalAmountWithTax: ticket.totalQutation || "",
+    quotationPdfLink: ticket.quotationPdfLink || "",
+    quotationShareBy: ticket.quotationShareBy || "",
+    shareThrough: ticket.shareThrough || "",
+    remarks: ticket.remarks || "",
+  }));
 
   useEffect(() => {
-    fetchMasterSheet();
-    fetchData();
+    if (ticket.ticketUuid) fetchGeneratedQuotations(ticket.ticketUuid);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const openItemList = (rawJson) => {
-    try {
-      const parsed = rawJson ? JSON.parse(rawJson) : [];
-      setSelectedItemList(Array.isArray(parsed) ? parsed : []);
-    } catch {
-      setSelectedItemList([]);
-    }
-    setShowItemListModal(true);
-  };
-
-  // isHistoryEdit: opened from the History tab's admin-only "Edit" action —
-  // lets a later sss_make_quotation revision be pulled in for a ticket
-  // that's already moved past this stage (Order Received, Invoice, ...).
-  // The "Cancel Ticket" option is hidden in this mode — cancelling a ticket
-  // that's already progressed doesn't make sense from here. See migration
-  // 0063 for the current_stage-regression fix this relies on.
-  const handleQuotationClick = (ticket, { isHistoryEdit = false } = {}) => {
-    setSelectedTicket(ticket);
-    setIsHistoryEditMode(isHistoryEdit);
-    setIsCancelled(false);
-    setFormData({
-      ticketId: ticket.ticketId,
-      clientName: ticket.clientName,
-      phoneNumber: ticket.phoneNumber,
-      enquiryReceiverName: ticket.enquiryReceiverName || "",
-      machineName: ticket.machineName || "",
-      siteAddress: ticket.siteAddress || "",
-      // Prefill from the existing quotation when revising; blank for a first-time quote.
-      quotationNo: ticket.quotationNo || "",
-      basicAmount: ticket.basicAmount || "",
-      totalAmountWithTax: ticket.totalQutation || "",
-      quotationPdfLink: ticket.quotationPdfLink || "",
-      quotationShareBy: ticket.quotationShareBy || "",
-      shareThrough: ticket.shareThrough || "",
-      remarks: ticket.remarks || "",
-    });
-    setQuotationPdfFile(null);
-    setGeneratedQuotations([]);
-    setShowQuotationModal(true);
-
-    if (ticket.ticketUuid) {
-      fetchGeneratedQuotations(ticket.ticketUuid);
-    }
-  };
 
   // Every quotation (and revision) built via "Make Quotation" for this
   // ticket — mirrors Lead-To-Order-Supabase-New's MakeQuotationFrom.jsx
@@ -541,9 +240,8 @@ export default function Quotation() {
         });
       }
 
-      setShowQuotationModal(false);
-      setQuotationPdfFile(null);
-      fetchData();
+      onClose();
+      onSaved();
     } catch (error) {
       console.error("Error submitting ticket:", error);
       toast({
@@ -556,8 +254,6 @@ export default function Quotation() {
       setIsUploadingQuotation(false);
     }
   };
-
-  const [cancelSubmit, setCancelSubmit] = useState(false);
 
   const handleSubmitCancel = async (e) => {
     e.preventDefault();
@@ -574,16 +270,9 @@ export default function Quotation() {
 
       if (error) throw error;
 
-      // Removes it from THIS page's own pending list only — does not
-      // globally exclude the ticket from any other stage's pending query
-      // (see migration 0046's comment).
-      setPendingData((prevPending) =>
-        prevPending.filter(
-          (ticket) => ticket.ticketId !== selectedTicket.ticketId
-        )
-      );
-      setShowQuotationModal(false);
-      setIsCancelled(false);
+      // Removes it from the page's own pending list only (see migration 0046's comment).
+      onCancelled(selectedTicket.ticketId);
+      onClose();
       toast({
         title: "Success",
         description: "Ticket cancelled successfully",
@@ -600,56 +289,10 @@ export default function Quotation() {
     }
   };
 
-  const list = useClientList({
-    key: "quotation",
-    data: { pending: pendingData, history: historyData },
-    loading: fetchLoading,
-    error: loadError,
-    onRetry: fetchData,
-    searchKeys: ["ticketId", "clientName", "companyName", "phoneNumber", "quotationNo"],
-    filters: [
-      { key: "enquiryType", label: "Enquiry Type", allLabel: "All Enquiry Types", get: (r) => r.enquiryType },
-      { key: "category", label: "Category", allLabel: "All Categories", get: (r) => r.category },
-      { key: "shareBy", label: "Share By", allLabel: "All Share By", get: (r) => r.quotationShareBy, tabs: ["history"] },
-    ],
-    columns: isAdmin ? COLUMNS : COLUMNS_NON_ADMIN,
-  });
-
   return (
-    <div className="space-y-3">
-      <ListToolbar
-        list={list}
-        searchPlaceholder="Search by ticket ID, client, company, phone or quotation no..."
-        actions={
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              setSelectedTicket(null);
-              setShowMakeQuotationModal(true);
-            }}
-          >
-            Make Quotation
-          </Button>
-        }
-      />
-      <ListTable
-        list={list}
-        ctx={{
-          onQuote: (t) => handleQuotationClick(t),
-          onEdit: (t) => handleQuotationClick(t, { isHistoryEdit: true }),
-          onItems: openItemList,
-        }}
-        rowKey={(r) => r.ticketId}
-        cardTitle={(r) => r.ticketId}
-        emptyTitle={{ pending: "No pending quotations found.", history: "No quotation history found." }}
-        ariaLabel="Quotations"
-      />
-
-      {/* Create Quotation Modal */}
       <Modal
-        isOpen={showQuotationModal}
-        onClose={() => setShowQuotationModal(false)}
+        isOpen
+        onClose={onClose}
         title={selectedTicket?.hasQuotation ? "Revise Quotation" : "Create Quotation"}
         size="2xl"
       >
@@ -861,7 +504,7 @@ export default function Quotation() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => setShowQuotationModal(false)}
+                    onClick={onClose}
                     data-testid="button-cancel-quotation"
                   >
                     Cancel
@@ -904,50 +547,5 @@ export default function Quotation() {
           </form>
         </div>
       </Modal>
-
-      <Modal
-        isOpen={showMakeQuotationModal}
-        onClose={() => setShowMakeQuotationModal(false)}
-        title="Make Quotation"
-        size="6xl"
-      >
-        <MakeQuotation ticket={selectedTicket} />
-      </Modal>
-
-      {/* Item List Modal */}
-      <Modal isOpen={showItemListModal} onClose={() => setShowItemListModal(false)} title="Item List" size="lg">
-        <div className="max-h-[60vh] overflow-y-auto">
-          {selectedItemList.length === 0 ? (
-            <div className="text-center py-10 text-muted-foreground">
-              <p className="text-sm font-medium">No items found for this ticket.</p>
-            </div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-secondary text-muted-foreground">
-                  <th className="px-4 py-2 text-left font-semibold w-10">#</th>
-                  <th className="px-4 py-2 text-left font-semibold">Item Name</th>
-                  <th className="px-4 py-2 text-center font-semibold w-20">Qty</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {selectedItemList.map((row, idx) => (
-                  <tr key={idx}>
-                    <td className="px-4 py-2.5 text-muted-foreground font-medium">{idx + 1}</td>
-                    <td className="px-4 py-2.5 text-foreground">{row.item || "—"}</td>
-                    <td className="px-4 py-2.5 text-center text-foreground font-semibold">{row.qty || "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-        <div className="pt-4 flex justify-end">
-          <Button type="button" onClick={() => setShowItemListModal(false)}>
-            Close
-          </Button>
-        </div>
-      </Modal>
-    </div>
   );
 }

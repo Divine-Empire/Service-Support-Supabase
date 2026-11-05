@@ -290,7 +290,7 @@ export default function WarrantyCheck() {
 
   return (
     <div className="space-y-3">
-      <ListToolbar list={list} searchPlaceholder="Search by ticket ID, client, company or phone..." />
+      <ListToolbar list={list} searchPlaceholder="Search by ticket ID, client, company or phone..." filtersInDialog />
       <ListTable
         list={list}
         ctx={{ onProcess: handleProcessClick }}

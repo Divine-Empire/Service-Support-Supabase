@@ -1,228 +1,47 @@
-import { useState, useEffect } from "react";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
+import { useState } from "react";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../components/ui/select";
-import { Modal } from "../components/ui/modal";
-import { useToast } from "../hooks/use-toast";
+} from "../../components/ui/select";
+import { Modal } from "../../components/ui/modal";
+import { useToast } from "../../hooks/use-toast";
 import { Loader2Icon, LoaderIcon } from "lucide-react";
-import { supabase } from "../lib/supabase/client";
-import { computeCrmVerificationPlanned } from "../lib/supabase/stagePlanning";
-import { sendSiteVisitOtpNotification } from "../lib/notifications/whatsapp";
-import { ListToolbar, ListTable, StatusBadge } from "../components/shared";
-import { useClientList } from "../hooks/useClientList";
-import { formatDelay, delayTone } from "../lib/format";
+import { supabase } from "../../lib/supabase/client";
+import { computeCrmVerificationPlanned } from "../../lib/supabase/stagePlanning";
+import { sendSiteVisitOtpNotification } from "../../lib/notifications/whatsapp";
+import { formatDate } from "./columns";
 
-// Kept local: passes dd/mm/yyyy strings through and shows unparseable values as-is,
-// which lib/format.formatDate does not.
-const formatDate = (dateString) => {
-  if (!dateString) return "";
-
-  const dateStr = String(dateString).trim();
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
-    return dateStr;
-  }
-
-  const date = new Date(dateString);
-  if (isNaN(date.getTime())) return dateStr;
-
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const year = date.getFullYear();
-
-  return `${day}/${month}/${year}`;
-};
-
-const fileLink = (url) =>
-  url ? (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-primary hover:underline text-xs font-semibold"
-    >
-      View
-    </a>
-  ) : (
-    ""
-  );
-
-// Pending: Verify action + ticket/trip columns. History: what was verified + delay.
-const COLUMNS = [
-  { key: "action", label: "Action", fixed: true, tabs: ["pending"], cell: (r, { onVerify }) => (
-    <Button size="sm" variant="outline" onClick={() => onVerify(r)} data-testid={`button-approval-${r.ticketId}`}>
-      Verify
-    </Button>
-  ) },
-  { key: "date", label: "Date", defaultVisible: true, strong: true, text: (r) => formatDate(r.timeStemp) },
-  { key: "ticketId", label: "Ticket ID", defaultVisible: true, strong: true, text: (r) => r.ticketId },
-  { key: "clientName", label: "Client Name", defaultVisible: true, text: (r) => r.clientName },
-  { key: "companyName", label: "Company Name", defaultVisible: true, tabs: ["pending"], text: (r) => r.companyName },
-  { key: "phoneNumber", label: "Phone Number", defaultVisible: true, text: (r) => r.phoneNumber },
-  { key: "machineName", label: "Machine Name", defaultVisible: false, tabs: ["pending"], text: (r) => r.machineName },
-  { key: "engineerAssign", label: "Engineer Assign", defaultVisible: true, tabs: ["pending"], text: (r) => r.engineerAssign },
-  { key: "travelDate", label: "Travel Date", defaultVisible: true, tabs: ["pending"], text: (r) => formatDate(r.travelDate) },
-  { key: "returnDate", label: "Return Date", defaultVisible: true, tabs: ["pending"], text: (r) => formatDate(r.returnDate) },
-  { key: "siteVisitDate", label: "Site Visit Date", defaultVisible: true, tabs: ["history"], text: (r) => formatDate(r.siteVisitDate) },
-  { key: "verificationStatus", label: "Verification Status", defaultVisible: true, tabs: ["history"], cell: () => (
-    <StatusBadge tone="success">Verified</StatusBadge>
-  ) },
-  { key: "serviceReportFile", label: "Service Report", defaultVisible: true, tabs: ["history"], cell: (r) => fileLink(r.serviceReportFile) },
-  { key: "remarks", label: "Remarks", defaultVisible: false, tabs: ["history"], wrap: true, width: 200, text: (r) => r.remarks },
-  { key: "quatationReceive", label: "Quatation Receive", defaultVisible: true, tabs: ["history"], cell: (r) => fileLink(r.quatationReceive) },
-  { key: "video", label: "Video", defaultVisible: true, tabs: ["history"], cell: (r) => fileLink(r.video) },
-  { key: "locallyPurchasedSpares", label: "Locally Purchased Spares", defaultVisible: false, tabs: ["history"], text: (r) => r.locallyPurchasedSpares },
-  // Minutes late, never negative (same convention as tada.delay_minutes).
-  { key: "delay", label: "Delay", defaultVisible: true, tabs: ["history"], cell: (r) => (
-    <StatusBadge tone={delayTone(r.delayMinutes, { lateOnly: true })}>{formatDelay(r.delayMinutes, { lateOnly: true })}</StatusBadge>
-  ) },
-];
-
-export default function SiteVisitOTPVerification() {
-  const [showApprovalModal, setShowApprovalModal] = useState(false);
-  const [selectedTicket, setSelectedTicket] = useState(null);
-  const [formData, setFormData] = useState({});
-  // Files are only HELD here on selection — actual upload happens at submit
-  // time in handleSubmit (all three in parallel), so cancelling the form or
-  // switching tickets never leaves an orphaned upload behind, and nothing
-  // hits Storage until Submit is actually clicked.
+// Send-OTP + verification form for one pending ticket. Render it only while a ticket is
+// selected; onClose closes it, onSaved runs after a successful save (page reloads its lists).
+export default function SiteVisitOtpModal({ ticket, onClose, onSaved }) {
+  const { toast } = useToast();
+  // Local copy: Send OTP stores the new OTP on it so the verify field unlocks without a reload.
+  const [selectedTicket, setSelectedTicket] = useState(ticket);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  // Files are only HELD on selection; the upload happens at submit time (in parallel), so closing
+  // the form never leaves an orphaned upload behind.
   const [serviceReportFile, setServiceReportFile] = useState(null);
   const [quotationReceiveFile, setQuotationReceiveFile] = useState(null);
   const [videoFile, setVideoFile] = useState(null);
-  const { toast } = useToast();
-
-  const [pendingData, setPendingData] = useState([]);
-  const [historyData, setHistoryData] = useState([]);
-  const [fetchLoading, setFetchLoading] = useState(false);
-  const [loadError, setLoadError] = useState(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const fetchData = async () => {
-    setFetchLoading(true);
-    setLoadError(null);
-    try {
-      // Tickets ready for OTP Verification (tada.otp_verification_planned set).
-      const { data: tadaRows, error: tadaError } = await supabase
-        .from("sss_tada")
-        .select("ticket_id, ticket_uuid, travel_date, return_date, otp_verification_planned")
-        .not("otp_verification_planned", "is", null)
-        .order("created_at", { ascending: false });
-
-      if (tadaError) throw tadaError;
-
-      const ticketIds = [...new Set((tadaRows || []).map((t) => t.ticket_id))];
-
-      if (ticketIds.length === 0) {
-        setPendingData([]);
-        setHistoryData([]);
-        return;
-      }
-
-      const tadaByTicket = new Map((tadaRows || []).map((t) => [t.ticket_id, t]));
-
-      const { data: ticketsData, error: ticketsError } = await supabase
-        .from("sss_tickets")
-        .select("*")
-        .in("ticket_id", ticketIds)
-        .order("created_at", { ascending: true });
-
-      if (ticketsError) throw ticketsError;
-
-      const { data: otpRows, error: otpError } = await supabase
-        .from("sss_otp_verification")
-        .select("*")
-        .in("ticket_id", ticketIds);
-
-      if (otpError) throw otpError;
-
-      const otpByTicket = new Map((otpRows || []).map((o) => [o.ticket_id, o]));
-
-      const pending = [];
-      const history = [];
-
-      (ticketsData || []).forEach((t) => {
-        const tada = tadaByTicket.get(t.ticket_id);
-
-        const base = {
-          ticketId: t.ticket_id,
-          ticketUuid: t.uuid,
-          timeStemp: t.created_at || "",
-          clientName: t.client_name || "",
-          companyName: t.company_name || "",
-          phoneNumber: t.phone_number || "",
-          machineName: t.machine_name || "",
-          engineerAssign: t.engineer_assign || "",
-          CREName: t.cre_name || "",
-          travelDate: tada?.travel_date || "",
-          returnDate: tada?.return_date || "",
-          // Live/regeneratable OTP for this stage (tickets.site_visit_otp,
-          // migration 0032) — separate from tickets.otp (Video-Call's own).
-          siteVisitOtp: t.site_visit_otp || "",
-        };
-
-        const otp = otpByTicket.get(t.ticket_id);
-        if (otp) {
-          history.push({
-            ...base,
-            siteVisitDate: otp.site_visit_date || "",
-            otpVerification: otp.otp_entered || "",
-            serviceReportFile: otp.service_report_file || "",
-            quatationReceive: otp.quotation_receive_file || "",
-            video: otp.video_link || "",
-            locallyPurchasedSpares: otp.locally_purchased_spares || "",
-            remarks: otp.remarks || "",
-            delayMinutes: otp.delay_minutes,
-          });
-        } else {
-          pending.push(base);
-        }
-      });
-
-      setPendingData(pending);
-      setHistoryData(history);
-    } catch (error) {
-      console.error("Error fetching data:", error);
-      setLoadError(error.message || "Failed to load data");
-      toast({
-        title: "Error",
-        description: "Failed to load data",
-        variant: "destructive",
-      });
-    } finally {
-      setFetchLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleApprovalClick = (ticket) => {
-    setSelectedTicket(ticket);
-    setFormData({
-      ticketId: ticket.ticketId,
-      clientName: ticket.clientName,
-      phoneNumber: ticket.phoneNumber,
-      machineName: ticket.machineName || "",
-      travelDate: formatDate(ticket.travelDate) || "",
-      returnDate: formatDate(ticket.returnDate) || "",
-      siteVisitDate: "",
-      otpVerification: "",
-      locallyPurchasedSpares: "",
-      remarks: "",
-    });
-    setServiceReportFile(null);
-    setQuotationReceiveFile(null);
-    setVideoFile(null);
-    setShowApprovalModal(true);
-  };
+  const [formData, setFormData] = useState(() => ({
+    ticketId: ticket.ticketId,
+    clientName: ticket.clientName,
+    phoneNumber: ticket.phoneNumber,
+    machineName: ticket.machineName || "",
+    travelDate: formatDate(ticket.travelDate) || "",
+    returnDate: formatDate(ticket.returnDate) || "",
+    siteVisitDate: "",
+    otpVerification: "",
+    locallyPurchasedSpares: "",
+    remarks: "",
+  }));
 
   const handleInputChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -347,8 +166,8 @@ export default function SiteVisitOTPVerification() {
         description: "Ticket details saved successfully",
       });
 
-      setShowApprovalModal(false);
-      fetchData();
+      onClose();
+      onSaved();
     } catch (error) {
       console.error("Error submitting ticket:", error);
       toast({
@@ -369,8 +188,6 @@ export default function SiteVisitOTPVerification() {
     }
     return result;
   }
-
-  const [isSendingOtp, setIsSendingOtp] = useState(false);
 
   // Sent exactly once per ticket — no resend. Saves the OTP to
   // sss_tickets.site_visit_otp (the source of truth that both gates the
@@ -430,35 +247,10 @@ export default function SiteVisitOTPVerification() {
     }
   };
 
-  const list = useClientList({
-    key: "site-visit-otp",
-    data: { pending: pendingData, history: historyData },
-    loading: fetchLoading,
-    error: loadError,
-    onRetry: fetchData,
-    searchKeys: ["ticketId", "clientName", "companyName", "phoneNumber"],
-    filters: [
-      { key: "engineer", label: "Engineer", allLabel: "All Engineers", get: (r) => r.engineerAssign, tabs: ["pending"] },
-      { key: "spares", label: "Locally Purchased Spares", allLabel: "All Spares", get: (r) => r.locallyPurchasedSpares, tabs: ["history"] },
-    ],
-    columns: COLUMNS,
-  });
-
   return (
-    <div className="space-y-3">
-      <ListToolbar list={list} searchPlaceholder="Search by ticket ID, client, company or phone..." />
-      <ListTable
-        list={list}
-        ctx={{ onVerify: handleApprovalClick }}
-        rowKey={(r) => r.ticketId}
-        emptyTitle={{ pending: "No pending site visit verifications found.", history: "No site visit verification history found." }}
-        ariaLabel="Site visit OTP verifications"
-      />
-
-      {/* Site Visit Verification Modal */}
       <Modal
-        isOpen={showApprovalModal}
-        onClose={() => setShowApprovalModal(false)}
+        isOpen
+        onClose={onClose}
         title="Site Visit (Verification OTP)"
         size="2xl"
       >
@@ -673,7 +465,7 @@ export default function SiteVisitOTPVerification() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => setShowApprovalModal(false)}
+              onClick={onClose}
               data-testid="button-cancel-approval"
             >
               Cancel
@@ -681,6 +473,5 @@ export default function SiteVisitOTPVerification() {
           </div>
         </form>
       </Modal>
-    </div>
   );
 }

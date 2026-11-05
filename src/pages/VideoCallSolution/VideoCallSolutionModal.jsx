@@ -1,72 +1,25 @@
-import { useState, useEffect, useMemo } from "react";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
+import { useState } from "react";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../components/ui/select";
-import { Modal } from "../components/ui/modal";
-import { ListToolbar, ListTable, StatusBadge } from "../components/shared";
-import { useClientList } from "../hooks/useClientList";
-import useAuth from "../hooks/useAuth";
-import { useToast } from "../hooks/use-toast";
-import { Loader2Icon, LoaderIcon, Plus, Trash2 } from "lucide-react";
-import { Textarea } from "../components/ui/textarea";
-import { supabase } from "../lib/supabase/client";
-import { fetchDropdownRows } from "../lib/supabase/dropdown";
-import { fetchEngineerNames } from "../lib/supabase/engineers";
-import { fetchItemNames } from "../lib/supabase/items";
+} from "../../components/ui/select";
+import { Modal } from "../../components/ui/modal";
+import { Textarea } from "../../components/ui/textarea";
+import { Loader2Icon, LoaderIcon } from "lucide-react";
+import { useToast } from "../../hooks/use-toast";
+import { supabase } from "../../lib/supabase/client";
 import {
   sendVideoCallRescheduledNotifications,
   sendVideoCallOtpResendNotification,
-} from "../lib/notifications/whatsapp";
-import { formatDate, formatTime12hr } from "../lib/format";
-
-const isOtpVerified = (r) => r.otpVarificationStatus === "Yes" || r.otpVarificationStatus === "Verified";
-const otpLabel = (r) => (isOtpVerified(r) ? "Verified" : r.otpVarificationStatus === "Skipped" ? "Skipped" : "Not Verified");
-const solvedLabel = (r) => (r.videoCallServicesSolve === "yes" ? "Yes" : "No");
-
-// Pending: Action + ticket details. History: same details plus the video-call outcome.
-const COLUMNS = [
-  { key: "action", label: "Action", fixed: true, tabs: ["pending"], cell: (r, { onSolution }) => (
-    <Button size="sm" variant="outline" onClick={() => onSolution(r)} data-testid={`button-solution-${r.ticketId}`}>
-      Solution
-    </Button>
-  ) },
-  { key: "date", label: "Date", defaultVisible: true, text: (r) => formatDate(r.timeStemp) },
-  { key: "plannedDate", label: "Planned Date", defaultVisible: true, text: (r) => formatDate(r.plannedDate) },
-  { key: "ticketId", label: "Ticket-ID", defaultVisible: true, strong: true, text: (r) => r.ticketId },
-  { key: "sourceOfEnquiry", label: "Source of enquiry", defaultVisible: false, text: (r) => r.sourceOfEnquiry },
-  { key: "callType", label: "Call type", defaultVisible: false, text: (r) => r.callType },
-  { key: "enquiryReceiverName", label: "Enquiry Receiver Name", defaultVisible: false, text: (r) => r.enquiryReceiverName },
-  { key: "clientType", label: "Client Type", defaultVisible: false, text: (r) => r.clientType },
-  { key: "companyName", label: "Company Name", defaultVisible: true, text: (r) => r.companyName },
-  { key: "clientName", label: "Client Name", defaultVisible: true, text: (r) => r.clientName },
-  { key: "phoneNumber", label: "Phone Number", defaultVisible: false, text: (r) => r.phoneNumber },
-  { key: "siteAddress", label: "Site Address", defaultVisible: false, wrap: true, width: 200, text: (r) => r.siteAddress },
-  { key: "gstNo", label: "GST No.", defaultVisible: false, text: (r) => r.gstNo },
-  { key: "machineName", label: "Machine Name", defaultVisible: true, wrap: true, width: 180, text: (r) => r.machineName },
-  { key: "category", label: "Category", defaultVisible: false, text: (r) => r.category },
-  { key: "mentionIssue", label: "Mention Issue", defaultVisible: true, wrap: true, width: 200, text: (r) => r.mentionIssue },
-  { key: "ticketRemarks", label: "Ticket Remarks", defaultVisible: false, wrap: true, width: 200, text: (r) => r.ticketRemarks },
-  { key: "engineerAssign", label: "Engineer Assign", defaultVisible: false, adminOnly: true, text: (r) => r.engineerAssign },
-  { key: "enquiryItemList", label: "Enquiry Item List", defaultVisible: false, cell: (r) =>
-    r.enquiryItemList ? (
-      <a href={r.enquiryItemList} target="_blank" rel="noreferrer" className="text-primary underline hover:no-underline">View</a>
-    ) : null },
-  { key: "serviceLocation", label: "Service Location", defaultVisible: true, text: (r) => r.serviceLocation },
-  { key: "videoCallServicesSolve", label: "Video Call Services Solve", defaultVisible: true, tabs: ["history"], cell: (r) => (
-    <StatusBadge tone={r.videoCallServicesSolve === "yes" ? "success" : "danger"}>{solvedLabel(r)}</StatusBadge>
-  ) },
-  { key: "otpVerifications", label: "OTP Verifications", defaultVisible: true, tabs: ["history"], cell: (r) => (
-    <StatusBadge tone={isOtpVerified(r) ? "success" : r.otpVarificationStatus === "Skipped" ? "info" : "danger"}>{otpLabel(r)}</StatusBadge>
-  ) },
-  { key: "videoCallRemarks", label: "Video Call Remarks", defaultVisible: true, tabs: ["history"], wrap: true, width: 200, text: (r) => r.remarks },
-];
+} from "../../lib/notifications/whatsapp";
+import { formatDate, formatTime12hr } from "../../lib/format";
+import ItemQtyGrid from "./ItemQtyGrid";
 
 // Last OTP time per ticket (localStorage). A missing, corrupt or non-object value reads as {}.
 const readOtpGenerations = () => {
@@ -78,24 +31,48 @@ const readOtpGenerations = () => {
   }
 };
 
-export default function VideoCallSolution() {
-  const { isAdmin } = useAuth();
-  const [showSolutionModal, setShowSolutionModal] = useState(false);
-  const [selectedTicket, setSelectedTicket] = useState(null);
-  const [formData, setFormData] = useState({});
-  const [masterData, setMasterData] = useState({});
-  const [lastOtpGenerations, setLastOtpGenerations] = useState({});
+// "HH:MM" (24h, as stored in sss_tickets.video_call_time) -> "hh:mm AM/PM"
+// for the OTP-resend WhatsApp message
+const formatTime12hrFromHHMM = (timeStr) => {
+  if (!timeStr || !timeStr.includes(":")) return timeStr || "";
+  const [hStr, mStr] = timeStr.split(":");
+  let h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+  if (isNaN(h) || isNaN(m)) return timeStr;
+  const period = h >= 12 ? "PM" : "AM";
+  h = h % 12;
+  if (h === 0) h = 12;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")} ${period}`;
+};
 
-  const [pendingData, setPendingData] = useState([]);
-  const [historyData, setHistoryData] = useState([]);
-  const [fetchLoading, setFetchLoading] = useState(false);
-  const [loadError, setLoadError] = useState(null);
+// Solution / reschedule / cancel form for one pending ticket. Render it only while a ticket is
+// selected. onClose closes it; onSaved runs after a saved attempt (page reloads its lists);
+// onCancelled(ticketId) runs after a cancellation (page drops the ticket from Pending).
+export default function VideoCallSolutionModal({ ticket, masterData, alternateEngineerOptions, onClose, onSaved, onCancelled }) {
+  const { toast } = useToast();
+  // Local copy: Resend OTP stores the fresh OTP on it so the verify step uses it without a reload.
+  const [selectedTicket, setSelectedTicket] = useState(ticket);
+  const [lastOtpGenerations, setLastOtpGenerations] = useState(readOtpGenerations);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCancelled, setIsCancelled] = useState(false);
-  const { toast } = useToast();
-
+  const [cancelSubmit, setCancelSubmit] = useState(false);
+  const [isResending, setIsResending] = useState(false);
   const [isVideoCallSolved, setIsVideoCallSolved] = useState(false);
   const [itemRows, setItemRows] = useState([{ item: "", qty: "" }]);
+  const [formData, setFormData] = useState(() => ({
+    videoCallServicesSolve: "",
+    otpVerification: "",
+    remarks: "",
+    cancelRemarks: "",
+    serviceType: ticket.serviceType || "",
+    audioUrl: ticket.audioUrl || "",
+    rescheduledDateTime: "",
+    alternateEngineer: "",
+  }));
+
+  const handleInputChange = (field, value) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+  };
 
   const handleAddItemRow = () => {
     if (itemRows.length < 15) {
@@ -161,203 +138,6 @@ export default function VideoCallSolution() {
     } finally {
       setIsUploadingAudio(false);
     }
-  };
-
-
-  const fetchData = async () => {
-    setFetchLoading(true);
-    setLoadError(null);
-    try {
-      // Tickets ready for Video-Call (warranty_check.video_call_planned set).
-      const { data: warrantyRows, error: warrantyError } = await supabase
-        .from("sss_warranty_check")
-        .select("ticket_id, video_call_planned")
-        .not("video_call_planned", "is", null);
-
-      if (warrantyError) throw warrantyError;
-
-      const ticketIds = (warrantyRows || []).map((w) => w.ticket_id);
-
-      const plannedDateMap = new Map();
-      (warrantyRows || []).forEach((w) => {
-        plannedDateMap.set(w.ticket_id, w.video_call_planned);
-      });
-
-      if (ticketIds.length === 0) {
-        setPendingData([]);
-        setHistoryData([]);
-        return;
-      }
-
-      const { data: ticketsData, error: ticketsError } = await supabase
-        .from("sss_tickets")
-        .select("*")
-        .in("ticket_id", ticketIds)
-        .order("created_at", { ascending: true });
-
-      if (ticketsError) throw ticketsError;
-
-      // All attempts for these tickets, newest first, so the first one seen
-      // per ticket_id below is that ticket's LATEST attempt.
-      const { data: attempts, error: attemptsError } = await supabase
-        .from("sss_video_call")
-        .select("*")
-        .in("ticket_id", ticketIds)
-        .order("created_at", { ascending: false });
-
-      if (attemptsError) throw attemptsError;
-
-      const latestAttemptByTicket = new Map();
-      (attempts || []).forEach((a) => {
-        if (!latestAttemptByTicket.has(a.ticket_id)) {
-          latestAttemptByTicket.set(a.ticket_id, a);
-        }
-      });
-
-      const pending = [];
-      const history = [];
-
-      (ticketsData || []).forEach((t) => {
-        const base = {
-          ticketId: t.ticket_id,
-          ticketUuid: t.uuid,
-          timeStemp: t.created_at || "",
-          sourceOfEnquiry: t.source_of_enquiry || "",
-          callType: t.call_type || "",
-          enquiryReceiverName: t.enquiry_receiver_name || "",
-          clientType: t.client_type || "",
-          companyName: t.company_name || "",
-          clientName: t.client_name || "",
-          phoneNumber: t.phone_number || "",
-          siteAddress: t.site_address || "",
-          siteName: t.site_address || "",
-          gstNo: t.gst_no || "",
-          machineName: t.machine_name || "",
-          category: t.category || "",
-          mentionIssue: t.mention_issue || "",
-          // sss_tickets.remarks (the ticket's own remarks) — distinct from the
-          // video-call attempt's `remarks` on History rows.
-          ticketRemarks: t.remarks || "",
-          serviceLocation: t.service_location || "",
-          CREName: t.cre_name || "",
-          engineerAssign: t.engineer_assign || "",
-          enquiryItemList: t.enquiry_item_list || "",
-          otp: t.otp || "",
-          videoCallTime: t.video_call_time || "",
-          plannedDate: plannedDateMap.get(t.ticket_id) || "",
-        };
-
-        // Latest attempt still 'rescheduled' (or no attempt yet) => still
-        // pending — a ticket only leaves Video-Call once an attempt lands
-        // on 'yes' or 'no'.
-        const latest = latestAttemptByTicket.get(t.ticket_id);
-
-        if (!latest || latest.enquiry_solved === "rescheduled") {
-          pending.push(base);
-        } else {
-          history.push({
-            ...base,
-            actual2: latest.created_at || "",
-            videoCallServicesSolve: latest.enquiry_solved || "",
-            otpVarificationStatus: latest.regeneration_status || "",
-            audioUrl: latest.audio_link || "",
-            remarks: latest.remarks || "",
-            itemQty: latest.item_qty ? JSON.stringify(latest.item_qty) : "",
-            serviceType: latest.service_type || "",
-            rescheduledTime: latest.rescheduled_time || "",
-            alternateEngineer: latest.alternate_engineer || "",
-            delayMinutes: latest.delay_minutes,
-          });
-        }
-      });
-
-      setPendingData(pending);
-      setHistoryData(history);
-    } catch (error) {
-      console.error("Error fetching data:", error);
-      setLoadError(error.message || "Failed to load data");
-      toast({
-        title: "Error",
-        description: "Failed to load data",
-        variant: "destructive",
-      });
-    } finally {
-      setFetchLoading(false);
-    }
-  };
-
-  const [alternateEngineerOptions, setAlternateEngineerOptions] = useState([]);
-
-  // Categories this page uses: 'Service Location' (reused for the "Service
-  // Type" select, matching the legacy sheet's own reuse). Engineer names
-  // ('Alternate Engineer') come from Master > Engineer Contacts, not a
-  // dropdown category — see engineers.js. Item names (the Item & Quantity
-  // Details table's item datalist) used to come from the 'item_name'
-  // dropdown category too, but that's now retired in favor of Master > Items
-  // reading/writing `lto_items` directly (the same shared catalog
-  // Lead-To-Order-Supabase-New uses) — see items.js.
-  const DROPDOWN_CATEGORY_TO_KEY = {
-    service_location: "Service Location",
-  };
-
-  const fetchMasterSheet = async () => {
-    try {
-      const [data, engineerNames, itemNames] = await Promise.all([
-        fetchDropdownRows(Object.keys(DROPDOWN_CATEGORY_TO_KEY)),
-        fetchEngineerNames(),
-        fetchItemNames(),
-      ]);
-
-      const structuredData = {};
-      (data || []).forEach(({ category, value }) => {
-        const key = DROPDOWN_CATEGORY_TO_KEY[category];
-        if (!key) return;
-        if (!structuredData[key]) structuredData[key] = [];
-        structuredData[key].push(value);
-      });
-
-      structuredData["Engineer Assign Name"] = engineerNames;
-      structuredData["Item-Name"] = itemNames;
-
-      setMasterData([structuredData]);
-      setAlternateEngineerOptions(engineerNames);
-    } catch (error) {
-      console.error("Error fetching master data:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load master data",
-        variant: "destructive",
-      });
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-    fetchMasterSheet();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleSolutionClick = (ticket) => {
-    setSelectedTicket(ticket);
-    setFormData({
-      videoCallServicesSolve: "",
-      otpVerification: "",
-      remarks: "",
-      cancelRemarks: "",
-      serviceType: ticket.serviceType || "",
-      audioUrl: ticket.audioUrl || "",
-      rescheduledDateTime: "",
-      alternateEngineer: "",
-    });
-    setAudioFile(null);
-    setItemRows([{ item: "", qty: "" }]);
-    setIsVideoCallSolved(false);
-    setIsCancelled(false);
-    setShowSolutionModal(true);
-  };
-
-  const handleInputChange = (field, value) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleSubmit = async (e) => {
@@ -507,10 +287,8 @@ export default function VideoCallSolution() {
           }
         });
       }
-      setShowSolutionModal(false);
-      setIsVideoCallSolved(false);
-      setAudioFile(null);
-      fetchData();
+      onClose();
+      onSaved();
     } catch (error) {
       console.error("Error submitting ticket:", error);
       toast({
@@ -522,8 +300,6 @@ export default function VideoCallSolution() {
       setIsSubmitting(false);
     }
   };
-
-  const [cancelSubmit, setCancelSubmit] = useState(false);
 
   const handleSubmitCancel = async (e) => {
     e.preventDefault();
@@ -540,16 +316,9 @@ export default function VideoCallSolution() {
 
       if (error) throw error;
 
-      // Removes it from THIS page's own pending list only — does not
-      // globally exclude the ticket from any other stage's pending query
-      // (see migration 0046's comment).
-      setPendingData((prevPending) =>
-        prevPending.filter(
-          (ticket) => ticket.ticketId !== selectedTicket.ticketId
-        )
-      );
-      setShowSolutionModal(false);
-      setIsCancelled(false);
+      // Removes it from the page's own pending list only (see migration 0046's comment).
+      onCancelled(selectedTicket.ticketId);
+      onClose();
       toast({
         title: "Success",
         description: "Ticket cancelled successfully",
@@ -575,8 +344,6 @@ export default function VideoCallSolution() {
     }
     return result;
   }
-
-  const [isResending, setIsResending] = useState(false);
 
   const canGenerateOtp = (ticketId) => {
     if (!lastOtpGenerations[ticketId]) return true;
@@ -673,64 +440,10 @@ export default function VideoCallSolution() {
     }
   };
 
-  // Load last OTP generation time from localStorage on component mount
-  useEffect(() => {
-    setLastOtpGenerations(readOtpGenerations());
-  }, []);
-
-  // "HH:MM" (24h, as stored in sss_tickets.video_call_time) -> "hh:mm AM/PM"
-  // for the OTP-resend WhatsApp message
-  const formatTime12hrFromHHMM = (timeStr) => {
-    if (!timeStr || !timeStr.includes(":")) return timeStr || "";
-    const [hStr, mStr] = timeStr.split(":");
-    let h = parseInt(hStr, 10);
-    const m = parseInt(mStr, 10);
-    if (isNaN(h) || isNaN(m)) return timeStr;
-    const period = h >= 12 ? "PM" : "AM";
-    h = h % 12;
-    if (h === 0) h = 12;
-    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")} ${period}`;
-  };
-
-  const columns = useMemo(() => COLUMNS.filter((c) => !c.adminOnly || isAdmin), [isAdmin]);
-
-  const list = useClientList({
-    key: "videoCallSolution",
-    data: { pending: pendingData, history: historyData },
-    loading: fetchLoading,
-    error: loadError,
-    onRetry: fetchData,
-    searchKeys: ["ticketId", "clientName", "companyName", "phoneNumber"],
-    filters: [
-      { key: "category", label: "Category", allLabel: "All Categories", get: (r) => r.category },
-      { key: "serviceLocation", label: "Service Location", allLabel: "All Locations", get: (r) => r.serviceLocation },
-      { key: "sourceOfEnquiry", label: "Source of enquiry", allLabel: "All Sources", get: (r) => r.sourceOfEnquiry },
-      ...(isAdmin ? [{ key: "engineer", label: "Engineer", allLabel: "All Engineers", get: (r) => r.engineerAssign }] : []),
-      { key: "solved", label: "Solved", allLabel: "All Outcomes", get: solvedLabel, tabs: ["history"] },
-      { key: "otp", label: "OTP", allLabel: "All OTP Statuses", get: otpLabel, tabs: ["history"] },
-    ],
-    columns,
-  });
-
   return (
-    <div className="space-y-3">
-      <ListToolbar list={list} searchPlaceholder="Search by ticket ID, client, company or phone..." />
-      <ListTable
-        list={list}
-        ctx={{ onSolution: handleSolutionClick }}
-        rowKey={(r) => r.ticketId}
-        cardTitle={(r) => r.ticketId}
-        emptyTitle={{ pending: "No pending video call solutions found.", history: "No video call solution history found." }}
-        ariaLabel="Video call solutions"
-      />
-
-      {/* Video Call Solution Modal */}
       <Modal
-        isOpen={showSolutionModal}
-        onClose={() => {
-          setShowSolutionModal(false);
-          setIsVideoCallSolved(false);
-        }}
+        isOpen
+        onClose={onClose}
         title="Video Call Solution"
         size="2xl"
       >
@@ -1029,76 +742,13 @@ export default function VideoCallSolution() {
 
                   {!isVideoCallSolved && formData.videoCallServicesSolve === "no" && (
                     <div className="space-y-4 md:col-span-2 border-t border-border pt-4 mt-2">
-                      <div className="flex justify-between items-center mb-2">
-                        <h4 className="text-sm font-semibold text-foreground">Item & Quantity Details *</h4>
-                        <Button
-                          type="button"
-                          onClick={handleAddItemRow}
-                          disabled={itemRows.length >= 15}
-                          className="flex items-center space-x-1 px-3 py-1 rounded-md text-xs"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Add Row ({itemRows.length}/15)</span>
-                        </Button>
-                      </div>
-
-                      <div className="border rounded-lg overflow-hidden border-border">
-                        <table className="min-w-full divide-y divide-border">
-                          <thead className="bg-muted">
-                            <tr>
-                              <th className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground">Item Name *</th>
-                              <th className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground w-24">Qty *</th>
-                              <th className="px-4 py-2 text-center text-xs font-semibold text-muted-foreground w-16">Action</th>
-                            </tr>
-                          </thead>
-                          <tbody className="bg-white divide-y divide-border">
-                            {itemRows.map((row, index) => (
-                              <tr key={index}>
-                                <td className="px-4 py-2">
-                                  <Input
-                                    aria-label={`Item name, row ${index + 1}`}
-                                    placeholder="Enter item name..."
-                                    value={row.item}
-                                    onChange={(e) => handleItemRowChange(index, "item", e.target.value)}
-                                    className="w-full border-border rounded text-sm h-8"
-                                    required={index === 0}
-                                    list={`item-options-${index}`}
-                                  />
-                                  <datalist id={`item-options-${index}`}>
-                                    {masterData[0]?.["Item-Name"]?.map((option) => (
-                                      <option key={option} value={option} />
-                                    ))}
-                                  </datalist>
-                                </td>
-                                <td className="px-4 py-2">
-                                  <Input
-                                    type="number"
-                                    min="1"
-                                    aria-label={`Quantity, row ${index + 1}`}
-                                    placeholder="Qty"
-                                    value={row.qty}
-                                    onChange={(e) => handleItemRowChange(index, "qty", e.target.value)}
-                                    className="w-full border-border rounded text-sm h-8"
-                                    required={index === 0}
-                                  />
-                                </td>
-                                <td className="px-4 py-2 text-center">
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    onClick={() => handleDeleteItemRow(index)}
-                                    aria-label={`Delete row ${index + 1}`}
-                                    disabled={itemRows.length <= 1}
-                                    className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1.5 h-auto rounded-md disabled:opacity-50"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </Button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                      <ItemQtyGrid
+                        handleAddItemRow={handleAddItemRow}
+                        itemRows={itemRows}
+                        handleItemRowChange={handleItemRowChange}
+                        masterData={masterData}
+                        handleDeleteItemRow={handleDeleteItemRow}
+                      />
 
                       <div className="space-y-1">
                         <Label htmlFor="vc-remarks-no" className="text-muted-foreground font-medium">Remarks</Label>
@@ -1117,10 +767,7 @@ export default function VideoCallSolution() {
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => {
-                        setShowSolutionModal(false);
-                        setIsVideoCallSolved(false);
-                      }}
+                      onClick={onClose}
                       data-testid="button-cancel-solution"
                       className="px-6"
                     >
@@ -1178,6 +825,5 @@ export default function VideoCallSolution() {
           </div>
         </div>
       </Modal>
-    </div>
   );
 }

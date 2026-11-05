@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { MultiSelect } from "../components/ui/multi-select";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -22,6 +23,8 @@ import StatusTabs from "../components/shared/StatusTabs";
 import { FilterSearch } from "../components/shared/FilterBar";
 import ListTable from "../components/shared/ListTable";
 import { useClientList } from "../hooks/useClientList";
+import useAuth from "../hooks/useAuth";
+import { useSessionState } from "../hooks/useSessionState";
 import FilterDialog, { FilterSection } from "../components/shared/FilterDialog";
 import { FOLLOW_UP_COLUMNS, toCsvTable } from "./followUpColumns";
 
@@ -34,18 +37,31 @@ const DROPDOWN_CATEGORY_TO_KEY = {
   senior_approved_by: "Senior Approved By",
 };
 
+// No advance payment is collected for these payment modes, so the Advance Payment Attachment
+// field is not rendered (and not required / saved) for them.
+const NO_ADVANCE_MODES = ["FOC", "Full On Credit"];
+const needsAdvanceAttachment = (mode) => !!mode && !NO_ADVANCE_MODES.includes(mode);
+
 export default function FollowUp() {
-  const [dateFilterTab, setDateFilterTab] = useState("");
+  // Filters / search are remembered for the browser tab (per user), so re-fetching after a
+  // submit — or a refresh — keeps them. See hooks/useSessionState.js.
+  const [dateFilterTab, setDateFilterTab] = useSessionState("followup", "dateChip", "");
   // Independent of the Today/Overdue/Pending chips (combined with them via
   // AND): keeps only rows whose last call was logged today.
-  const [lastCallTodayOnly, setLastCallTodayOnly] = useState(false);
+  const [lastCallTodayOnly, setLastCallTodayOnly] = useSessionState("followup", "lastCallToday", false);
 
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [formData, setFormData] = useState({});
   const [followUpData, setFollowUpData] = useState([]);
-  const [searchItem, setSearchItem] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [searchItem, setSearchItem] = useSessionState("followup", "pageSearch", "");
+  const [categoryFilter, setCategoryFilter] = useSessionState("followup", "category", [], Array.isArray);
+  // "Last Updated By" filters are per tab (Pending / History each list their own names).
+  const [pendingUpdatedBy, setPendingUpdatedBy] = useSessionState("followup", "pendingUpdatedBy", [], Array.isArray);
+  const [historyUpdatedBy, setHistoryUpdatedBy] = useSessionState("followup", "historyUpdatedBy", [], Array.isArray);
+  // Full name stamped into sss_follow_up.last_updated_by on every write.
+  const { userName } = useAuth();
+  const updatedByName = userName || localStorage.getItem("currentUsername") || null;
 
   const { toast } = useToast();
 
@@ -220,6 +236,7 @@ export default function FollowUp() {
           // log row (if any), not from the quotation.
           lastCallDate: latestFollowUp?.created_at || "",
           lastRemarks: latestFollowUp?.what_did_customer_say || "",
+          lastUpdatedBy: latestFollowUp?.last_updated_by || "",
           nextCallDate: latestFollowUp?.next_date_of_call || "",
           nextAction: latestFollowUp?.next_action || "",
         };
@@ -527,13 +544,16 @@ export default function FollowUp() {
         .from("sss_follow_up")
         .update({
           client_attachment_url: editAttachmentUrl || null,
+          last_updated_by: updatedByName,
           ...(isOrderRow
             ? {
                 acceptance_via: editOrderFields.acceptanceVia || null,
                 ...(isFOCRow
                   ? {}
                   : {
-                      advance_payment_attachment: editOrderFields.advancePaymentAttachmentUrl || null,
+                      ...(needsAdvanceAttachment(editingHistoryRow.payment_mode)
+                        ? { advance_payment_attachment: editOrderFields.advancePaymentAttachmentUrl || null }
+                        : {}),
                       senior_approval: editOrderFields.seniorApprovalUrl || null,
                     }),
               }
@@ -612,7 +632,7 @@ export default function FollowUp() {
       }
       // Advance Payment / Senior Approval are skipped for FOC (no payment).
       if (formData.paymentMode !== "FOC") {
-        if (!formData.advancePaymentAttachmentUrl) {
+        if (needsAdvanceAttachment(formData.paymentMode) && !formData.advancePaymentAttachmentUrl) {
           alert("Please add and upload Advance Payment Attachment");
           return;
         }
@@ -654,10 +674,11 @@ export default function FollowUp() {
           payment_term: formData.paymentTerm || null,
           acceptance_via: formData.acceptanceVia || null,
           payment_mode: formData.paymentMode || null,
-          advance_payment_attachment: isFOC ? null : formData.advancePaymentAttachmentUrl || null,
+          advance_payment_attachment: needsAdvanceAttachment(formData.paymentMode) ? formData.advancePaymentAttachmentUrl || null : null,
           senior_approval: isFOC ? null : formData.seniorApprovalUrl || null,
           senior_approved_by: isFOC ? null : formData.seniorApprovedBy || null,
           hold_order: formData.holdOrder,
+          last_updated_by: updatedByName,
           // The separate Order Received stage is gone — never feed it again.
           order_received_planned: null,
           ...planned,
@@ -681,6 +702,7 @@ export default function FollowUp() {
           what_did_customer_say: formData.whatDidCustomerSay || null,
           next_action: formData.nextAction || null,
           next_date_of_call: formData.nextDateOfCall || null,
+          last_updated_by: updatedByName,
         }));
       }
 
@@ -729,6 +751,7 @@ export default function FollowUp() {
               hold_order: "No",
               hold_released_at: releasedAt.toISOString(),
               hold_released_by: localStorage.getItem("currentUsername") || null,
+              last_updated_by: updatedByName,
               ...planned,
             })
             .eq("id", h.orderRow.id)
@@ -968,8 +991,7 @@ export default function FollowUp() {
               </SelectContent>
             </Select>
           </div>
-          {formData.paymentMode && formData.paymentMode !== "FOC" && (
-            <>
+          {needsAdvanceAttachment(formData.paymentMode) && (
             <div>
               <Label className="flex items-center gap-2">
                 Advance Payment Attachment *
@@ -997,6 +1019,9 @@ export default function FollowUp() {
                 </p>
               )}
             </div>
+          )}
+          {formData.paymentMode && formData.paymentMode !== "FOC" && (
+            <>
             <div>
               <Label className="flex items-center gap-2">
                 Senior Approval *
@@ -1082,10 +1107,13 @@ export default function FollowUp() {
         String(item.quotationNo || "").toLowerCase().includes(q);
 
       const matchesCategory =
-        categoryFilter === "all" ||
-        String(item.category || "").trim() === categoryFilter.trim();
+        categoryFilter.length === 0 ||
+        categoryFilter.some((c) => String(item.category || "").trim() === c.trim());
 
-      return matchesSearch && matchesCategory;
+      const matchesUpdatedBy =
+        pendingUpdatedBy.length === 0 || pendingUpdatedBy.includes(String(item.lastUpdatedBy ?? item.last_updated_by ?? "").trim());
+
+      return matchesSearch && matchesCategory && matchesUpdatedBy;
     })
     .reverse();
 
@@ -1100,8 +1128,8 @@ export default function FollowUp() {
         String(item.quotationNo || "").toLowerCase().includes(q);
 
       const matchesCategory =
-        categoryFilter === "all" ||
-        String(item.category || "").trim() === categoryFilter.trim();
+        categoryFilter.length === 0 ||
+        categoryFilter.some((c) => String(item.category || "").trim() === c.trim());
 
       return matchesSearch && matchesCategory;
     })
@@ -1163,10 +1191,13 @@ export default function FollowUp() {
         String(item.quotationNo || "").toLowerCase().includes(q);
 
       const matchesCategory =
-        categoryFilter === "all" ||
-        String(item.category || "").trim() === categoryFilter.trim();
+        categoryFilter.length === 0 ||
+        categoryFilter.some((c) => String(item.category || "").trim() === c.trim());
 
-      return matchesSearch && matchesCategory;
+      const matchesUpdatedBy =
+        historyUpdatedBy.length === 0 || historyUpdatedBy.includes(String(item.lastUpdatedBy ?? item.last_updated_by ?? "").trim());
+
+      return matchesSearch && matchesCategory && matchesUpdatedBy;
     })
     .reverse();
 
@@ -1258,7 +1289,7 @@ export default function FollowUp() {
   const { setPage } = list;
   useEffect(() => {
     setPage(1);
-  }, [searchItem, categoryFilter, dateFilterTab, lastCallTodayOnly, setPage]);
+  }, [searchItem, categoryFilter, pendingUpdatedBy, historyUpdatedBy, dateFilterTab, lastCallTodayOnly, setPage]);
 
 
 
@@ -1280,12 +1311,21 @@ export default function FollowUp() {
 
   // Everything that narrows the list besides the search box lives in the Filters dialog.
   const dateChipsApply = activeTab !== "hold";
+  // Names offered in "Last Updated By": whoever appears in that tab's own rows.
+  const updatedByOptions = (rows) =>
+    Array.from(new Set(rows.map((r) => String(r.lastUpdatedBy ?? r.last_updated_by ?? "").trim()).filter(Boolean))).sort();
+  const pendingUpdatedByOptions = updatedByOptions(pendingData);
+  const historyUpdatedByOptions = updatedByOptions(enrichedFollowUpData);
   const activeFilterCount =
-    (categoryFilter !== "all" ? 1 : 0) +
+    (activeTab === "pending" && pendingUpdatedBy.length > 0 ? 1 : 0) +
+    (activeTab === "history" && historyUpdatedBy.length > 0 ? 1 : 0) +
+    (categoryFilter.length > 0 ? 1 : 0) +
     (dateChipsApply && dateFilterTab ? 1 : 0) +
     (dateChipsApply && lastCallTodayOnly ? 1 : 0);
   const clearAllFilters = () => {
-    setCategoryFilter("all");
+    setCategoryFilter([]);
+    setPendingUpdatedBy([]);
+    setHistoryUpdatedBy([]);
     setDateFilterTab("");
     setLastCallTodayOnly(false);
   };
@@ -1360,22 +1400,24 @@ export default function FollowUp() {
         )}
 
         <FilterSection title="Category">
-          <select
-            id="categoryFilter"
-            aria-label="Category"
+          <MultiSelect
+            options={uniqueCategories}
             value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm focus:border-primary focus:outline-none"
-            data-testid="select-category-filter"
-          >
-            <option value="all">All Categories</option>
-            {uniqueCategories.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat}
-              </option>
-            ))}
-          </select>
+            onChange={setCategoryFilter}
+            placeholder="All Categories"
+          />
         </FilterSection>
+
+        {activeTab === "pending" && (
+          <FilterSection title="Last Updated By">
+            <MultiSelect options={pendingUpdatedByOptions} value={pendingUpdatedBy} onChange={setPendingUpdatedBy} placeholder="All Users" />
+          </FilterSection>
+        )}
+        {activeTab === "history" && (
+          <FilterSection title="Last Updated By">
+            <MultiSelect options={historyUpdatedByOptions} value={historyUpdatedBy} onChange={setHistoryUpdatedBy} placeholder="All Users" />
+          </FilterSection>
+        )}
 
         <FilterSection title="Export">
           <Button
@@ -1640,7 +1682,9 @@ export default function FollowUp() {
                 [
                   ["advancePaymentAttachmentUrl", "Advance Payment Attachment"],
                   ["seniorApprovalUrl", "Senior Approval"],
-                ].map(([field, label]) => (
+                ]
+                  .filter(([field]) => field !== "advancePaymentAttachmentUrl" || needsAdvanceAttachment(editingHistoryRow.payment_mode))
+                  .map(([field, label]) => (
                   <div key={field}>
                     <Label className="flex items-center gap-2">{label}</Label>
                     <Input

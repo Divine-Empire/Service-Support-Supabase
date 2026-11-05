@@ -6,20 +6,20 @@ import Login from "../pages/Login";
 
 // Each page is its own chunk, loaded on first visit (Layout wraps <Outlet /> in Suspense).
 const Dashboard = lazy(() => import("../pages/Dashboard"));
-const ServiceInstallation = lazy(() => import("../pages/ServiceInstallation"));
-const TicketAndEnquiry = lazy(() => import("../pages/Ticket-and-Enquiry"));
-const VideoCallSolution = lazy(() => import("../pages/VideoCallSolution"));
+const ServiceInstallation = lazy(() => import("../pages/ServiceInstallation/ServiceInstallation"));
+const TicketAndEnquiry = lazy(() => import("../pages/Ticket-and-Enquiry/Ticket-and-Enquiry"));
+const VideoCallSolution = lazy(() => import("../pages/VideoCallSolution/VideoCallSolution"));
 const WarrantyCheck = lazy(() => import("../pages/Warranty-Check"));
-const Quotation = lazy(() => import("../pages/Quotation"));
+const Quotation = lazy(() => import("../pages/Quotation/Quotation"));
 const FollowUp = lazy(() => import("../pages/FollowUp"));
 const Warehouse = lazy(() => import("../pages/Warehouse"));
-const SiteVisitPlan = lazy(() => import("../pages/SiteVisitPlan"));
-const TADA = lazy(() => import("../pages/TADA"));
+const SiteVisitPlan = lazy(() => import("../pages/SiteVisitPlan/SiteVisitPlan"));
+const TADA = lazy(() => import("../pages/TADA/TADA"));
 const TadaApproval = lazy(() => import("../pages/TadaApproval"));
 const TadaDecision = lazy(() => import("../pages/TadaDecision"));
-const SiteVisitOTPVerification = lazy(() => import("../pages/SiteVisitOTPVerification"));
+const SiteVisitOTPVerification = lazy(() => import("../pages/SiteVisitOTPVerification/SiteVisitOTPVerification"));
 const CrmVerification = lazy(() => import("../pages/CrmVerification"));
-const Invoice = lazy(() => import("../pages/Invoice"));
+const Invoice = lazy(() => import("../pages/Invoice/Invoice"));
 const Calibration = lazy(() => import("../pages/Calibration"));
 const CalibrationCertificate = lazy(() => import("../pages/CalibrationCertificate"));
 const SpareDispatchDetails = lazy(() => import("../pages/SpareDispatchDetails"));
