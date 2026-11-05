@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { Button } from "../components/ui/button";
-import { Textarea } from "../components/ui/textarea";
-import { Label } from "../components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import { Button } from "../../components/ui/button";
+import { Textarea } from "../../components/ui/textarea";
+import { Label } from "../../components/ui/label";
 import { Loader2Icon, LoaderIcon, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
-import { supabase } from "../lib/supabase/client";
-import { computeStagePlanned } from "../lib/supabase/stagePlanning";
+import { supabase } from "../../lib/supabase/client";
+import { computeStagePlanned } from "../../lib/supabase/stagePlanning";
 
 // Public page — NOT behind ProtectedRoute (see App.jsx). Reached only via
 // the link in the Senior Approval email

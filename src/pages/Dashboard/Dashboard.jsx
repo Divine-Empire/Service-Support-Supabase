@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { Button } from "../components/ui/button";
-import StatusBadge from "../components/shared/StatusBadge";
+import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import { Button } from "../../components/ui/button";
+import StatusBadge from "../../components/shared/StatusBadge";
 import { Loader2, PhoneCall, FileText } from "lucide-react";
 import {
   Table,
@@ -11,9 +11,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "../components/ui/table";
+} from "../../components/ui/table";
 import toast from "react-hot-toast";
-import { supabase } from "../lib/supabase/client";
+import { supabase } from "../../lib/supabase/client";
 
 // The 5 stages this dashboard has always covered (1:1 with the legacy
 // sheet-based version — NOT every migrated stage; see project memory for

@@ -1,5 +1,5 @@
-import { Button } from "../components/ui/button";
-import { formatDate } from "../lib/format";
+import { Button } from "../../components/ui/button";
+import { formatDate } from "../../lib/format";
 
 // Column definitions for the Follow-Up tables. `text(row)` is the plain value
 // (used for CSV export and as the default cell); `cell(row)` overrides the

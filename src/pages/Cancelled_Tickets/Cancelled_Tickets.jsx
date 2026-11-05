@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
-import { ListToolbar, ListTable, StatusBadge } from "../components/shared";
-import { useClientList } from "../hooks/useClientList";
-import { useToast } from "../hooks/use-toast";
-import { supabase } from "../lib/supabase/client";
-import { formatDate } from "../lib/format";
+import { ListToolbar, ListTable, StatusBadge } from "../../components/shared";
+import { useClientList } from "../../hooks/useClientList";
+import { useToast } from "../../hooks/use-toast";
+import { supabase } from "../../lib/supabase/client";
+import { formatDate } from "../../lib/format";
 
 const COLUMNS = [
   { key: "cancelledOn", label: "Cancelled On", defaultVisible: true, text: (r) => formatDate(r.timeStemp) },

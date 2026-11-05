@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { User, Lock, Eye, EyeOff, Loader2Icon } from "lucide-react";
-import useAuthStore from "../store/authStore";
+import useAuthStore from "../../store/authStore";
 import toast from "react-hot-toast";
-import { landingPath } from "../config/navigation";
+import { landingPath } from "../../config/navigation";
 
 const Login = () => {
   const [username, setUsername] = useState("");

@@ -1,22 +1,22 @@
 import { useState, useEffect } from "react";
 import { Eye, Loader2Icon } from "lucide-react";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../components/ui/select";
-import { Modal } from "../components/ui/modal";
-import { ListToolbar, ListTable, StatusBadge } from "../components/shared";
-import { useClientList } from "../hooks/useClientList";
-import { useToast } from "../hooks/use-toast";
-import { supabase } from "../lib/supabase/client";
-import { computeStagePlanned } from "../lib/supabase/stagePlanning";
-import { formatDate, delayTone } from "../lib/format";
+} from "../../components/ui/select";
+import { Modal } from "../../components/ui/modal";
+import { ListToolbar, ListTable, StatusBadge } from "../../components/shared";
+import { useClientList } from "../../hooks/useClientList";
+import { useToast } from "../../hooks/use-toast";
+import { supabase } from "../../lib/supabase/client";
+import { computeStagePlanned } from "../../lib/supabase/stagePlanning";
+import { formatDate, delayTone } from "../../lib/format";
 
 const billLink = (r) =>
   r.billAttachment ? (

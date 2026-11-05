@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Download } from "lucide-react";
 import toast from "react-hot-toast";
-import { Card, CardContent, CardHeader } from "../components/ui/card";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { StatusTabs } from "../components/shared";
+import { Card, CardContent, CardHeader } from "../../components/ui/card";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { StatusTabs } from "../../components/shared";
 import {
   Table,
   TableBody,
@@ -12,9 +12,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "../components/ui/table";
-import { supabase } from "../lib/supabase/client";
-import { exportCsv } from "../lib/exportCsv";
+} from "../../components/ui/table";
+import { supabase } from "../../lib/supabase/client";
+import { exportCsv } from "../../lib/exportCsv";
 import {
   CATS,
   defaultRange,
@@ -25,7 +25,7 @@ import {
   fetchWeeklyReport,
   summarizeByEngineer,
   ymd,
-} from "../lib/supabase/reportQueries";
+} from "../../lib/supabase/reportQueries";
 
 const fmtDate = (raw) => {
   if (!raw) return "-";

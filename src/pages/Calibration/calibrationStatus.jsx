@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Loader2Icon } from "lucide-react";
-import { StatusBadge } from "../components/shared";
+import { StatusBadge } from "../../components/shared";
 
 export const DRAFT_COPY_SHARED = "Draft Copy Shared";
 export const CONFIRMATION_PENDING = "Confirmation Pending";

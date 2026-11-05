@@ -78,7 +78,7 @@ export const SCHEMA_MAPPING = {
       { sheetColumn: "AJ", sheetIndex: 35, sheetField: "otp", supabaseColumn: "otp", type: "text", note: "Only generated when videoCall === 'Yes'." },
       { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "site_visit_otp", type: "text", note: "Added in migration 0032. Live/regeneratable OTP for src/pages/SiteVisitOTPVerification/SiteVisitOTPVerification.jsx (stage 8) — mirrors the `otp` column's pattern for Video-Call, but kept separate since the two stages' OTP lifecycles are independent. Set/replaced by that page's 'Resend OTP'; snapshotted into otp_verification.otp_entered once verified." },
       { sheetColumn: "DX", sheetIndex: 127, sheetField: "CREName", supabaseColumn: "cre_name", type: "text" },
-      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "warranty_check_planned", type: "timestamptz", note: "Gates Warranty-Check (src/pages/Warranty-Check.jsx): pending once set and no matching warranty_check row exists yet. Establishes the naming convention for future stages — a stage-specific `<next_stage>_planned` column on the owning table, rather than one shared generic `planned_at`. Originally stamped as a plain new Date() at ticket creation; changed in a later pass (no migration number — Ticket-and-Enquiry.jsx code change only) to be TAT-based via stagePlanning.js's 'warrantyCheck' rule: this ticket's own submit-time timestamp + tat_config['Warranty-Check'].duration_minutes, for consistency with every other stage's planned-column calculation." },
+      { sheetColumn: null, sheetIndex: null, sheetField: null, supabaseColumn: "warranty_check_planned", type: "timestamptz", note: "Gates Warranty-Check (src/pages/Warranty-Check/Warranty-Check.jsx): pending once set and no matching warranty_check row exists yet. Establishes the naming convention for future stages — a stage-specific `<next_stage>_planned` column on the owning table, rather than one shared generic `planned_at`. Originally stamped as a plain new Date() at ticket creation; changed in a later pass (no migration number — Ticket-and-Enquiry.jsx code change only) to be TAT-based via stagePlanning.js's 'warrantyCheck' rule: this ticket's own submit-time timestamp + tat_config['Warranty-Check'].duration_minutes, for consistency with every other stage's planned-column calculation." },
     ],
     notFields: [
       "This page also reads (but never writes) three cross-stage flags purely to hide tickets that " +
@@ -102,7 +102,7 @@ export const SCHEMA_MAPPING = {
     sourceSheet: "Login Master",
     primaryKey: "uuid",
     description:
-      "App accounts, wired into src/store/authStore.js's login() (called from src/pages/Login.jsx). " +
+      "App accounts, wired into src/store/authStore.js's login() (called from src/pages/Login/Login.jsx). " +
       "Auth goes through the public.login(p_username, p_password) Postgres RPC — RLS blocks anon from " +
       "reading/writing this table directly, since the anon key is public in the browser bundle and this " +
       "table holds plaintext passwords (stored unhashed by explicit request, matching the sheet). " +
@@ -224,7 +224,7 @@ export const SCHEMA_MAPPING = {
     sourceSheet: "Ticket_Enquiry",
     primaryKey: "id",
     description:
-      "Stage 2, owned by src/pages/Warranty-Check.jsx. Gated by tickets.warranty_check_planned (stamped on " +
+      "Stage 2, owned by src/pages/Warranty-Check/Warranty-Check.jsx. Gated by tickets.warranty_check_planned (stamped on " +
       "ticket creation): a ticket is 'pending' once that's set and no row exists here for it yet; it " +
       "becomes 'history' the moment a row is inserted. Unlike `tickets`, there's no placeholder row created " +
       "early and updated later — a single insert happens at submission time, carrying created_at (this " +
@@ -342,7 +342,7 @@ export const SCHEMA_MAPPING = {
     sourceSheet: "Follow-Up",
     primaryKey: "id",
     description:
-      "Stage 5, owned by src/pages/FollowUp.jsx. Gated by quotation.follow_up_planned. Append-only log — " +
+      "Stage 5, owned by src/pages/FollowUp/FollowUp.jsx. Gated by quotation.follow_up_planned. Append-only log — " +
       "EVERY submission (either stage) is its own permanent row, never updated, matching the legacy Follow-Up " +
       "sheet's own always-insert behavior. Two stages: 'Followup' (a call log; never closes anything, ticket " +
       "stays in FollowUp's pending list no matter how many of these pile up) and 'Order Received' (closes it " +
@@ -530,7 +530,7 @@ export const SCHEMA_MAPPING = {
     sourceSheet: "Ticket_Enquiry",
     primaryKey: "id",
     description:
-      "Warehouse-repair stage, owned by src/pages/Warehouse.jsx. Gated by warranty_check.warehouse_planned, " +
+      "Warehouse-repair stage, owned by src/pages/Warehouse/Warehouse.jsx. Gated by warranty_check.warehouse_planned, " +
       "set via TWO independent paths (migration 0040): (1) the frontend, at Warranty-Check submit time, when " +
       "tickets.service_location = 'Warehouse' (takes priority over that same submit's video_call_planned/" +
       "quotation_planned); (2) public.video_call_apply_downstream_planned() (AFTER INSERT on video_call) when " +
@@ -569,9 +569,9 @@ export const SCHEMA_MAPPING = {
       "(non-exclusive-in-code, but practically exclusive since enquiry_type is single-select) next-stage " +
       "readiness stamps, both computed at insert time via src/lib/supabase/stagePlanning.js, migration 0045: " +
       "calibration_planned (this row's own created_at + tat_config['Calibration'].duration_minutes) ONLY when " +
-      "tickets.enquiry_type = 'NABL' — gates Calibration (src/pages/Calibration.jsx); spare_dispatch_planned " +
+      "tickets.enquiry_type = 'NABL' — gates Calibration (src/pages/Calibration/Calibration.jsx); spare_dispatch_planned " +
       "(created_at + tat_config['Spare Dispatch'].duration_minutes) ONLY when tickets.enquiry_type = 'SPARE' " +
-      "— gates Spare Dispatch Details (src/pages/SpareDispatchDetails.jsx). Any other enquiry_type value (or " +
+      "— gates Spare Dispatch Details (src/pages/SpareDispatchDetails/SpareDispatchDetails.jsx). Any other enquiry_type value (or " +
       "none set) skips both branches entirely. " +
       "delay_minutes is trigger-computed (public.invoice_set_delay(), migration 0036) as " +
       "round((order_received.invoice_planned - invoice.created_at)) in minutes — the ORIGINAL " +
@@ -620,13 +620,13 @@ export const SCHEMA_MAPPING = {
     sourceSheet: null,
     primaryKey: "id",
     description:
-      "Calibration stage, owned by src/pages/Calibration.jsx (migration 0045 — previously an unmigrated, " +
+      "Calibration stage, owned by src/pages/Calibration/Calibration.jsx (migration 0045 — previously an unmigrated, " +
       "sheet-wired page). Gated by invoice.calibration_planned, which is only ever set for " +
       "tickets.enquiry_type='NABL'. One row per ticket, inserted once at submission. " +
       "calibration_certificate_planned is submitted by the frontend at insert time, computed via " +
       "src/lib/supabase/stagePlanning.js's 'calibrationCertificate' rule as this row's own created_at + " +
       "tat_config['Calibration Certificate'].duration_minutes — gates the next stage, " +
-      "src/pages/CalibrationCertificate.jsx (every Calibration submission gets this, no branching). " +
+      "src/pages/CalibrationCertificate/CalibrationCertificate.jsx (every Calibration submission gets this, no branching). " +
       "delay_minutes is trigger-computed (public.calibration_set_delay()) as " +
       "round((invoice.calibration_planned - calibration.created_at)) in minutes — the ORIGINAL " +
       "negative-when-late/positive-when-early convention (matching predecessor Invoice).",
@@ -654,7 +654,7 @@ export const SCHEMA_MAPPING = {
     sourceSheet: null,
     primaryKey: "id",
     description:
-      "Calibration Certificate stage, owned by src/pages/CalibrationCertificate.jsx (migration 0045 — " +
+      "Calibration Certificate stage, owned by src/pages/CalibrationCertificate/CalibrationCertificate.jsx (migration 0045 — " +
       "previously an unmigrated, sheet-wired page). Gated by calibration.calibration_certificate_planned. " +
       "One row per ticket, inserted once at submission. No `<next_stage>_planned` column — per explicit " +
       "instruction, nothing comes after this stage yet (the final stage in the NABL/Calibration branch). " +
@@ -677,7 +677,7 @@ export const SCHEMA_MAPPING = {
     sourceSheet: null,
     primaryKey: "id",
     description:
-      "Spare Dispatch stage, owned by src/pages/SpareDispatchDetails.jsx (new page, migration 0045). Gated " +
+      "Spare Dispatch stage, owned by src/pages/SpareDispatchDetails/SpareDispatchDetails.jsx (new page, migration 0045). Gated " +
       "by invoice.spare_dispatch_planned, which is only ever set for tickets.enquiry_type='SPARE'. One row " +
       "per ticket, inserted once at submission. No `<next_stage>_planned` column — nothing comes after this " +
       "stage yet. delay_minutes is trigger-computed (public.spare_dispatch_details_set_delay()) as " +

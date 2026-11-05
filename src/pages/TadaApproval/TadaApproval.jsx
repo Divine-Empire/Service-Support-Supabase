@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
-import { Button } from "../components/ui/button";
-import { useToast } from "../hooks/use-toast";
+import { Button } from "../../components/ui/button";
+import { useToast } from "../../hooks/use-toast";
 import { Loader2Icon, Mail } from "lucide-react";
-import { supabase } from "../lib/supabase/client";
-import { sendTadaApprovalEmail } from "../lib/notifications/email";
-import { ListToolbar, ListTable, StatusBadge } from "../components/shared";
-import { useClientList } from "../hooks/useClientList";
+import { supabase } from "../../lib/supabase/client";
+import { sendTadaApprovalEmail } from "../../lib/notifications/email";
+import { ListToolbar, ListTable, StatusBadge } from "../../components/shared";
+import { useClientList } from "../../hooks/useClientList";
 
 // Kept local: unlike lib/format, an unparseable value is shown as-is.
 const formatDate = (dateString) => {
