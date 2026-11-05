@@ -31,6 +31,11 @@ import { ltoSupabase } from "../lib/supabase/ltoClient";
 import { fetchDropdownRows } from "../lib/supabase/dropdown";
 import { fetchEngineerNames } from "../lib/supabase/engineers";
 import { computeStagePlanned } from "../lib/supabase/stagePlanning";
+import {
+  sendServiceRequestRegisteredNotification,
+  sendVideoCallScheduledNotifications,
+} from "../lib/notifications/whatsapp";
+import { formatDate, formatTime12hr } from "../lib/format";
 import { ListToolbar, ListTable, StatusBadge, filterControlClass } from "../components/shared";
 import { useClientList } from "../hooks/useClientList";
 
@@ -194,6 +199,7 @@ const ServiceInstallation = () => {
     gstNo: "",
     machineName: "",
     category: "",
+    enquiryType: "",
     mentionIssue: "",
     serviceLocation: "On-Site",
     challanCopy: "",
@@ -280,8 +286,9 @@ const ServiceInstallation = () => {
     call_type: "Call type",
     source_of_enquiry: "Source of enquiry",
     enquiry_receiver_name: "Enquiry Receiver Name",
-    category: "Requirement Service Category",
-    sub_category: "Category",
+    category: "Category",
+    sub_category: "Sub-Category",
+    enquiry_type: "Enquiry Type",
     service_location: "Service Location",
     machine_name: "Machine Name",
     installation_service_type: "__service_type__",
@@ -416,6 +423,7 @@ const ServiceInstallation = () => {
       gstNo: gstNo,
       machineName: "",
       category: "",
+      enquiryType: "",
       mentionIssue: "",
       serviceLocation: "On-Site",
       challanCopy: "",
@@ -479,6 +487,10 @@ const ServiceInstallation = () => {
       toast({ title: "Validation Error", description: "Company Name is required for existing clients", variant: "destructive" });
       return;
     }
+    if (!newEnquiryData.enquiryType) {
+      toast({ title: "Validation Error", description: "Enquiry Type is required", variant: "destructive" });
+      return;
+    }
     if (!newEnquiryData.mentionIssue || !newEnquiryData.mentionIssue.trim()) {
       toast({ title: "Validation Error", description: "Mention Issue is required", variant: "destructive" });
       return;
@@ -499,6 +511,7 @@ const ServiceInstallation = () => {
     try {
       const userName = localStorage.getItem("currentUsername") || "";
       const submittedAt = new Date();
+      const videoCallOtp = newEnquiryData.videoCall === "Yes" ? generateSixDigitOTP() : "";
       const warrantyCheckPlanned = await computeStagePlanned("warrantyCheck", {
         ticketSubmittedAt: submittedAt,
       });
@@ -520,6 +533,7 @@ const ServiceInstallation = () => {
         machine_name: newFormSelectedMachines.join(", "),
         category: newEnquiryData.category || "",
         mention_issue: newEnquiryData.mentionIssue || "",
+        enquiry_type: newEnquiryData.enquiryType || "",
         service_location: newEnquiryData.serviceLocation || "",
         challan_copy: newEnquiryData.serviceLocation?.trim() === "Warehouse" ? (newEnquiryData.challanCopy || "") : "",
         machine_photo: newEnquiryData.serviceLocation?.trim() === "Warehouse" ? (newEnquiryData.machinePhoto || "") : "",
@@ -527,7 +541,7 @@ const ServiceInstallation = () => {
         sub_category: newFormSelectedCategories.join(", "),
         video_call_time: newEnquiryData.videoCallTime || "",
         engineer_assign: newEnquiryData.engineerAssign || "",
-        otp: newEnquiryData.videoCall === "Yes" ? generateSixDigitOTP() : "",
+        otp: videoCallOtp,
         cre_name: userName,
         warranty_check_planned: warrantyCheckPlanned,
       };
@@ -545,6 +559,57 @@ const ServiceInstallation = () => {
         description: `Enquiry created successfully with Ticket ID: ${inserted.ticket_id}`,
       });
       setShowEnquiryModal(false);
+
+      // Fire-and-forget: a WhatsApp failure must not undo the saved ticket. With Video-Call = "Yes"
+      // the video-call notification sends the "registered" message too, in order.
+      const subCategory = newFormSelectedCategories.join(", ");
+      const companyLabel = newEnquiryData.companyName || newEnquiryData.clientName;
+      if (newEnquiryData.videoCall !== "Yes") {
+        sendServiceRequestRegisteredNotification({
+          phoneNumber: newEnquiryData.phoneNumber,
+          clientName: newEnquiryData.clientName,
+          companyName: companyLabel,
+          ticketId: inserted.ticket_id,
+          category: subCategory,
+          issue: newEnquiryData.mentionIssue,
+        }).then(({ success, error: waError }) => {
+          if (!success) {
+            toast({
+              title: "WhatsApp notification not sent",
+              description: waError || "Ticket was created, but the WhatsApp message could not be sent.",
+              variant: "destructive",
+            });
+          }
+        });
+      } else {
+        sendVideoCallScheduledNotifications({
+          clientPhoneNumber: newEnquiryData.phoneNumber,
+          clientName: newEnquiryData.clientName,
+          companyName: companyLabel,
+          category: subCategory,
+          ticketId: inserted.ticket_id,
+          issue: newEnquiryData.mentionIssue,
+          engineerName: newEnquiryData.engineerAssign,
+          dateStr: formatDate(submittedAt),
+          timeStr: formatTime12hr(newEnquiryData.videoCallTime),
+          otp: videoCallOtp,
+        }).then(({ success, error: waError, engineerNotified, engineerError }) => {
+          if (!success) {
+            toast({
+              title: "Video-call WhatsApp notification not sent",
+              description: waError || "Ticket was created, but the client could not be notified over WhatsApp.",
+              variant: "destructive",
+            });
+          }
+          if (!engineerNotified) {
+            toast({
+              title: "Engineer not notified over WhatsApp",
+              description: engineerError || `No WhatsApp number on file for ${newEnquiryData.engineerAssign}.`,
+              variant: "destructive",
+            });
+          }
+        });
+      }
     } catch (error) {
       console.error("Error saving enquiry:", error);
       toast({
@@ -634,6 +699,7 @@ const ServiceInstallation = () => {
       gstNo,
       machineName: "",
       category: "",
+      enquiryType: "",
       mentionIssue: "",
       serviceLocation: "On-Site",
       challanCopy: "",
@@ -663,8 +729,10 @@ const ServiceInstallation = () => {
       // Step 1: Upload the service report file (if any) to Supabase Storage —
       // same "ticket_enquiry" bucket the rest of the app uses.
       if (fileData.base64) {
-        const mimeType = fileData.name.toLowerCase().endsWith(".pdf") ? "application/pdf" :
-          fileData.name.toLowerCase().endsWith(".mp4") ? "video/mp4" : "image/jpeg";
+        const ext = fileData.name.toLowerCase().split(".").pop();
+        const mimeType =
+          { pdf: "application/pdf", mp4: "video/mp4", mov: "video/quicktime", png: "image/png", webp: "image/webp", gif: "image/gif", jpg: "image/jpeg", jpeg: "image/jpeg" }[ext] ||
+          "application/octet-stream";
         const byteCharacters = atob(fileData.base64);
         const byteNumbers = new Array(byteCharacters.length);
         for (let i = 0; i < byteCharacters.length; i++) {
@@ -1238,16 +1306,37 @@ const ServiceInstallation = () => {
                 </div>
 
                 <div className="space-y-1">
-                  <Label htmlFor="enq-enquiryType" className="text-sm">Enquiry-Type *</Label>
+                  <Label htmlFor="enq-enquiryType" className="text-sm">Category *</Label>
                   <Select
                     onValueChange={(value) => setNewEnquiryData(prev => ({ ...prev, category: value }))}
                     value={newEnquiryData.category}
                   >
                     <SelectTrigger id="enq-enquiryType">
-                      <SelectValue placeholder="Select Enquiry-Type" />
+                      <SelectValue placeholder="Select Category" />
                     </SelectTrigger>
                     <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
-                      {[...new Set(masterData[0]?.["Requirement Service Category"] || [])]
+                      {[...new Set(masterData[0]?.["Category"] || [])]
+                        .filter(Boolean)
+                        .map((option) => (
+                          <SelectItem key={option} value={option}>
+                            {option}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1">
+                  <Label htmlFor="enq-enquiryTypeNew" className="text-sm">Enquiry Type *</Label>
+                  <Select
+                    onValueChange={(value) => setNewEnquiryData(prev => ({ ...prev, enquiryType: value }))}
+                    value={newEnquiryData.enquiryType}
+                  >
+                    <SelectTrigger id="enq-enquiryTypeNew">
+                      <SelectValue placeholder="Select Enquiry Type" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white border border-gray-300 rounded-md shadow-lg">
+                      {[...new Set(masterData[0]?.["Enquiry Type"] || [])]
                         .filter(Boolean)
                         .map((option) => (
                           <SelectItem key={option} value={option}>
@@ -1259,7 +1348,7 @@ const ServiceInstallation = () => {
                 </div>
 
                 <div className="space-y-1 relative dropdown-container">
-                  <Label htmlFor="enq-category" className="text-sm">Category *</Label>
+                  <Label htmlFor="enq-category" className="text-sm">Sub-Category *</Label>
                   <div className="relative">
                     <button id="enq-category"
                       type="button"
@@ -1294,14 +1383,14 @@ const ServiceInstallation = () => {
                       <div className="absolute left-0 right-0 z-50 mt-1 max-h-60 overflow-y-auto rounded-md border border-gray-200 bg-white p-1 shadow-lg">
                         <div className="px-2 py-1 sticky top-0 bg-white z-10">
                           <Input
-                            placeholder="Search category..."
+                            placeholder="Search sub-category..."
                             value={categorySearchQuery}
                             onChange={(e) => setCategorySearchQuery(e.target.value)}
                             className="h-8 text-xs border-gray-200"
                           />
                         </div>
                         <div className="mt-1">
-                          {[...new Set(masterData[0]?.["Category"] || [])]
+                          {[...new Set(masterData[0]?.["Sub-Category"] || [])]
                             .filter(Boolean)
                             .filter(option =>
                               option.toLowerCase().includes(categorySearchQuery.toLowerCase())
@@ -1323,7 +1412,7 @@ const ServiceInstallation = () => {
                                 {option}
                               </button>
                             ))}
-                          {[...new Set(masterData[0]?.["Category"] || [])]
+                          {[...new Set(masterData[0]?.["Sub-Category"] || [])]
                             .filter(Boolean)
                             .filter(option =>
                               option.toLowerCase().includes(categorySearchQuery.toLowerCase())

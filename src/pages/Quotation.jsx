@@ -911,10 +911,7 @@ export default function Quotation() {
         title="Make Quotation"
         size="6xl"
       >
-        <MakeQuotation
-          ticket={selectedTicket}
-          onClose={() => setShowMakeQuotationModal(false)}
-        />
+        <MakeQuotation ticket={selectedTicket} />
       </Modal>
 
       {/* Item List Modal */}

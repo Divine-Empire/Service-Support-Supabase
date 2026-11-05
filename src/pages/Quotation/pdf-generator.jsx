@@ -9,9 +9,9 @@ import {
   pdf,
   Font,
 } from "@react-pdf/renderer";
-import logo from "../../assests/WhatsApp Image 2025-05-14 at 4.11.43 PM.jpeg";
-import qr from "../../assests/qrlogo.png";
-import maniquipLogo1 from "../../assests/Screenshot 2025-09-25 at 2.48.03 PM.png";
+import logo from "../../assets/WhatsApp Image 2025-05-14 at 4.11.43 PM.jpeg";
+import qr from "../../assets/qrlogo.png";
+import maniquipLogo1 from "../../assets/Screenshot 2025-09-25 at 2.48.03 PM.png";
 
 // Register a font that contains the Indian Rupee symbol (₹) using stable CDNJS assets
 Font.register({

@@ -4,7 +4,7 @@ import toast from "react-hot-toast";
 import { Card, CardContent, CardHeader } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { StatusTabs } from "../components/shared";
 import {
   Table,
   TableBody,
@@ -72,7 +72,7 @@ function DateRange({ range, setRange, onReset }) {
         <span className="text-[10px] text-gray-500">From</span>
         <Input
           type="date"
-          className="h-10 w-[150px] bg-white border-blue-200"
+          className="h-10 w-[150px] bg-card border-input"
           value={range.from}
           max={range.to || undefined}
           onChange={(e) => setRange({ ...range, from: e.target.value })}
@@ -82,7 +82,7 @@ function DateRange({ range, setRange, onReset }) {
         <span className="text-[10px] text-gray-500">To</span>
         <Input
           type="date"
-          className="h-10 w-[150px] bg-white border-blue-200"
+          className="h-10 w-[150px] bg-card border-input"
           value={range.to}
           min={range.from || undefined}
           onChange={(e) => setRange({ ...range, to: e.target.value })}
@@ -112,7 +112,7 @@ function StatCard({ label, value, tone = "blue" }) {
 
 const Loading = () => (
   <div className="flex items-center justify-center py-12">
-    <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+    <Loader2 className="h-6 w-6 animate-spin text-primary" />
   </div>
 );
 
@@ -202,10 +202,10 @@ function WeeklyTab({ range, reloadKey }) {
       ) : (
         <Table>
           <TableHeader>
-            <TableRow className="bg-slate-800 hover:bg-slate-800">
-              <TableHead className="w-[210px] py-3 text-xs font-bold text-white">CATEGORY</TableHead>
+            <TableRow className="bg-secondary hover:bg-secondary">
+              <TableHead className="w-[210px] py-3 text-xs font-bold text-brand-800">CATEGORY</TableHead>
               {columns.map((c) => (
-                <TableHead key={c} className="py-3 text-center text-xs font-bold text-white">
+                <TableHead key={c} className="py-3 text-center text-xs font-bold text-brand-800">
                   {c}
                 </TableHead>
               ))}
@@ -295,7 +295,7 @@ function AssignmentTab({ kind, range, reloadKey }) {
           <div className="flex flex-col">
             <span className="text-[10px] text-gray-500">Engineer</span>
             <select
-              className="h-10 w-[220px] rounded-md border border-blue-200 bg-white px-3 text-sm shadow-sm"
+              className="h-10 w-[220px] rounded-md border border-input bg-card px-3 text-sm shadow-sm"
               value={engineer}
               onChange={(e) => setEngineer(e.target.value)}
             >
@@ -307,7 +307,7 @@ function AssignmentTab({ kind, range, reloadKey }) {
               ))}
             </select>
           </div>
-          <span className="pb-2 text-xs font-medium text-blue-700">
+          <span className="pb-2 text-xs font-medium text-brand-700">
             Showing {filtered.length} of {rows.length}
           </span>
         </div>
@@ -326,12 +326,12 @@ function AssignmentTab({ kind, range, reloadKey }) {
             <StatCard label="Pending" value={filtered.length - completed} tone="amber" />
           </div>
 
-          <div className="overflow-x-auto rounded-lg border border-blue-100 bg-white">
+          <div className="overflow-x-auto rounded-lg border border bg-card">
             <Table>
               <TableHeader>
-                <TableRow className="bg-slate-800 hover:bg-slate-800">
+                <TableRow className="bg-secondary hover:bg-secondary">
                   {["Engineer", "Assigned", "Completed", "Pending"].map((h) => (
-                    <TableHead key={h} className="text-xs font-bold text-white">
+                    <TableHead key={h} className="text-xs font-bold text-brand-800">
                       {h}
                     </TableHead>
                   ))}
@@ -358,12 +358,12 @@ function AssignmentTab({ kind, range, reloadKey }) {
             </Table>
           </div>
 
-          <div className="max-h-[50vh] overflow-auto rounded-lg border border-blue-100 bg-white">
+          <div className="max-h-[50vh] overflow-auto rounded-lg border border bg-card">
             <Table>
               <TableHeader className="sticky top-0">
-                <TableRow className="bg-slate-800 hover:bg-slate-800">
+                <TableRow className="bg-secondary hover:bg-secondary">
                   {["Ticket ID", "Company Name", "Engineer", isVideo ? "Video-Call Planned" : "Site Visit Planned", "Status", doneLabel].map((h) => (
-                    <TableHead key={h} className="text-xs font-bold text-white">
+                    <TableHead key={h} className="text-xs font-bold text-brand-800">
                       {h}
                     </TableHead>
                   ))}
@@ -434,7 +434,7 @@ function QuotationTab({ range, reloadKey }) {
           <div className="flex flex-col">
             <span className="text-[10px] text-gray-500">Type</span>
             <select
-              className="h-10 w-[160px] rounded-md border border-blue-200 bg-white px-3 text-sm shadow-sm"
+              className="h-10 w-[160px] rounded-md border border-input bg-card px-3 text-sm shadow-sm"
               value={type}
               onChange={(e) => setType(e.target.value)}
             >
@@ -443,7 +443,7 @@ function QuotationTab({ range, reloadKey }) {
               <option value="Revised">Revised</option>
             </select>
           </div>
-          <span className="pb-2 text-xs font-medium text-blue-700">
+          <span className="pb-2 text-xs font-medium text-brand-700">
             Showing {filtered.length} of {rows.length}
           </span>
         </div>
@@ -461,12 +461,12 @@ function QuotationTab({ range, reloadKey }) {
             <StatCard label="Created" value={created} tone="green" />
             <StatCard label="Revised" value={revised} tone="purple" />
           </div>
-          <div className="max-h-[60vh] overflow-auto rounded-lg border border-blue-100 bg-white">
+          <div className="max-h-[60vh] overflow-auto rounded-lg border border bg-card">
             <Table>
               <TableHeader className="sticky top-0">
-                <TableRow className="bg-slate-800 hover:bg-slate-800">
+                <TableRow className="bg-secondary hover:bg-secondary">
                   {["Quotation Number", "Type", "Quotation Copy", "Company Name", "Created At"].map((h) => (
-                    <TableHead key={h} className="text-xs font-bold text-white">
+                    <TableHead key={h} className="text-xs font-bold text-brand-800">
                       {h}
                     </TableHead>
                   ))}
@@ -560,19 +560,19 @@ function FollowUpSection({ title, subtitle, columns, rows, filename, loading }) 
     <div className="space-y-2">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-blue-900">{title}</h3>
+          <h3 className="text-sm font-semibold text-brand-800">{title}</h3>
           <p className="text-xs text-gray-500">{subtitle}</p>
         </div>
         <Button size="sm" variant="outline" onClick={handleExport} disabled={loading}>
           <Download className="mr-1 h-4 w-4" /> Export CSV
         </Button>
       </div>
-      <div className="max-h-[45vh] overflow-auto rounded-lg border border-blue-100 bg-white">
+      <div className="max-h-[45vh] overflow-auto rounded-lg border border bg-card">
         <Table>
           <TableHeader className="sticky top-0">
-            <TableRow className="bg-slate-800 hover:bg-slate-800">
+            <TableRow className="bg-secondary hover:bg-secondary">
               {columns.map((c) => (
-                <TableHead key={c.h} className="text-xs font-bold text-white">
+                <TableHead key={c.h} className="text-xs font-bold text-brand-800">
                   {c.h}
                 </TableHead>
               ))}
@@ -695,31 +695,19 @@ export default function Report() {
 
   return (
     <div className="space-y-2">
-      <Tabs value={activeTab} onValueChange={switchTab} className="w-full">
-        <Card className="border-0 bg-gradient-to-br from-blue-50 to-indigo-50 shadow-lg">
-          <CardHeader className="flex flex-col items-center justify-between gap-4 rounded-t-lg border-b border-blue-100 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 px-6 py-4 md:flex-row">
-            <TabsList className="border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50">
-              {TABS.map((t) => (
-                <TabsTrigger
-                  key={t.id}
-                  value={t.id}
-                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-                >
-                  {t.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-            <DateRange range={range} setRange={setRange(activeTab)} onReset={resetRange(activeTab)} />
-          </CardHeader>
-          <CardContent className="p-0 pt-2">
-            {activeTab === "weekly" && opened.weekly && <WeeklyTab range={ranges.weekly} reloadKey={reloadKeys.weekly} />}
-            {activeTab === "video" && opened.video && <AssignmentTab kind="video" range={ranges.video} reloadKey={reloadKeys.video} />}
-            {activeTab === "site" && opened.site && <AssignmentTab kind="site" range={ranges.site} reloadKey={reloadKeys.site} />}
-            {activeTab === "quotation" && opened.quotation && <QuotationTab range={ranges.quotation} reloadKey={reloadKeys.quotation} />}
-            {activeTab === "followup" && opened.followup && <FollowUpTab range={ranges.followup} reloadKey={reloadKeys.followup} />}
-          </CardContent>
-        </Card>
-      </Tabs>
+      <Card>
+        <CardHeader className="flex flex-col items-start justify-between gap-3 border-b px-4 py-3 md:flex-row md:items-center">
+          <StatusTabs tabs={TABS} activeTab={activeTab} onChange={switchTab} label="Report sections" className="max-w-full overflow-x-auto" />
+          <DateRange range={range} setRange={setRange(activeTab)} onReset={resetRange(activeTab)} />
+        </CardHeader>
+        <CardContent className="p-0 pt-2">
+          {activeTab === "weekly" && opened.weekly && <WeeklyTab range={ranges.weekly} reloadKey={reloadKeys.weekly} />}
+          {activeTab === "video" && opened.video && <AssignmentTab kind="video" range={ranges.video} reloadKey={reloadKeys.video} />}
+          {activeTab === "site" && opened.site && <AssignmentTab kind="site" range={ranges.site} reloadKey={reloadKeys.site} />}
+          {activeTab === "quotation" && opened.quotation && <QuotationTab range={ranges.quotation} reloadKey={reloadKeys.quotation} />}
+          {activeTab === "followup" && opened.followup && <FollowUpTab range={ranges.followup} reloadKey={reloadKeys.followup} />}
+        </CardContent>
+      </Card>
     </div>
   );
 }

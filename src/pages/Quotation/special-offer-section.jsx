@@ -1,5 +1,5 @@
 "use client"
-import { PlusIcon, TrashIcon } from "../../components/Icons"
+import { Plus as PlusIcon, Trash2 as TrashIcon } from "lucide-react"
 
 const SpecialOfferSection = ({
   quotationData,

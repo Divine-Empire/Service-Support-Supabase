@@ -233,9 +233,11 @@ export default function WarrantyCheck() {
       // video_call='Yes', then a direct-to-Quotation fallback. Only one of
       // these three ever comes back non-null.
       const planningCtx = { ticket: selectedTicket, warrantyCheckSubmittedAt: submittedAt };
-      const warehousePlanned = await computeStagePlanned("warehouse", planningCtx);
-      const videoCallPlanned = await computeStagePlanned("videoCall", planningCtx);
-      const quotationPlanned = await computeStagePlanned("quotationDirect", planningCtx);
+      const [warehousePlanned, videoCallPlanned, quotationPlanned] = await Promise.all([
+        computeStagePlanned("warehouse", planningCtx),
+        computeStagePlanned("videoCall", planningCtx),
+        computeStagePlanned("quotationDirect", planningCtx),
+      ]);
 
       const { error } = await supabase.from("sss_warranty_check").insert({
         ticket_id: selectedTicket.ticketId,

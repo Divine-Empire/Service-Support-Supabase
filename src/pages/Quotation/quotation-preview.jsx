@@ -1,5 +1,5 @@
 "use client"
-import { CopyIcon, ShareIcon, EyeIcon, DownloadIcon } from "../../components/Icons"
+import { Copy as CopyIcon, Share2 as ShareIcon, Eye as EyeIcon, Download as DownloadIcon } from "lucide-react"
 
 const QuotationPreview = ({
   quotationData,

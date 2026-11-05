@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { PlusIcon, TrashIcon } from "../../components/Icons";
+import { Plus as PlusIcon, Trash2 as TrashIcon } from "lucide-react";
 
 const ItemsTable = ({
   quotationData,

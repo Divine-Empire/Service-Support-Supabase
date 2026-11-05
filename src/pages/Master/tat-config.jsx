@@ -1,9 +1,4 @@
 import { useState, useEffect } from "react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-} from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -14,21 +9,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../components/ui/select";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "../../components/ui/tabs";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../../components/ui/table";
 import { Modal } from "../../components/ui/modal";
+import { ListTable, StatusTabs } from "../../components/shared";
+import { useClientList } from "../../hooks/useClientList";
 import { useToast } from "../../hooks/use-toast";
 import { Loader2Icon, LoaderIcon, Plus, Pencil, Trash2 } from "lucide-react";
 import { supabase } from "../../lib/supabase/client";
@@ -396,197 +379,144 @@ export default function TatConfig() {
     return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
   };
 
-  const iconBtn = "h-8 w-8 p-0";
+  const rowActions = (name, onEdit, onDelete) => (
+    <div className="flex items-center gap-1">
+      <Button variant="ghost" size="sm" onClick={onEdit} className="h-8 w-8 p-0" aria-label={`Edit ${name}`}>
+        <Pencil className="h-4 w-4" />
+      </Button>
+      <Button variant="ghost" size="sm" onClick={onDelete} className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive" aria-label={`Delete ${name}`}>
+        <Trash2 className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+
+  const stageList = useClientList({
+    key: "tat-stages",
+    data: { all: stages },
+    loading: fetchLoading,
+    tabLabels: { all: "Stages" },
+    sort: "none",
+    defaultPageSize: 50,
+    columns: [
+      { key: "actions", label: "Actions", fixed: true, cell: (st) => rowActions(st.stage_name, () => openEditModal(st), () => setDeleteTarget(st)) },
+      { key: "stage_name", label: "Stage", fixed: true, strong: true },
+      { key: "tat", label: "TAT", defaultVisible: true, text: (st) => formatDuration(st.duration_minutes) },
+      { key: "responsible_person", label: "Responsible Person", defaultVisible: true, text: (st) => st.responsible_person },
+    ],
+  });
+
+  const holidayList = useClientList({
+    key: "tat-holidays",
+    data: { all: holidays },
+    loading: holidaysLoading,
+    tabLabels: { all: "Holidays" },
+    sort: "none",
+    defaultPageSize: 50,
+    columns: [
+      { key: "actions", label: "Actions", fixed: true, cell: (h) => rowActions(h.holiday_name, () => openEditHolidayModal(h), () => setDeleteHolidayTarget(h)) },
+      { key: "holiday_date", label: "Date", fixed: true, strong: true, text: (h) => formatHolidayDate(h.holiday_date) },
+      { key: "holiday_name", label: "Holiday Name", defaultVisible: true, text: (h) => h.holiday_name },
+    ],
+  });
+
+  const sectionTabs = [
+    { id: "stages", label: "Stages", count: stages.length },
+    { id: "officeHours", label: "Office Hours" },
+    { id: "holidays", label: "Holidays", count: holidays.length },
+  ];
 
   return (
-    <div className="space-y-4">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <Card>
-          <CardHeader className="flex flex-col gap-3 space-y-0 border-b p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-              <h2 className="text-lg font-semibold tracking-tight text-foreground">TAT Config</h2>
-              <TabsList className="h-auto flex-wrap justify-start">
-                <TabsTrigger value="stages">Stages ({stages.length})</TabsTrigger>
-                <TabsTrigger value="officeHours">Office Hours</TabsTrigger>
-                <TabsTrigger value="holidays">Holidays ({holidays.length})</TabsTrigger>
-              </TabsList>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <StatusTabs tabs={sectionTabs} activeTab={activeTab} onChange={setActiveTab} label="TAT sections" />
+        {activeTab === "holidays" && (
+          <Button onClick={openCreateHolidayModal} className="h-9 shrink-0 gap-1.5">
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Add Holiday
+          </Button>
+        )}
+      </div>
+
+      {activeTab === "stages" && (
+        <ListTable list={stageList} rowKey={(st) => st.uuid} emptyTitle="No stages configured." ariaLabel="TAT stages" minWidth="min-w-0" />
+      )}
+
+      {activeTab === "officeHours" && (
+        <div className="rounded-lg border bg-card">
+          {officeHoursLoading ? (
+            <div className="flex items-center justify-center py-10">
+              <LoaderIcon className="h-6 w-6 animate-spin text-primary" aria-label="Loading" />
             </div>
-
-            {activeTab === "holidays" && (
-              <Button onClick={openCreateHolidayModal} className="h-9 shrink-0 gap-1.5">
-                <Plus className="h-4 w-4" aria-hidden="true" />
-                Add Holiday
-              </Button>
-            )}
-          </CardHeader>
-
-          <CardContent className="p-0">
-            {/* ── Stages tab ──────────────────────────────────────────── */}
-            <TabsContent value="stages" className="mt-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[100px]">Actions</TableHead>
-                    <TableHead>Stage</TableHead>
-                    <TableHead>TAT</TableHead>
-                    <TableHead>Responsible Person</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {fetchLoading ? (
-                    <TableRow>
-                      <TableCell colSpan={4} className="py-10 text-center">
-                        <LoaderIcon className="mx-auto h-6 w-6 animate-spin text-primary" aria-label="Loading" />
-                      </TableCell>
-                    </TableRow>
-                  ) : stages.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={4} className="py-10 text-center text-muted-foreground">
-                        No stages configured.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    stages.map((stage) => (
-                      <TableRow key={stage.uuid}>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Button variant="ghost" size="sm" onClick={() => openEditModal(stage)} className={iconBtn} aria-label={`Edit ${stage.stage_name}`}>
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => setDeleteTarget(stage)} className={`${iconBtn} text-destructive hover:bg-destructive/10 hover:text-destructive`} aria-label={`Delete ${stage.stage_name}`}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap font-medium">{stage.stage_name}</TableCell>
-                        <TableCell className="whitespace-nowrap">{formatDuration(stage.duration_minutes)}</TableCell>
-                        <TableCell>{stage.responsible_person || "-"}</TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </TabsContent>
-
-            {/* ── Office Hours tab ────────────────────────────────────── */}
-            <TabsContent value="officeHours" className="mt-0">
-              {officeHoursLoading ? (
-                <div className="flex items-center justify-center py-10">
-                  <LoaderIcon className="h-6 w-6 animate-spin text-primary" aria-label="Loading" />
+          ) : (
+            <form onSubmit={handleSaveOfficeHours} className="max-w-lg space-y-4 p-4">
+              <p className="text-sm text-muted-foreground">
+                Every <code>&lt;next_stage&gt;_planned</code> timestamp across the app is confined to this
+                window — a stage submitted after closing time (or whose TAT runs past it) rolls over to the
+                next working day's opening time instead of landing outside office hours.
+              </p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="office-start">Start Time *</Label>
+                  <Input
+                    id="office-start"
+                    type="time"
+                    value={officeHoursForm.startTime}
+                    onChange={(e) => setOfficeHoursForm((prev) => ({ ...prev, startTime: e.target.value }))}
+                  />
                 </div>
-              ) : (
-                <form onSubmit={handleSaveOfficeHours} className="max-w-lg space-y-4 p-4">
-                  <p className="text-sm text-muted-foreground">
-                    Every <code>&lt;next_stage&gt;_planned</code> timestamp across the app is confined to this
-                    window — a stage submitted after closing time (or whose TAT runs past it) rolls over to the
-                    next working day's opening time instead of landing outside office hours.
-                  </p>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="office-start">Start Time *</Label>
-                      <Input
-                        id="office-start"
-                        type="time"
-                        value={officeHoursForm.startTime}
-                        onChange={(e) => setOfficeHoursForm((prev) => ({ ...prev, startTime: e.target.value }))}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="office-end">End Time *</Label>
-                      <Input
-                        id="office-end"
-                        type="time"
-                        value={officeHoursForm.endTime}
-                        onChange={(e) => setOfficeHoursForm((prev) => ({ ...prev, endTime: e.target.value }))}
-                      />
-                    </div>
-                  </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="office-end">End Time *</Label>
+                  <Input
+                    id="office-end"
+                    type="time"
+                    value={officeHoursForm.endTime}
+                    onChange={(e) => setOfficeHoursForm((prev) => ({ ...prev, endTime: e.target.value }))}
+                  />
+                </div>
+              </div>
+  
+              <div className="space-y-1.5">
+                <Label id="weekly-off-label">Weekly Off Days</Label>
+                <div role="group" aria-labelledby="weekly-off-label" className="flex flex-wrap gap-2">
+                  {WEEKDAYS.map((day) => {
+                    const isOff = officeHoursForm.weeklyOffDays.includes(day.value);
+                    return (
+                      <button
+                        key={day.value}
+                        type="button"
+                        aria-pressed={isOff}
+                        onClick={() => toggleWeeklyOffDay(day.value)}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                          isOff
+                            ? "border-destructive/25 bg-destructive/10 text-destructive"
+                            : "border-input bg-card text-muted-foreground hover:bg-accent"
+                        }`}
+                      >
+                        {day.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  These recur every week automatically. For one-off dates (national/company holidays), use
+                  the Holidays tab instead.
+                </p>
+              </div>
+  
+              <div className="flex justify-end pt-2">
+                <Button type="submit" disabled={isSavingOfficeHours}>
+                  {isSavingOfficeHours && <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />}
+                  Save Office Hours
+                </Button>
+              </div>
+            </form>
+          )}
+        </div>
+      )}
 
-                  <div className="space-y-1.5">
-                    <Label id="weekly-off-label">Weekly Off Days</Label>
-                    <div role="group" aria-labelledby="weekly-off-label" className="flex flex-wrap gap-2">
-                      {WEEKDAYS.map((day) => {
-                        const isOff = officeHoursForm.weeklyOffDays.includes(day.value);
-                        return (
-                          <button
-                            key={day.value}
-                            type="button"
-                            aria-pressed={isOff}
-                            onClick={() => toggleWeeklyOffDay(day.value)}
-                            className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                              isOff
-                                ? "border-destructive/25 bg-destructive/10 text-destructive"
-                                : "border-input bg-card text-muted-foreground hover:bg-accent"
-                            }`}
-                          >
-                            {day.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      These recur every week automatically. For one-off dates (national/company holidays), use
-                      the Holidays tab instead.
-                    </p>
-                  </div>
-
-                  <div className="flex justify-end pt-2">
-                    <Button type="submit" disabled={isSavingOfficeHours}>
-                      {isSavingOfficeHours && <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />}
-                      Save Office Hours
-                    </Button>
-                  </div>
-                </form>
-              )}
-            </TabsContent>
-
-            {/* ── Holidays tab ────────────────────────────────────────── */}
-            <TabsContent value="holidays" className="mt-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[100px]">Actions</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Holiday Name</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {holidaysLoading ? (
-                    <TableRow>
-                      <TableCell colSpan={3} className="py-10 text-center">
-                        <LoaderIcon className="mx-auto h-6 w-6 animate-spin text-primary" aria-label="Loading" />
-                      </TableCell>
-                    </TableRow>
-                  ) : holidays.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={3} className="py-10 text-center text-muted-foreground">
-                        No holidays added.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    holidays.map((holiday) => (
-                      <TableRow key={holiday.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Button variant="ghost" size="sm" onClick={() => openEditHolidayModal(holiday)} className={iconBtn} aria-label={`Edit ${holiday.holiday_name}`}>
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => setDeleteHolidayTarget(holiday)} className={`${iconBtn} text-destructive hover:bg-destructive/10 hover:text-destructive`} aria-label={`Delete ${holiday.holiday_name}`}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap font-medium">{formatHolidayDate(holiday.holiday_date)}</TableCell>
-                        <TableCell>{holiday.holiday_name}</TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </TabsContent>
-          </CardContent>
-        </Card>
-      </Tabs>
+      {activeTab === "holidays" && (
+        <ListTable list={holidayList} rowKey={(h) => h.id} emptyTitle="No holidays added." ariaLabel="Holidays" minWidth="min-w-0" />
+      )}
 
       {/* Create / Edit Stage Modal */}
       <Modal

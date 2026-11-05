@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { DownloadIcon, SaveIcon, ShareIcon } from "../../components/Icons";
-import image1 from "../../assests/WhatsApp Image 2025-05-14 at 4.11.43 PM.jpeg";
-import imageform from "../../assests/WhatsApp Image 2025-05-14 at 4.11.54 PM.jpeg";
+import { Download as DownloadIcon, Save as SaveIcon, Share2 as ShareIcon } from "lucide-react";
+import image1 from "../../assets/WhatsApp Image 2025-05-14 at 4.11.43 PM.jpeg";
+import imageform from "../../assets/WhatsApp Image 2025-05-14 at 4.11.54 PM.jpeg";
 import QuotationHeader from "./quotation-header";
 import QuotationForm from "./quotation-form";
 import QuotationPreview from "./quotation-preview";
@@ -12,7 +12,9 @@ import { getNextQuotationNumber } from "./quotation-service";
 import { useQuotationData } from "./use-quotation-data";
 import { supabase } from "../../lib/supabase/client";
 
-function MakeQuotation() {
+// `ticket` (optional): the Quotation-stage row this was opened from. It pre-fills the consignee
+// block and links the saved quotation to the ticket — the same fields the form's Lead No. picker sets.
+function MakeQuotation({ ticket = null }) {
   const [activeTab, setActiveTab] = useState("edit");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -103,6 +105,21 @@ function MakeQuotation() {
 
     initializeQuotationNumber();
   }, [setQuotationData]);
+
+  // Pre-fill from the ticket this was opened for (consignee state has no ticket source).
+  useEffect(() => {
+    if (!ticket?.ticketId) return;
+    setQuotationData((prev) => ({
+      ...prev,
+      companyName: prev.companyName || ticket.companyName || "",
+      consigneeName: ticket.companyName || prev.consigneeName,
+      consigneeAddress: ticket.siteAddress || prev.consigneeAddress,
+      consigneeContactName: ticket.clientName || prev.consigneeContactName,
+      consigneeContactNo: ticket.phoneNumber || prev.consigneeContactNo,
+      consigneeGSTIN: ticket.gstNo || prev.consigneeGSTIN,
+      linkedTicketUuid: ticket.ticketUuid || prev.linkedTicketUuid,
+    }));
+  }, [ticket, setQuotationData]);
 
   // Load quotation data from URL if in view mode
   useEffect(() => {

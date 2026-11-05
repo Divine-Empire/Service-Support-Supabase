@@ -24,27 +24,14 @@ import {
 import { Badge } from "../../components/ui/badge";
 import StatusBadge from "../../components/shared/StatusBadge";
 import { Checkbox } from "../../components/ui/checkbox";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../../components/ui/table";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "../../components/ui/tabs";
+import { ListToolbar, ListTable } from "../../components/shared";
+import { useClientList } from "../../hooks/useClientList";
 import { useToast } from "../../hooks/use-toast";
 import {
   Plus,
   Edit,
   Trash2,
   RefreshCw,
-  Users as UsersIcon,
   Eye,
   EyeOff,
   Lock,
@@ -69,6 +56,56 @@ const emptyForm = {
   role: "user",
   page: [],
 };
+
+const COLUMNS = [
+  { key: "actions", label: "Actions", fixed: true, cell: (user, { onEdit, onDelete }) => (
+    <div className="flex gap-1">
+      <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => onEdit(user)} aria-label={`Edit ${user.username}`}>
+        <Edit className="h-4 w-4 text-muted-foreground" />
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+        onClick={() => onDelete(user)}
+        aria-label={`Delete ${user.username}`}
+      >
+        <Trash2 className="h-4 w-4" />
+      </Button>
+    </div>
+  ) },
+  { key: "full_name", label: "Full Name", defaultVisible: true, strong: true, text: (u) => u.full_name },
+  { key: "username", label: "Username", defaultVisible: true, text: (u) => u.username },
+  { key: "password", label: "Password", defaultVisible: true, cell: (user, { visiblePasswords, onTogglePassword }) => (
+    <div className="flex items-center gap-1.5 font-mono text-sm">
+      <span>{visiblePasswords.has(user.uuid) ? user.password || "—" : "••••••••"}</span>
+      <button
+        type="button"
+        onClick={() => onTogglePassword(user.uuid)}
+        className="text-muted-foreground hover:text-foreground"
+        aria-label={visiblePasswords.has(user.uuid) ? "Hide password" : "Show password"}
+      >
+        {visiblePasswords.has(user.uuid) ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+      </button>
+    </div>
+  ) },
+  { key: "role", label: "Role", defaultVisible: true, cell: (user) => (
+    <StatusBadge tone={ROLE_TONE[user.role] || "neutral"} className="capitalize">{user.role}</StatusBadge>
+  ) },
+  { key: "page", label: "Page Access", defaultVisible: true, cell: (user) => (
+    <div className="flex flex-wrap gap-1">
+      {user.role === "admin" || (Array.isArray(user.page) && user.page.length >= ASSIGNABLE_PAGES.length) ? (
+        <StatusBadge tone="success">All Steps (Full Access)</StatusBadge>
+      ) : !Array.isArray(user.page) || user.page.length === 0 ? (
+        <span className="text-xs italic text-muted-foreground">No pages assigned</span>
+      ) : (
+        user.page.map((p) => (
+          <Badge key={p} variant="outline" className="bg-secondary text-xs font-normal text-foreground">{p.trim()}</Badge>
+        ))
+      )}
+    </div>
+  ) },
+];
 
 export default function Settings() {
   const [users, setUsers] = useState([]);
@@ -286,6 +323,16 @@ export default function Settings() {
     }
   };
 
+  const list = useClientList({
+    key: "settings-users",
+    data: { all: users },
+    loading: fetchLoading,
+    tabLabels: { all: "Users" },
+    searchKeys: ["full_name", "username", "role"],
+    sort: "none",
+    columns: COLUMNS,
+  });
+
   if (!adminCreds) {
     return (
       <div className="mx-auto max-w-md pt-10">
@@ -336,161 +383,33 @@ export default function Settings() {
   }
 
   return (
-    <div className="space-y-2">
-      <Tabs defaultValue="users">
-        <Card>
-          <CardHeader className="border-b py-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <TabsList>
-                <TabsTrigger value="users" className="gap-2 font-medium">
-                  <UsersIcon className="h-4 w-4" />
-                  User Management
-                </TabsTrigger>
-              </TabsList>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <Button onClick={() => fetchUsers()} variant="outline" size="sm">
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Refresh
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={openCreateModal}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add User
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-
-          <CardContent className="p-0">
-            <TabsContent value="users" className="mt-0">
-              {/* Sub-header */}
-              <div className="flex flex-col gap-2 border-b bg-secondary/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm text-muted-foreground">
-                  Manage application accounts, credentials, and stage access permissions
-                </p>
-                <Badge variant="outline" className="font-mono shrink-0">
-                  {users.length} Active Users
-                </Badge>
-              </div>
-
-              {fetchLoading ? (
-                <div className="flex items-center justify-center h-48">
-                  <RefreshCw className="h-6 w-6 animate-spin text-primary" />
-                  <span className="ml-2 text-muted-foreground">Loading users...</span>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[100px]">Actions</TableHead>
-                        <TableHead className="w-[180px]">Full Name</TableHead>
-                        <TableHead className="w-[150px]">Username</TableHead>
-                        <TableHead className="w-[160px]">Password</TableHead>
-                        <TableHead className="w-[120px]">Role</TableHead>
-                        <TableHead>Page Access</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {users.map((user) => (
-                        <TableRow key={user.uuid} className="transition-colors">
-                          <TableCell>
-                            <div className="flex gap-1">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-8 w-8 p-0"
-                                onClick={() => openEditModal(user)}
-                                aria-label={`Edit ${user.username}`}
-                              >
-                                <Edit className="h-4 w-4 text-muted-foreground" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                onClick={() => setDeleteTarget(user)}
-                                aria-label={`Delete ${user.username}`}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                          <TableCell className="whitespace-nowrap font-semibold text-foreground">
-                            {user.full_name}
-                          </TableCell>
-                          <TableCell className="text-foreground">
-                            {user.username}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1.5 font-mono text-sm">
-                              <span>
-                                {visiblePasswords.has(user.uuid)
-                                  ? user.password || "—"
-                                  : "••••••••"}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => togglePasswordVisibility(user.uuid)}
-                                className="text-muted-foreground hover:text-foreground"
-                                tabIndex={-1}
-                                aria-label={visiblePasswords.has(user.uuid) ? "Hide password" : "Show password"}
-                              >
-                                {visiblePasswords.has(user.uuid) ? (
-                                  <EyeOff className="h-3.5 w-3.5" />
-                                ) : (
-                                  <Eye className="h-3.5 w-3.5" />
-                                )}
-                              </button>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <StatusBadge tone={ROLE_TONE[user.role] || "neutral"} className="capitalize">
-                              {user.role}
-                            </StatusBadge>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex flex-wrap gap-1">
-                              {user.role === "admin" ||
-                              (Array.isArray(user.page) && user.page.length >= ASSIGNABLE_PAGES.length) ? (
-                                <StatusBadge tone="success">All Steps (Full Access)</StatusBadge>
-                              ) : !Array.isArray(user.page) || user.page.length === 0 ? (
-                                <span className="text-xs text-muted-foreground italic">
-                                  No pages assigned
-                                </span>
-                              ) : (
-                                user.page.map((p) => (
-                                  <Badge
-                                    key={p}
-                                    variant="outline"
-                                    className="bg-secondary text-xs font-normal text-foreground"
-                                  >
-                                    {p.trim()}
-                                  </Badge>
-                                ))
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                      {users.length === 0 && (
-                        <TableRow>
-                          <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
-                            No users found in database
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </TabsContent>
-          </CardContent>
-        </Card>
-      </Tabs>
+    <div className="space-y-3">
+      <ListToolbar
+        list={list}
+        searchPlaceholder="Search by name, username or role..."
+        showColumns={false}
+        actions={
+          <>
+            <Button onClick={() => fetchUsers()} variant="outline" className="h-9 gap-2">
+              <RefreshCw className="h-4 w-4" aria-hidden="true" />
+              Refresh
+            </Button>
+            <Button onClick={openCreateModal} className="h-9 gap-2">
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              Add User
+            </Button>
+          </>
+        }
+      />
+      <ListTable
+        list={list}
+        ctx={{ onEdit: openEditModal, onDelete: setDeleteTarget, visiblePasswords, onTogglePassword: togglePasswordVisibility }}
+        rowKey={(u) => u.uuid}
+        cardTitle={(u) => u.full_name}
+        emptyTitle="No users found in database"
+        ariaLabel="Users"
+        minWidth="min-w-[900px]"
+      />
 
       {/* DIALOG: User Create / Edit */}
       <Dialog open={isUserDialogOpen} onOpenChange={setIsUserDialogOpen}>

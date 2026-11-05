@@ -68,6 +68,16 @@ const COLUMNS = [
   { key: "videoCallRemarks", label: "Video Call Remarks", defaultVisible: true, tabs: ["history"], wrap: true, width: 200, text: (r) => r.remarks },
 ];
 
+// Last OTP time per ticket (localStorage). A missing, corrupt or non-object value reads as {}.
+const readOtpGenerations = () => {
+  try {
+    const v = JSON.parse(localStorage.getItem("lastOtpGenerations") || "{}");
+    return v && typeof v === "object" && !Array.isArray(v) ? v : {};
+  } catch {
+    return {};
+  }
+};
+
 export default function VideoCallSolution() {
   const { isAdmin } = useAuth();
   const [showSolutionModal, setShowSolutionModal] = useState(false);
@@ -605,9 +615,7 @@ export default function VideoCallSolution() {
       }));
 
       // Store in localStorage for persistence across page refreshes
-      const storedGenerations = JSON.parse(
-        localStorage.getItem("lastOtpGenerations") || "{}"
-      );
+      const storedGenerations = readOtpGenerations();
       storedGenerations[ticketId] = new Date().toISOString();
       localStorage.setItem(
         "lastOtpGenerations",
@@ -667,10 +675,7 @@ export default function VideoCallSolution() {
 
   // Load last OTP generation time from localStorage on component mount
   useEffect(() => {
-    const storedGenerations = localStorage.getItem("lastOtpGenerations");
-    if (storedGenerations) {
-      setLastOtpGenerations(JSON.parse(storedGenerations));
-    }
+    setLastOtpGenerations(readOtpGenerations());
   }, []);
 
   // "HH:MM" (24h, as stored in sss_tickets.video_call_time) -> "hh:mm AM/PM"

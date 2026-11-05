@@ -590,15 +590,19 @@ export default function Invoice() {
         // own form is submitted -- not just "planned"/pending), its
         // Enquiry Type is locked: changing it now could silently desync it
         // from calibration work that's already done.
-        const { data: calibrationRows, error: calibrationCheckError } = await supabase
-          .from("sss_calibration")
-          .select("id")
-          .eq("ticket_uuid", editingHistoryRow.ticketUuid)
-          .limit(1);
+        // Spare Dispatch is the other stage planned off the Enquiry Type, so it locks it too.
+        const [
+          { data: calibrationRows, error: calibrationCheckError },
+          { data: dispatchRows, error: dispatchCheckError },
+        ] = await Promise.all([
+          supabase.from("sss_calibration").select("id").eq("ticket_uuid", editingHistoryRow.ticketUuid).limit(1),
+          supabase.from("sss_spare_dispatch_details").select("ticket_uuid").eq("ticket_uuid", editingHistoryRow.ticketUuid).limit(1),
+        ]);
 
         if (calibrationCheckError) throw calibrationCheckError;
+        if (dispatchCheckError) throw dispatchCheckError;
 
-        if (calibrationRows && calibrationRows.length > 0) {
+        if ((calibrationRows && calibrationRows.length > 0) || (dispatchRows && dispatchRows.length > 0)) {
           enquiryTypeBlocked = true;
         } else {
           // Recompute from the SAME base time stagePlanning.js used at
@@ -642,7 +646,7 @@ export default function Invoice() {
         toast({
           title: "Enquiry Type not changed",
           description:
-            "This ticket has already been processed through the Calibration stage, so its Enquiry Type can no longer be changed. The rest of the invoice details were saved.",
+            "This ticket has already been processed through the Calibration or Spare Dispatch stage, so its Enquiry Type can no longer be changed. The rest of the invoice details were saved.",
           variant: "destructive",
         });
       } else {
