@@ -210,13 +210,13 @@ export const STAGE_PLANNING_RULES = {
     baseTime: (ctx) => ctx.tadaSubmittedAt,
   },
 
-  // OTP Verification -> CRM Verification (site-visit tickets). Skipped for
-  // older tickets whose invoice was already planned by the former Order
-  // Received stage (copied onto sss_follow_up.invoice_planned).
+  // -> CRM Verification, the gate in front of Invoice for EVERY ticket.
+  //   Site-visit tickets: base time is the OTP Verification submit (sss_otp_verification.crm_verification_planned).
+  //   Other orders: base time is the Order Received submit (sss_follow_up.crm_verification_planned).
   crmVerification: {
     tatStageName: "CRM Verification",
-    shouldPlan: (ctx) => !ctx.invoiceAlreadyPlanned,
-    baseTime: (ctx) => ctx.otpSubmittedAt,
+    shouldPlan: () => true,
+    baseTime: (ctx) => ctx.otpSubmittedAt || ctx.orderReceivedSubmittedAt,
   },
 
   // Order Received -> Invoice. Every Order Received submission moves on to
@@ -311,16 +311,5 @@ export async function computeStagePlanned(stageKey, ctx) {
 
 /** crm_verification_planned for an OTP Verification submit of this ticket (or null). */
 export async function computeCrmVerificationPlanned(ticketUuid, otpSubmittedAt) {
-  const { data, error } = await supabase
-    .from("sss_follow_up")
-    .select("id")
-    .eq("ticket_uuid", ticketUuid)
-    .not("invoice_planned", "is", null)
-    .limit(1);
-
-  if (error) throw error;
-  return computeStagePlanned("crmVerification", {
-    otpSubmittedAt,
-    invoiceAlreadyPlanned: (data || []).length > 0,
-  });
+  return computeStagePlanned("crmVerification", { otpSubmittedAt });
 }

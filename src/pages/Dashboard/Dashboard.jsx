@@ -138,7 +138,7 @@ export default function Dashboard() {
         supabase.from("sss_warranty_check").select("ticket_id, video_call_planned, quotation_planned"),
         supabase.from("sss_video_call").select("ticket_id, enquiry_solved, created_at").order("created_at", { ascending: true }),
         supabase.from("sss_quotation").select("ticket_id, follow_up_planned, basic_amount"),
-        supabase.from("sss_follow_up").select("ticket_id, stage, site_visit_planned, invoice_planned, what_did_customer_say, next_date_of_call, created_at").order("created_at", { ascending: true }),
+        supabase.from("sss_follow_up").select("ticket_id, stage, site_visit_planned, what_did_customer_say, next_date_of_call, created_at").order("created_at", { ascending: true }),
         supabase.from("sss_site_visit").select("ticket_id"),
         supabase.from("sss_crm_verification").select("ticket_id, invoice_planned"),
         supabase.from("sss_invoice").select("ticket_id"),
@@ -172,12 +172,8 @@ export default function Dashboard() {
       const quotationByTicket = new Map((quotationRows || []).map((q) => [q.ticket_id, q]));
       const siteVisitTicketIds = new Set((siteVisitRows || []).map((s) => s.ticket_id));
       const invoiceTicketIds = new Set((invoiceRows || []).map((i) => i.ticket_id));
-      // Invoice is planned on the follow-up Order Received row (non site-visit)
-      // or on sss_crm_verification (site-visit, after CRM Verification).
+      // Invoice is planned on sss_crm_verification (every ticket passes CRM Verification first).
       const invoicePlannedByTicket = new Map();
-      (followUpRows || []).forEach((f) => {
-        if (f.stage === "Order Received" && f.invoice_planned) invoicePlannedByTicket.set(f.ticket_id, f.invoice_planned);
-      });
       (crmVerificationRows || []).forEach((c) => {
         if (c.invoice_planned) invoicePlannedByTicket.set(c.ticket_id, c.invoice_planned);
       });
@@ -272,7 +268,7 @@ export default function Dashboard() {
           });
         }
 
-        // Invoice — gated by follow_up / crm_verification invoice_planned.
+        // Invoice — gated by crm_verification.invoice_planned.
         // Pending = no invoice row yet.
         const invoicePlanned = invoicePlannedByTicket.get(t.ticket_id);
         if (invoicePlanned && !invoiceTicketIds.has(t.ticket_id)) {

@@ -203,7 +203,7 @@ export default function FollowUpFormModal({ ticket, masterData, updatedByName, o
         // On hold: no next-stage planned until released from the Hold Orders tab.
         const planned =
           formData.holdOrder === "Yes"
-            ? { site_visit_planned: legacyRow?.site_visit_planned || null, invoice_planned: null }
+            ? { site_visit_planned: legacyRow?.site_visit_planned || null, crm_verification_planned: null }
             : await computeOrderPlanned({
                 serviceType: selectedTicket?.videoCallServiceType,
                 paymentMode: formData.paymentMode,

@@ -35,30 +35,16 @@ export default function Invoice() {
   const fetchData = async () => {
     setFetchLoading(true);
     try {
-      // Tickets ready for Invoice: invoice_planned set either on the
-      // follow-up 'Order Received' row (non site-visit orders) or on
-      // sss_crm_verification (site-visit orders, after CRM Verification).
-      const [
-        { data: followUpPlannedRows, error: followUpPlannedError },
-        { data: crmPlannedRows, error: crmPlannedError },
-      ] = await Promise.all([
-        supabase
-          .from("sss_follow_up")
-          .select("ticket_id")
-          .eq("stage", "Order Received")
-          .not("invoice_planned", "is", null),
-        supabase
-          .from("sss_crm_verification")
-          .select("ticket_id")
-          .not("invoice_planned", "is", null),
-      ]);
+      // Tickets ready for Invoice: the one gate is sss_crm_verification.invoice_planned
+      // (every ticket passes CRM Verification first).
+      const { data: crmPlannedRows, error: crmPlannedError } = await supabase
+        .from("sss_crm_verification")
+        .select("ticket_id")
+        .not("invoice_planned", "is", null);
 
-      if (followUpPlannedError) throw followUpPlannedError;
       if (crmPlannedError) throw crmPlannedError;
 
-      const ticketIds = [
-        ...new Set([...(followUpPlannedRows || []), ...(crmPlannedRows || [])].map((o) => o.ticket_id)),
-      ];
+      const ticketIds = [...new Set((crmPlannedRows || []).map((o) => o.ticket_id))];
 
       if (ticketIds.length === 0) {
         setPendingData([]);

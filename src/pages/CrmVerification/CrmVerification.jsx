@@ -8,9 +8,9 @@ import { useToast } from "../../hooks/use-toast";
 import { supabase } from "../../lib/supabase/client";
 import { computeStagePlanned } from "../../lib/supabase/stagePlanning";
 
-// CRM Verification — site-visit tickets after OTP Verification.
-//   Pending: sss_otp_verification.crm_verification_planned set and no
-//            sss_crm_verification row for the ticket yet.
+// CRM Verification — the gate in front of Invoice for every ticket.
+//   Pending: crm_verification_planned set (sss_otp_verification for site-visit tickets,
+//            sss_follow_up Order Received row for the rest) and no sss_crm_verification row yet.
 //   History: a sss_crm_verification row exists.
 // Submitting generates invoice_planned (Invoice TAT), except for FOC orders
 // (follow-up 'Order Received' row payment_mode = 'FOC'), which stop here.
@@ -86,15 +86,31 @@ export default function CrmVerification() {
     setFetchLoading(true);
     setLoadError(null);
     try {
-      const { data: otpRows, error: otpError } = await supabase
-        .from("sss_otp_verification")
-        .select("*")
-        .not("crm_verification_planned", "is", null)
-        .order("crm_verification_planned", { ascending: true });
+      // Two sources: site-visit tickets (sss_otp_verification.crm_verification_planned) and every
+      // other order (sss_follow_up Order Received row's crm_verification_planned). Tickets that
+      // already have a CRM row (incl. ones migrated from the old flow) are listed for History.
+      const [
+        { data: otpRows, error: otpError },
+        { data: fuPlannedRows, error: fuPlannedError },
+        { data: crmRows, error: crmError },
+      ] = await Promise.all([
+        supabase.from("sss_otp_verification").select("*").not("crm_verification_planned", "is", null),
+        supabase
+          .from("sss_follow_up")
+          .select("ticket_id, crm_verification_planned, created_at")
+          .eq("stage", "Order Received")
+          .not("crm_verification_planned", "is", null)
+          .order("created_at", { ascending: false }),
+        supabase.from("sss_crm_verification").select("*"),
+      ]);
 
       if (otpError) throw otpError;
+      if (fuPlannedError) throw fuPlannedError;
+      if (crmError) throw crmError;
 
-      const ticketIds = (otpRows || []).map((o) => o.ticket_id);
+      const ticketIds = [
+        ...new Set([...(otpRows || []), ...(fuPlannedRows || []), ...(crmRows || [])].map((r) => r.ticket_id)),
+      ];
       if (ticketIds.length === 0) {
         setPendingData([]);
         setHistoryData([]);
@@ -102,16 +118,11 @@ export default function CrmVerification() {
         return;
       }
 
-      const [
-        { data: ticketsData, error: ticketsError },
-        { data: crmRows, error: crmError },
-        { data: orderRows, error: orderError },
-      ] = await Promise.all([
+      const [{ data: ticketsData, error: ticketsError }, { data: orderRows, error: orderError }] = await Promise.all([
         supabase
           .from("sss_tickets")
           .select("ticket_id, uuid, client_name, company_name, phone_number, engineer_assign")
           .in("ticket_id", ticketIds),
-        supabase.from("sss_crm_verification").select("*").in("ticket_id", ticketIds),
         supabase
           .from("sss_follow_up")
           .select("ticket_id, payment_mode")
@@ -120,21 +131,28 @@ export default function CrmVerification() {
       ]);
 
       if (ticketsError) throw ticketsError;
-      if (crmError) throw crmError;
       if (orderError) throw orderError;
 
       const ticketByTicket = new Map((ticketsData || []).map((t) => [t.ticket_id, t]));
       const crmByTicket = new Map((crmRows || []).map((c) => [c.ticket_id, c]));
+      const otpByTicket = new Map((otpRows || []).map((o) => [o.ticket_id, o]));
+      const fuPlannedByTicket = new Map();
+      (fuPlannedRows || []).forEach((f) => {
+        if (!fuPlannedByTicket.has(f.ticket_id)) fuPlannedByTicket.set(f.ticket_id, f);
+      });
       const paymentModeByTicket = new Map((orderRows || []).map((o) => [o.ticket_id, o.payment_mode]));
 
       const pending = [];
       const history = [];
 
-      (otpRows || []).forEach((o) => {
-        const t = ticketByTicket.get(o.ticket_id) || {};
+      ticketIds.forEach((ticketId) => {
+        const t = ticketByTicket.get(ticketId);
+        if (!t) return;
+        // o = site-visit (OTP) details; blank for orders that never went on a site visit.
+        const o = otpByTicket.get(ticketId) || {};
         const row = {
-          ticketId: o.ticket_id,
-          ticketUuid: o.ticket_uuid,
+          ticketId,
+          ticketUuid: o.ticket_uuid || t.uuid,
           clientName: t.client_name || "",
           companyName: t.company_name || "",
           phoneNumber: t.phone_number || "",
@@ -145,11 +163,11 @@ export default function CrmVerification() {
           videoLink: o.video_link || "",
           locallyPurchasedSpares: o.locally_purchased_spares || "",
           remarks: o.remarks || "",
-          planned: o.crm_verification_planned,
-          paymentMode: paymentModeByTicket.get(o.ticket_id) || "",
+          planned: o.crm_verification_planned || fuPlannedByTicket.get(ticketId)?.crm_verification_planned || "",
+          paymentMode: paymentModeByTicket.get(ticketId) || "",
         };
 
-        const crm = crmByTicket.get(o.ticket_id);
+        const crm = crmByTicket.get(ticketId);
         if (crm) {
           history.push({
             ...row,
@@ -163,8 +181,11 @@ export default function CrmVerification() {
         }
       });
 
+      pending.sort((x, y) => new Date(x.planned) - new Date(y.planned));
+      history.sort((x, y) => new Date(y.verifiedAt) - new Date(x.verifiedAt));
+
       setPendingData(pending);
-      setHistoryData(history.reverse());
+      setHistoryData(history);
       setSelectedIds([]);
     } catch (error) {
       console.error("Error fetching data:", error);

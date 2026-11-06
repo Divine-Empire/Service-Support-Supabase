@@ -17,19 +17,19 @@ export async function uploadFollowUpFile(ticketId, file) {
 
 // Next stage once an order is confirmed and not on hold:
 //   Site Visit ticket -> site_visit_planned (Site Visit -> TADA -> OTP -> CRM -> Invoice)
-//   FOC               -> nothing (no invoice)
-//   anything else     -> invoice_planned (Invoice TAT)
+//   FOC               -> nothing (closes at Order Received)
+//   anything else     -> crm_verification_planned (CRM Verification -> Invoice; every ticket passes CRM)
 // existingSiteVisitPlanned keeps a legacy row's earlier stamp.
 export const computeOrderPlanned = async ({ serviceType, paymentMode, baseTime, existingSiteVisitPlanned }) => {
   if (serviceType === "Site Visit") {
     return {
       site_visit_planned: existingSiteVisitPlanned || baseTime.toISOString(),
-      invoice_planned: null,
+      crm_verification_planned: null,
     };
   }
-  if (paymentMode === "FOC") return { site_visit_planned: null, invoice_planned: null };
+  if (paymentMode === "FOC") return { site_visit_planned: null, crm_verification_planned: null };
   return {
     site_visit_planned: null,
-    invoice_planned: await computeStagePlanned("invoice", { orderReceivedSubmittedAt: baseTime }),
+    crm_verification_planned: await computeStagePlanned("crmVerification", { orderReceivedSubmittedAt: baseTime }),
   };
 };
