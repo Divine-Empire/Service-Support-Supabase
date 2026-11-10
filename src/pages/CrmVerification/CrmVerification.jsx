@@ -59,6 +59,16 @@ const COLUMNS = [
   { key: "clientName", label: "Client Name", defaultVisible: true, text: (r) => r.clientName },
   { key: "companyName", label: "Company Name", defaultVisible: true, wrap: true, width: 180, text: (r) => r.companyName },
   { key: "engineerAssign", label: "Engineer Name", defaultVisible: true, text: (r) => r.engineerAssign },
+  { key: "quotationNo", label: "Quotation No.", defaultVisible: true, text: (r) => r.quotationNo },
+  { key: "quotationCopy", label: "Quotation Copy", defaultVisible: true, cell: (r) => fileLink(r.quotationPdfLink) },
+  { key: "acceptanceCopy", label: "Acceptance Copy", defaultVisible: true, cell: (r) => fileLink(r.acceptanceCopy) },
+  { key: "paymentTerm", label: "Payment Term", defaultVisible: true, text: (r) => r.paymentTerm },
+  { key: "acceptanceVia", label: "Acceptance Via", defaultVisible: true, text: (r) => r.acceptanceVia },
+  { key: "paymentMode", label: "Payment Mode", defaultVisible: true, text: (r) => r.paymentMode },
+  { key: "advancePayment", label: "Advance Payment", defaultVisible: false, cell: (r) => fileLink(r.advancePaymentAttachment) },
+  { key: "seniorApproval", label: "Senior Approval", defaultVisible: false, cell: (r) => fileLink(r.seniorApproval) },
+  { key: "seniorApprovedBy", label: "Senior Approved By", defaultVisible: false, text: (r) => r.seniorApprovedBy },
+  { key: "holdOrder", label: "Hold Order", defaultVisible: false, text: (r) => r.holdOrder },
   { key: "siteVisitDate", label: "Site Visit Date", defaultVisible: true, text: (r) => formatDate(r.siteVisitDate) },
   { key: "serviceReportFile", label: "Service Report", defaultVisible: true, cell: (r) => fileLink(r.serviceReportFile) },
   { key: "quotationReceiveFile", label: "Quotation Receive", defaultVisible: true, cell: (r) => fileLink(r.quotationReceiveFile) },
@@ -118,20 +128,27 @@ export default function CrmVerification() {
         return;
       }
 
-      const [{ data: ticketsData, error: ticketsError }, { data: orderRows, error: orderError }] = await Promise.all([
+      const [
+        { data: ticketsData, error: ticketsError },
+        { data: orderRows, error: orderError },
+        { data: quotationRows, error: quotationError },
+      ] = await Promise.all([
         supabase
           .from("sss_tickets")
           .select("ticket_id, uuid, client_name, company_name, phone_number, engineer_assign")
           .in("ticket_id", ticketIds),
         supabase
           .from("sss_follow_up")
-          .select("ticket_id, payment_mode")
+          .select("ticket_id, client_attachment_url, payment_term, acceptance_via, payment_mode, advance_payment_attachment, senior_approval, senior_approved_by, hold_order, created_at")
           .eq("stage", "Order Received")
-          .in("ticket_id", ticketIds),
+          .in("ticket_id", ticketIds)
+          .order("created_at", { ascending: false }),
+        supabase.from("sss_quotation").select("ticket_id, quotation_no, quotation_pdf_link").in("ticket_id", ticketIds),
       ]);
 
       if (ticketsError) throw ticketsError;
       if (orderError) throw orderError;
+      if (quotationError) throw quotationError;
 
       const ticketByTicket = new Map((ticketsData || []).map((t) => [t.ticket_id, t]));
       const crmByTicket = new Map((crmRows || []).map((c) => [c.ticket_id, c]));
@@ -140,7 +157,12 @@ export default function CrmVerification() {
       (fuPlannedRows || []).forEach((f) => {
         if (!fuPlannedByTicket.has(f.ticket_id)) fuPlannedByTicket.set(f.ticket_id, f);
       });
-      const paymentModeByTicket = new Map((orderRows || []).map((o) => [o.ticket_id, o.payment_mode]));
+      // Latest Order Received row per ticket (rows arrive newest first).
+      const orderByTicket = new Map();
+      (orderRows || []).forEach((o) => {
+        if (!orderByTicket.has(o.ticket_id)) orderByTicket.set(o.ticket_id, o);
+      });
+      const quotationByTicket = new Map((quotationRows || []).map((q) => [q.ticket_id, q]));
 
       const pending = [];
       const history = [];
@@ -150,6 +172,8 @@ export default function CrmVerification() {
         if (!t) return;
         // o = site-visit (OTP) details; blank for orders that never went on a site visit.
         const o = otpByTicket.get(ticketId) || {};
+        const ord = orderByTicket.get(ticketId) || {};
+        const q = quotationByTicket.get(ticketId) || {};
         const row = {
           ticketId,
           ticketUuid: o.ticket_uuid || t.uuid,
@@ -164,7 +188,16 @@ export default function CrmVerification() {
           locallyPurchasedSpares: o.locally_purchased_spares || "",
           remarks: o.remarks || "",
           planned: o.crm_verification_planned || fuPlannedByTicket.get(ticketId)?.crm_verification_planned || "",
-          paymentMode: paymentModeByTicket.get(ticketId) || "",
+          quotationNo: q.quotation_no || "",
+          quotationPdfLink: q.quotation_pdf_link || "",
+          acceptanceCopy: ord.client_attachment_url || "",
+          paymentTerm: ord.payment_term || "",
+          acceptanceVia: ord.acceptance_via || "",
+          paymentMode: ord.payment_mode || "",
+          advancePaymentAttachment: ord.advance_payment_attachment || "",
+          seniorApproval: ord.senior_approval || "",
+          seniorApprovedBy: ord.senior_approved_by || "",
+          holdOrder: ord.hold_order || "",
         };
 
         const crm = crmByTicket.get(ticketId);
@@ -211,7 +244,7 @@ export default function CrmVerification() {
     loading: fetchLoading,
     error: loadError,
     onRetry: fetchData,
-    searchKeys: ["ticketId", "clientName", "companyName", "engineerAssign", "phoneNumber"],
+    searchKeys: ["ticketId", "clientName", "companyName", "engineerAssign", "phoneNumber", "quotationNo"],
     filters: [
       { key: "engineer", label: "Engineer", allLabel: "All Engineers", get: (r) => r.engineerAssign },
       { key: "payment", label: "Payment Mode", allLabel: "All Payment Modes", get: (r) => r.paymentMode },
