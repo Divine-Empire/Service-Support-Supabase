@@ -236,6 +236,42 @@ const QuotationForm = ({
     fetchLeadNumbers()
   }, [])
 
+  const toLeadEntry = (row) => ({
+    ticketUuid: row.uuid,
+    ticketId: row.ticket_id,
+    companyName: row.company_name || "",
+    address: row.site_address || "",
+    contactName: row.client_name || "",
+    contactNo: row.phone_number || "",
+    gstin: row.gst_no || "",
+  })
+
+  // The initial list only holds the 300 newest tickets, so older ones (e.g. TN-1054) are looked up
+  // in the DB while typing / on select and merged into the suggestions.
+  const searchLeadTickets = async (term) => {
+    const trimmed = String(term || "").trim()
+    if (trimmed.length < 2) return {}
+    try {
+      const { data, error } = await supabase
+        .from("sss_tickets")
+        .select("ticket_id, uuid, company_name, site_address, gst_no, client_name, phone_number")
+        .ilike("ticket_id", `%${trimmed.replace(/[%_]/g, "")}%`)
+        .order("created_at", { ascending: false })
+        .limit(25)
+      if (error) throw error
+      const found = {}
+      ;(data || []).forEach((row) => {
+        if (row.ticket_id) found[row.ticket_id] = toLeadEntry(row)
+      })
+      setLeadNoData((prev) => ({ ...found, ...prev }))
+      setLeadNoOptions((prev) => [...prev, ...Object.keys(found).filter((k) => !prev.includes(k))])
+      return found
+    } catch (error) {
+      console.error("Error searching tickets for Lead No.:", error)
+      return {}
+    }
+  }
+
   const handleSpecialDiscountChangeWrapper = (value) => {
     const discount = Number(value) || 0
     setSpecialDiscount(discount)
@@ -307,13 +343,18 @@ const QuotationForm = ({
 
   // NEW: Handle lead number (TN-xxx ticket) selection and autofill
   const handleLeadNoSelect = async (selectedLeadNo) => {
-    if (!selectedLeadNo || selectedLeadNo === "Select Lead No." || !leadNoData[selectedLeadNo]) {
-      return
+    if (!selectedLeadNo || selectedLeadNo === "Select Lead No.") return
+
+    let leadData = leadNoData[selectedLeadNo]
+    if (!leadData) {
+      const found = await searchLeadTickets(selectedLeadNo)
+      const key = Object.keys(found).find((k) => k.toLowerCase() === String(selectedLeadNo).trim().toLowerCase())
+      leadData = key ? found[key] : undefined
     }
+    if (!leadData) return
 
     setIsItemsLoading(true)
 
-    const leadData = leadNoData[selectedLeadNo]
     const companyName = leadData.companyName
 
     // Fill consignee details from the ticket

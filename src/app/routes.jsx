@@ -21,6 +21,7 @@ const SiteVisitOTPVerification = lazy(() => import("../pages/SiteVisitOTPVerific
 const CrmVerification = lazy(() => import("../pages/CrmVerification/CrmVerification"));
 const Invoice = lazy(() => import("../pages/Invoice/Invoice"));
 const Calibration = lazy(() => import("../pages/Calibration/Calibration"));
+const CalibrationWhatsapp = lazy(() => import("../pages/CalibrationWhatsapp/CalibrationWhatsapp"));
 const CalibrationCertificate = lazy(() => import("../pages/CalibrationCertificate/CalibrationCertificate"));
 const SpareDispatchDetails = lazy(() => import("../pages/SpareDispatchDetails/SpareDispatchDetails"));
 const CancelledTickets = lazy(() => import("../pages/Cancelled_Tickets/Cancelled_Tickets"));
@@ -65,6 +66,7 @@ export default function AppRoutes() {
         <Route path="crm-verification" element={<CrmVerification />} />
         <Route path="invoice" element={<Invoice />} />
         <Route path="calibration" element={<Calibration />} />
+        <Route path="whatsapp" element={admin(<CalibrationWhatsapp />)} />
         <Route path="calibrationCertificate" element={<CalibrationCertificate />} />
         <Route path="sparedispatch" element={<SpareDispatchDetails />} />
         <Route path="cancel" element={<CancelledTickets />} />

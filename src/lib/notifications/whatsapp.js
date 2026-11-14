@@ -341,3 +341,32 @@ export async function sendVideoCallOtpResendNotification({
     return { success: false, error: error.message || "Failed to send video-call OTP resend WhatsApp notification" };
   }
 }
+
+// Sends the "nabl_renewal_reminder" WhatsApp template (calibration due / overdue) for the given
+// sss_calibration_whatsapp rows, to BOTH the soft-copy person and the client of each row. Called only from
+// the WhatsApp stage's "Send Reminder" modal. The Edge Function decides everything else from the DB (days to due,
+// who was already messaged today, the engineer's number) and records each receiver's status itself.
+// { dryRun: true } returns what would be sent without sending. Never throws.
+//
+// Resolves to { success, error?, sent, failed, results: [{ id, ticketId, skipped?, person?, client? }] } where
+// person / client are { status: "sent" | "failed" | "skipped", error? }.
+export async function sendCalibrationReminders({ rowIds, engineerName, dryRun = false }) {
+  try {
+    const { data, error } = await supabase.functions.invoke("sss-send-calibration-reminder", {
+      body: { rowIds, engineerName, dryRun },
+    });
+
+    if (error) {
+      console.error("Calibration reminder failed:", error);
+      return { success: false, error: error.message || "Failed to send calibration reminders", results: [] };
+    }
+    if (!data?.success) {
+      console.error("Calibration reminder failed:", data?.error);
+      return { success: false, error: data?.error || "Failed to send calibration reminders", results: [] };
+    }
+    return data;
+  } catch (error) {
+    console.error("Calibration reminder failed:", error);
+    return { success: false, error: error.message || "Failed to send calibration reminders", results: [] };
+  }
+}

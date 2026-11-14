@@ -29,8 +29,11 @@ const COLUMNS = [
   { key: "companyName", label: "Company Name", defaultVisible: true, text: (r) => r.companyName },
   { key: "quotationNo", label: "Quotation Number", defaultVisible: true, strong: true, text: (r) => r.quotationNo },
   { key: "quotationCopy", label: "Quotation Copy", defaultVisible: true, cell: (r) => linkCell(r.quotationPdfLink) },
-  { key: "attachmentService", label: "Attachment (Service)", defaultVisible: false, tabs: ["pending"], cell: (r) => linkCell(r.attachmentService) },
-  { key: "attachmentNabl", label: "Attachment (NABL)", defaultVisible: false, tabs: ["pending"], cell: (r) => linkCell(r.attachmentNabl) },
+  { key: "invoicePostedBy", label: "Invoice Posted By", defaultVisible: true, tabs: ["history"], text: (r) => r.invoicePostedBy },
+  { key: "invoiceNoNabl", label: "Invoice No (NABL)", defaultVisible: true, tabs: ["history"], text: (r) => r.invoiceNoNabl },
+  { key: "invoiceNoService", label: "Invoice No (SERVICE)", defaultVisible: true, tabs: ["history"], text: (r) => r.invoiceNoService },
+  { key: "attachmentService", label: "Attachment Service", defaultVisible: true, cell: (r) => linkCell(r.attachmentService) },
+  { key: "attachmentNabl", label: "Attachment NABL", defaultVisible: true, cell: (r) => linkCell(r.attachmentNabl) },
   { key: "invoiceNo", label: "Invoice Number", defaultVisible: true, strong: true, tabs: ["history"], text: (r) => r.invoiceNo },
   { key: "invoiceCopy", label: "Invoice Copy", defaultVisible: true, tabs: ["history"], cell: (r) => linkCell(r.invoiceCopy) },
   { key: "invoiceDate", label: "Invoice Date", defaultVisible: true, text: (r) => formatDate(r.invoiceDate) },
@@ -116,7 +119,7 @@ export default function Calibration() {
 
       const { data: invoiceFullRows } = await supabase
         .from("sss_invoice")
-        .select("ticket_id, invoice_date, invoice_no_nabl, invoice_no_service, invoice_no_spare, attachment_nabl, attachment_service, attachment_spare, calibration_planned, calibration_status, calibration_status_updated_at")
+        .select("ticket_id, invoice_posted_by, invoice_date, invoice_no_nabl, invoice_no_service, invoice_no_spare, attachment_nabl, attachment_service, attachment_spare, calibration_planned, calibration_status, calibration_status_updated_at")
         .in("ticket_id", ticketIds);
 
       const calibrationByTicket = new Map((calibrationRows || []).map((c) => [c.ticket_id, c]));
@@ -146,6 +149,7 @@ export default function Calibration() {
           calibrationStatus: inv?.calibration_status || "",
           calibrationStatusUpdatedAt: inv?.calibration_status_updated_at || "",
           invoiceDate: inv?.invoice_date || "",
+          invoicePostedBy: inv?.invoice_posted_by || "",
           invoiceNo: inv?.invoice_no_nabl || inv?.invoice_no_service || inv?.invoice_no_spare || "",
           invoiceCopy: inv?.attachment_nabl || inv?.attachment_service || inv?.attachment_spare || "",
           // Shown as separate columns on the Pending tab (NABL/Service only —
