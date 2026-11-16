@@ -530,6 +530,15 @@ function MakeQuotation({ ticket = null }) {
       // Computing it afterwards made every revision's PDF show the PREVIOUS
       // revision's number (file -06 contained "Quo No: ...-05").
       let finalQuotationNo = quotationData.quotationNo;
+      // The number shown on the form was generated when the page opened; someone else may have
+      // used it since. For a brand-new quotation take the next free number again right now.
+      if (!(isRevising && selectedQuotation)) {
+        const freshNo = await getNextQuotationNumber();
+        if (freshNo !== finalQuotationNo) {
+          finalQuotationNo = freshNo;
+          setQuotationData((prev) => ({ ...prev, quotationNo: freshNo }));
+        }
+      }
       // Re-read straight from the root row being revised, rather than
       // trusting quotationData.linkedTicketUuid — that's only as fresh as
       // whatever handleQuotationSelect populated it with when "Revise" was

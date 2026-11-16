@@ -25,12 +25,22 @@ export const getNextQuotationNumber = async (companyPrefix = "OT") => {
   const prefix = `${companyPrefix}-${currentFY}-`
 
   try {
-    const { data, error } = await supabase
-      .from("sss_make_quotation")
-      .select("quotation_no")
-      .like("quotation_no", `${prefix}%`)
-
-    if (error) throw error
+    // Supabase returns at most 1000 rows per request, so page through ALL matching
+    // numbers; otherwise the max is taken from a truncated set and an already used
+    // number gets handed out again.
+    const data = []
+    const PAGE = 1000
+    for (let from = 0; ; from += PAGE) {
+      const { data: page, error } = await supabase
+        .from("sss_make_quotation")
+        .select("quotation_no")
+        .like("quotation_no", `${prefix}%`)
+        .order("quotation_no", { ascending: true })
+        .range(from, from + PAGE - 1)
+      if (error) throw error
+      data.push(...(page || []))
+      if (!page || page.length < PAGE) break
+    }
 
     // Only consider base numbers (no "-01"/"-02" revision suffix) when
     // finding the highest sequence used so far for this prefix+year.
