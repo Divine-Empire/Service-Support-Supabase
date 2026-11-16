@@ -4,6 +4,7 @@ import { useClientList } from "../../hooks/useClientList";
 import useAuth from "../../hooks/useAuth";
 import { useToast } from "../../hooks/use-toast";
 import { supabase } from "../../lib/supabase/client";
+import { fetchEquipmentOptions, formatEquipments } from "../../lib/supabase/equipment";
 import { COLUMNS } from "./columns";
 import TadaFormModal from "./TadaFormModal";
 import RescheduleModal from "./RescheduleModal";
@@ -75,6 +76,8 @@ export default function TADA() {
 
       const quotationByTicket = new Map((quotationRows || []).map((q) => [q.ticket_id, q]));
 
+      const equipmentLabels = new Map((await fetchEquipmentOptions()).map((o) => [o.id, o.label]));
+
       const { data: tadaRows, error: tadaError } = await supabase
         .from("sss_tada")
         .select("*")
@@ -129,6 +132,7 @@ export default function TADA() {
             amount: tada.amount || "",
             expectedCompletionDate: tada.expected_completion_date || "",
             expectedCompletionTime: tada.expected_completion_time || "",
+            equipmentsNeeded: formatEquipments(tada.equipments_needed, equipmentLabels),
             otpVerificationPlanned: tada.otp_verification_planned || "",
             delayMinutes: tada.delay_minutes,
           });

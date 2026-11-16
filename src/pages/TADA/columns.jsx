@@ -68,6 +68,7 @@ export const COLUMNS = [
   { key: "returnDate", label: "Return Date", defaultVisible: true, tabs: ["history"], text: (r) => formatDate(r.returnDate) },
   { key: "destinationInput", label: "Destination", defaultVisible: true, tabs: ["history"], text: (r) => r.destinationInput },
   { key: "purposeOfTravel", label: "Purpose", defaultVisible: false, tabs: ["history"], wrap: true, width: 200, text: (r) => r.purposeOfTravel },
+  { key: "equipmentsNeeded", label: "Equipments Needed", defaultVisible: true, tabs: ["history"], wrap: true, width: 260, text: (r) => r.equipmentsNeeded },
   { key: "amount", label: "Amount", defaultVisible: true, tabs: ["history"], text: (r) => `₹${r.amount || "0"}` },
   { key: "otpVerificationPlanned", label: "OTP Verification Planned", defaultVisible: true, tabs: ["history"], text: (r) =>
     r.otpVerificationPlanned ? new Date(r.otpVerificationPlanned).toLocaleString("en-IN") : "" },

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -8,6 +8,8 @@ import { Loader2Icon } from "lucide-react";
 import { useToast } from "../../hooks/use-toast";
 import { supabase } from "../../lib/supabase/client";
 import { sendTadaApprovalEmail } from "../../lib/notifications/email";
+import { fetchEquipmentOptions, fetchEquipmentConflicts } from "../../lib/supabase/equipment";
+import EquipmentSelect from "./EquipmentSelect";
 
 const formatInputDate = (dateStr) => {
   if (!dateStr) return "";
@@ -74,6 +76,7 @@ export default function TadaFormModal({ ticket: selectedTicket, onClose, onSaved
       amount: "",
       expectedCompletionDate: "",
       expectedCompletionTime: "",
+      equipmentsNeeded: [],
       // Accounts/approval-email fields — NOT yet wired into handleSubmit's
       // insert payload (sss_tada has no columns for these yet). UI-only
       // pending approval of the layout; see the Senior Approval feature plan.
@@ -83,6 +86,34 @@ export default function TadaFormModal({ ticket: selectedTicket, onClose, onSaved
       balanceAmount: "",
     }
   ));
+
+  const [equipmentOptions, setEquipmentOptions] = useState([]);
+  const [equipmentConflicts, setEquipmentConflicts] = useState([]);
+
+  useEffect(() => {
+    fetchEquipmentOptions()
+      .then(setEquipmentOptions)
+      .catch((e) => {
+        console.error("Error loading equipment list:", e);
+        toast({ title: "Error", description: "Failed to load the equipment list", variant: "destructive" });
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Warn (never block) when another ticket already holds a chosen item in this travel window.
+  useEffect(() => {
+    if (formData.equipmentsNeeded.length === 0 || !formData.travelDate) {
+      setEquipmentConflicts([]);
+      return;
+    }
+    let cancelled = false;
+    fetchEquipmentConflicts(formData.equipmentsNeeded, formData.travelDate, formData.returnDate, ticket.ticketUuid)
+      .then((c) => !cancelled && setEquipmentConflicts(c))
+      .catch((e) => console.error("Error checking equipment reservations:", e));
+    return () => {
+      cancelled = true;
+    };
+  }, [formData.equipmentsNeeded, formData.travelDate, formData.returnDate, ticket.ticketUuid]);
 
   const handleInputChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -97,6 +128,15 @@ export default function TadaFormModal({ ticket: selectedTicket, onClose, onSaved
       toast({
         title: "Error",
         description: "Please select Expected Completion Time",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (formData.equipmentsNeeded.length === 0) {
+      toast({
+        title: "Error",
+        description: "Please select at least one Equipment",
         variant: "destructive",
       });
       return;
@@ -139,6 +179,7 @@ export default function TadaFormModal({ ticket: selectedTicket, onClose, onSaved
         amount: formData.amount || null,
         expected_completion_date: formData.expectedCompletionDate || null,
         expected_completion_time: formData.expectedCompletionTime || null,
+        equipments_needed: formData.equipmentsNeeded,
         previous_advance_date: formData.previousAdvanceDate || null,
         previous_advance_settlement_date: formData.previousAdvanceSettlementDate || null,
         previous_advance_balance: formData.previousAdvanceBalance || null,
@@ -305,6 +346,16 @@ export default function TadaFormModal({ ticket: selectedTicket, onClose, onSaved
                     onChange={(val) => handleInputChange("expectedCompletionTime", val)}
                   />
                 </div>
+              </div>
+
+              <div className="space-y-1 md:col-span-2">
+                <Label className="text-muted-foreground">Equipments Needed *</Label>
+                <EquipmentSelect
+                  options={equipmentOptions}
+                  value={formData.equipmentsNeeded}
+                  onChange={(ids) => handleInputChange("equipmentsNeeded", ids)}
+                  conflicts={equipmentConflicts}
+                />
               </div>
 
               <div className="space-y-1 md:col-span-2">
