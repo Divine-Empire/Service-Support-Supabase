@@ -19,10 +19,14 @@ export const hasWhatsappNumber = (raw) => {
 
 const NUMBER_FIELD = { person: "contactNumber", client: "clientPhone" };
 
+// The customer's latest button reply is Renewed / Not Interested: no reminders until they answer Interested again.
+export const isPaused = (row, who) => ["Renewed", "Not Interested"].includes(row[`${who}Response`]);
+
 // Does this receiver (person | client) still need today's reminder? True when they have a number and
 // have not already been sent a message successfully today.
 export const receiverPending = (row, who) => {
   if (!hasWhatsappNumber(row[NUMBER_FIELD[who]])) return false;
+  if (isPaused(row, who)) return false;
   const sentAt = row[`${who}MsgSentAt`];
   const sentToday = row[`${who}MsgStatus`] === "sent" && sentAt && istDate(sentAt) === istDate(new Date());
   return !sentToday;
@@ -59,4 +63,8 @@ export const fromDb = (r) => ({
   clientMsgStatus: r.client_msg_status || "",
   clientMsgError: r.client_msg_error || "",
   clientMsgSentAt: r.client_msg_sent_at || "",
+  personResponse: r.person_response || "",
+  personRespondedAt: r.person_responded_at || "",
+  clientResponse: r.client_response || "",
+  clientRespondedAt: r.client_responded_at || "",
 });

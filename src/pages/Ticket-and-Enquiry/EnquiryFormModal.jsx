@@ -338,6 +338,7 @@ export default function EnquiryFormModal({ ticket, masterData, companyDetails, o
           enquiry_item_list: enquiryItemListUrl,
           remarks: newEnquiryData.remarks || "",
           updated_at: new Date().toISOString(),
+          updated_by: userName || null,
         };
 
         const { error } = await supabase

@@ -31,6 +31,19 @@ const statusCell = (row, who) => {
   );
 };
 
+// The receiver's latest button reply on the reminder. Renewed / Not Interested pause the reminders.
+const responseCell = (row, who) => {
+  const response = row[`${who}Response`];
+  if (!response) return null;
+  const tone = response === "Interested" ? "success" : response === "Renewed" ? "info" : "danger";
+  const paused = response !== "Interested";
+  return (
+    <span title={`Replied ${formatDateTimeShort(row[`${who}RespondedAt`])}${paused ? " - reminders paused until they reply Interested" : ""}`}>
+      <StatusBadge tone={tone}>{response}</StatusBadge>
+    </span>
+  );
+};
+
 const dueDaysCell = (r) => {
   if (r.calibDueDays === null || r.calibDueDays === undefined) return null;
   const d = r.calibDueDays;
@@ -61,6 +74,8 @@ const COLUMNS = [
   { key: "lastMessageAt", label: "Last Message At", defaultVisible: true, text: (r) => formatDateTimeShort(r.lastMessageAt) },
   { key: "personStatus", label: "Person Message", defaultVisible: true, cell: (r) => statusCell(r, "person"), text: (r) => r.personMsgStatus },
   { key: "clientStatus", label: "Client Message", defaultVisible: true, cell: (r) => statusCell(r, "client"), text: (r) => r.clientMsgStatus },
+  { key: "personResponse", label: "Person Response", defaultVisible: true, cell: (r) => responseCell(r, "person"), text: (r) => r.personResponse },
+  { key: "clientResponse", label: "Client Response", defaultVisible: true, cell: (r) => responseCell(r, "client"), text: (r) => r.clientResponse },
   { key: "clientName", label: "Client Name", defaultVisible: false, text: (r) => r.clientName },
   { key: "clientPhone", label: "Client Phone", defaultVisible: false, text: (r) => r.clientPhone },
   { key: "engineerName", label: "Engineer Name", defaultVisible: false, text: (r) => r.engineerName },
