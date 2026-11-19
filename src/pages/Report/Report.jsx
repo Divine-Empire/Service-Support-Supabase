@@ -15,9 +15,11 @@ import {
 } from "../../components/ui/table";
 import { supabase } from "../../lib/supabase/client";
 import { exportCsv } from "../../lib/exportCsv";
+import { fetchEquipmentOptions } from "../../lib/supabase/equipment";
 import {
   CATS,
   defaultRange,
+  fetchEquipmentReport,
   fetchFollowUpReport,
   fetchQuotationReport,
   fetchSiteVisitSummary,
@@ -63,6 +65,7 @@ const TABS = [
   { id: "site", label: "Site Visits" },
   { id: "quotation", label: "Quotations" },
   { id: "followup", label: "Follow-Up" },
+  { id: "equipments", label: "Equipments" },
 ];
 
 function DateRange({ range, setRange, onReset }) {
@@ -609,6 +612,144 @@ function FollowUpSection({ title, subtitle, columns, rows, filename, loading }) 
   );
 }
 
+// ───────────────────────── Equipments ─────────────────────────
+
+// Which engineer took which equipment in which travel window. The date range filters on window overlap.
+function EquipmentsTab({ range, reloadKey }) {
+  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState([]);
+  const [engineer, setEngineer] = useState("all");
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    if (!range.from || !range.to) return;
+    let cancelled = false;
+    setLoading(true);
+    Promise.all([fetchEquipmentReport(supabase, range), fetchEquipmentOptions()])
+      .then(([data, options]) => {
+        if (cancelled) return;
+        const labels = new Map(options.map((o) => [o.id, o.label]));
+        setRows(
+          data.map((r) => {
+            const lines = r.equipments.map((id) => labels.get(id) || id);
+            return { ...r, equipmentLines: lines, equipmentText: lines.join("; ") };
+          })
+        );
+        setEngineer("all");
+      })
+      .catch((e) => {
+        console.error(e);
+        toast.error("Failed to load equipments report");
+      })
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [range.from, range.to, reloadKey]);
+
+  const engineers = useMemo(() => [...new Set(rows.map((r) => r.engineer).filter(Boolean))].sort(), [rows]);
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return rows.filter(
+      (r) =>
+        (engineer === "all" || r.engineer === engineer) &&
+        (!q || [r.ticketId, r.companyName, r.equipmentText].some((v) => String(v || "").toLowerCase().includes(q)))
+    );
+  }, [rows, engineer, search]);
+
+  const HEADERS = ["Ticket ID", "Company Name", "Travel Date", "Return Date", "Equipments", "Engineer"];
+
+  const handleExport = () =>
+    exportSheet(
+      "Equipments_Report",
+      HEADERS,
+      filtered.map((r) => [r.ticketId, r.companyName, fmtDate(r.travelDate), fmtDate(r.returnDate), r.equipmentText, r.engineer])
+    );
+
+  return (
+    <div className="space-y-4 px-4 pb-4">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="flex flex-col">
+            <span className="text-[10px] text-gray-500">Engineer</span>
+            <select
+              className="h-10 w-[200px] rounded-md border border-input bg-card px-3 text-sm shadow-sm"
+              value={engineer}
+              onChange={(e) => setEngineer(e.target.value)}
+            >
+              <option value="all">All Engineers</option>
+              {engineers.map((e) => (
+                <option key={e} value={e}>
+                  {e}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[10px] text-gray-500">Search</span>
+            <Input
+              className="h-10 w-[220px] bg-card border-input"
+              placeholder="Ticket, company or equipment"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <span className="pb-2 text-xs font-medium text-brand-700">
+            Showing {filtered.length} of {rows.length}
+          </span>
+        </div>
+        <Button size="sm" variant="outline" onClick={handleExport} disabled={loading}>
+          <Download className="mr-1 h-4 w-4" /> Export
+        </Button>
+      </div>
+
+      {loading ? (
+        <Loading />
+      ) : (
+        <div className="max-h-[60vh] overflow-auto rounded-lg border border bg-card">
+          <Table>
+            <TableHeader className="sticky top-0">
+              <TableRow className="bg-secondary hover:bg-secondary">
+                {HEADERS.map((h) => (
+                  <TableHead key={h} className="text-xs font-bold text-brand-800">
+                    {h}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={HEADERS.length} className="py-6 text-center text-sm text-gray-400">
+                    No equipment used in this range
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filtered.map((r) => (
+                  <TableRow key={r.ticketId}>
+                    <TableCell className="whitespace-nowrap text-sm font-medium">{r.ticketId}</TableCell>
+                    <TableCell className="text-sm">{r.companyName || "-"}</TableCell>
+                    <TableCell className="whitespace-nowrap text-sm">{fmtDate(r.travelDate)}</TableCell>
+                    <TableCell className="whitespace-nowrap text-sm">{fmtDate(r.returnDate)}</TableCell>
+                    <TableCell className="w-[320px] min-w-[240px] max-w-[320px] whitespace-normal break-words text-sm">
+                      <div className="flex flex-col gap-0.5">
+                        {r.equipmentLines.map((l) => (
+                          <span key={l}>{l}</span>
+                        ))}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-sm">{r.engineer || "-"}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FollowUpTab({ range, reloadKey }) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState({ planned: [], resolvedOutside: [] });
@@ -679,8 +820,9 @@ export default function Report() {
     site: defaultRange(7),
     quotation: defaultRange(1),
     followup: defaultRange(7),
+    equipments: defaultRange(7),
   }));
-  const [reloadKeys, setReloadKeys] = useState({ weekly: 0, video: 0, site: 0, quotation: 0, followup: 0 });
+  const [reloadKeys, setReloadKeys] = useState({ weekly: 0, video: 0, site: 0, quotation: 0, followup: 0, equipments: 0 });
   const [opened, setOpened] = useState({ weekly: true });
 
   const switchTab = useCallback((t) => {
@@ -706,6 +848,7 @@ export default function Report() {
           {activeTab === "site" && opened.site && <AssignmentTab kind="site" range={ranges.site} reloadKey={reloadKeys.site} />}
           {activeTab === "quotation" && opened.quotation && <QuotationTab range={ranges.quotation} reloadKey={reloadKeys.quotation} />}
           {activeTab === "followup" && opened.followup && <FollowUpTab range={ranges.followup} reloadKey={reloadKeys.followup} />}
+          {activeTab === "equipments" && opened.equipments && <EquipmentsTab range={ranges.equipments} reloadKey={reloadKeys.equipments} />}
         </CardContent>
       </Card>
     </div>

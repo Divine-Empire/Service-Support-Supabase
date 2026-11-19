@@ -87,6 +87,8 @@ export default function TadaFormModal({ ticket: selectedTicket, onClose, onSaved
     }
   ));
 
+  // Equipments Needed applies only to NABL / NON-NABL tickets.
+  const needsEquipments = ["NABL", "NON-NABL", "NON NABL"].includes(String(ticket.enquiryType || "").trim().toUpperCase());
   const [equipmentOptions, setEquipmentOptions] = useState([]);
   const [equipmentConflicts, setEquipmentConflicts] = useState([]);
 
@@ -133,7 +135,7 @@ export default function TadaFormModal({ ticket: selectedTicket, onClose, onSaved
       return;
     }
 
-    if (formData.equipmentsNeeded.length === 0) {
+    if (needsEquipments && formData.equipmentsNeeded.length === 0) {
       toast({
         title: "Error",
         description: "Please select at least one Equipment",
@@ -179,7 +181,7 @@ export default function TadaFormModal({ ticket: selectedTicket, onClose, onSaved
         amount: formData.amount || null,
         expected_completion_date: formData.expectedCompletionDate || null,
         expected_completion_time: formData.expectedCompletionTime || null,
-        equipments_needed: formData.equipmentsNeeded,
+        equipments_needed: needsEquipments ? formData.equipmentsNeeded : null,
         previous_advance_date: formData.previousAdvanceDate || null,
         previous_advance_settlement_date: formData.previousAdvanceSettlementDate || null,
         previous_advance_balance: formData.previousAdvanceBalance || null,
@@ -348,15 +350,17 @@ export default function TadaFormModal({ ticket: selectedTicket, onClose, onSaved
                 </div>
               </div>
 
-              <div className="space-y-1 md:col-span-2">
-                <Label className="text-muted-foreground">Equipments Needed *</Label>
-                <EquipmentSelect
-                  options={equipmentOptions}
-                  value={formData.equipmentsNeeded}
-                  onChange={(ids) => handleInputChange("equipmentsNeeded", ids)}
-                  conflicts={equipmentConflicts}
-                />
-              </div>
+              {needsEquipments && (
+                <div className="space-y-1 md:col-span-2">
+                  <Label className="text-muted-foreground">Equipments Needed *</Label>
+                  <EquipmentSelect
+                    options={equipmentOptions}
+                    value={formData.equipmentsNeeded}
+                    onChange={(ids) => handleInputChange("equipmentsNeeded", ids)}
+                    conflicts={equipmentConflicts}
+                  />
+                </div>
+              )}
 
               <div className="space-y-1 md:col-span-2">
                 <Label htmlFor="tada-amount" className="text-muted-foreground">Amount *</Label>

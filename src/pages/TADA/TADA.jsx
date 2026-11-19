@@ -111,6 +111,7 @@ export default function TADA() {
           category: t.category || "",
           mentionIssue: t.mention_issue || "",
           serviceLocation: t.service_location || "",
+          enquiryType: t.enquiry_type || "",
           CREName: t.cre_name || "",
           engineerAssign: sv?.engineer_assign || t.engineer_assign || "",
           siteName: t.site_address || "",

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { Textarea } from "../../components/ui/textarea";
 import { Label } from "../../components/ui/label";
 import { Modal } from "../../components/ui/modal";
 import { ListToolbar, ListTable, StatusBadge } from "../../components/shared";
@@ -36,6 +37,7 @@ const COLUMNS = [
   { key: "invoiceCopy", label: "Invoice Copy", defaultVisible: false, cell: (r) => linkCell(r.invoiceCopy) },
   { key: "numberOfCertificates", label: "No. of Certificates", defaultVisible: false, tabs: ["history"], text: (r) => r.numberOfCertificatesDocuments },
   { key: "trackingNo", label: "Tracking No.", defaultVisible: false, tabs: ["history"], text: (r) => r.courierTrackingNumber },
+  { key: "remarks", label: "Remarks", defaultVisible: false, tabs: ["history"], text: (r) => r.remarks },
   { key: "attachment", label: "Attachment", defaultVisible: false, tabs: ["history"], cell: (r) => linkCell(r.attachment) },
   { key: "delay", label: "Delay", defaultVisible: true, tabs: ["history"], cell: (r) => (
     <StatusBadge tone={delayTone(r.delayMinutes)}>{formatDelayLabel(r.delayMinutes)}</StatusBadge>
@@ -136,6 +138,7 @@ export default function CalibrationCertificate() {
             ...base,
             numberOfCertificatesDocuments: cert.number_of_certificates_documents ?? "",
             courierTrackingNumber: cert.courier_tracking_number || "",
+            remarks: cert.remarks || "",
             attachment: cert.attachment || "",
             delayMinutes: cert.delay_minutes,
           });
@@ -186,6 +189,7 @@ export default function CalibrationCertificate() {
       companyName: ticket.companyName || "",
       numberOfCertificatesDocuments: "",
       courierTrackingNumber: "",
+      remarks: "",
     });
     setAttachmentFile(null);
     setShowModal(true);
@@ -242,6 +246,7 @@ export default function CalibrationCertificate() {
         ticket_uuid: selectedTicket.ticketUuid,
         number_of_certificates_documents: formData.numberOfCertificatesDocuments || null,
         courier_tracking_number: formData.courierTrackingNumber || null,
+        remarks: formData.remarks?.trim() || null,
         attachment: attachmentUrl,
         // No <next_stage>_planned column — nothing comes after this stage yet.
       });
@@ -341,6 +346,19 @@ export default function CalibrationCertificate() {
             {attachmentFile && (
               <p className="text-xs text-muted-foreground mt-1 truncate">Selected: {attachmentFile.name}</p>
             )}
+          </div>
+
+          <div className="md:col-span-2">
+            <Label htmlFor="cc-remarks">Remarks</Label>
+            <Textarea
+              id="cc-remarks"
+              rows={3}
+              placeholder="Enter remarks (optional)"
+              value={formData.remarks || ""}
+              onChange={(e) => handleInputChange("remarks", e.target.value)}
+              disabled={isSubmitting}
+              data-testid="input-remarks"
+            />
           </div>
 
           <div className="md:col-span-2 flex space-x-4 pt-4">

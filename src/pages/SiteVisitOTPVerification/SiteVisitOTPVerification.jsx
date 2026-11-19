@@ -28,7 +28,15 @@ export default function SiteVisitOTPVerification() {
 
       if (tadaError) throw tadaError;
 
-      const ticketIds = [...new Set((tadaRows || []).map((t) => t.ticket_id))];
+      // Personal-vehicle tickets skip TADA: Site Visit Plan stamps site_visit_otp_planned directly.
+      const { data: pvRows, error: pvError } = await supabase
+        .from("sss_site_visit")
+        .select("ticket_id, ticket_uuid")
+        .not("site_visit_otp_planned", "is", null);
+
+      if (pvError) throw pvError;
+
+      const ticketIds = [...new Set([...(tadaRows || []), ...(pvRows || [])].map((t) => t.ticket_id))];
 
       if (ticketIds.length === 0) {
         setPendingData([]);

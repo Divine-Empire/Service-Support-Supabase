@@ -58,9 +58,11 @@ export default function SiteVisitPlanForm({ ticket, masterData, onClose, onSaved
         date_of_visit: formData.dateOfVisit || null,
         travel_time: formData.travelTime || null,
         transportation: formData.transportation || null,
-        // Readiness stamp for the next stage (not yet identified/migrated) —
-        // placeholder until a real calculation rule is given.
-        tada_planned: new Date().toISOString(),
+        // Personal vehicle needs no TADA: skip TADA + TADA Approval and go straight to Site Visit OTP.
+        // Every other mode goes to TADA as before.
+        ...(formData.transportation === "By Personal Vehicle"
+          ? { tada_planned: null, site_visit_otp_planned: new Date().toISOString() }
+          : { tada_planned: new Date().toISOString() }),
       });
 
       if (error) throw error;

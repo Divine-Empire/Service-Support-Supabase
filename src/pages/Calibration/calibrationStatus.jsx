@@ -4,15 +4,17 @@ import { StatusBadge } from "../../components/shared";
 
 export const DRAFT_COPY_SHARED = "Draft Copy Shared";
 export const CONFIRMATION_PENDING = "Confirmation Pending";
+export const CONFIRMATION_COMPLETE = "Confirmation Complete";
 const OTHER = "Other";
-const KNOWN = [DRAFT_COPY_SHARED, CONFIRMATION_PENDING];
+const KNOWN = [DRAFT_COPY_SHARED, CONFIRMATION_PENDING, CONFIRMATION_COMPLETE];
 
-// Colour coding: Draft Copy Shared = blue, Confirmation Pending = amber, anything typed
+// Colour coding: Draft Copy Shared = blue, Confirmation Pending = amber, Confirmation Complete = green, anything typed
 // under "Other" = purple. Empty = nothing shown.
 export const statusTone = (status) => {
   if (!status) return "neutral";
   if (status === DRAFT_COPY_SHARED) return "info";
   if (status === CONFIRMATION_PENDING) return "warning";
+  if (status === CONFIRMATION_COMPLETE) return "success";
   return "purple";
 };
 
@@ -73,6 +75,7 @@ export function CalibrationStatusCell({ row, onSave }) {
           <option value="">— Select —</option>
           <option value={DRAFT_COPY_SHARED}>{DRAFT_COPY_SHARED}</option>
           <option value={CONFIRMATION_PENDING}>{CONFIRMATION_PENDING}</option>
+          <option value={CONFIRMATION_COMPLETE}>{CONFIRMATION_COMPLETE}</option>
           <option value={OTHER}>{OTHER}</option>
         </select>
         {saving && <Loader2Icon className="h-4 w-4 animate-spin text-muted-foreground" />}

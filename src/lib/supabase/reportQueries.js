@@ -470,3 +470,47 @@ export async function fetchFollowUpReport(supabase, { from, to }) {
 
   return { planned, resolvedOutside };
 }
+
+// Equipments report: every TADA that reserved equipment whose travel window (travel_date..return_date)
+// overlaps [from, to]. Rejected TADAs are left out (the equipment was never used).
+// -> [{ ticketId, companyName, travelDate, returnDate, equipments: [id], engineer }]
+export async function fetchEquipmentReport(supabase, { from, to }) {
+  const tadaRows = await fetchAll(() =>
+    supabase
+      .from("sss_tada")
+      .select("ticket_id, ticket_uuid, travel_date, return_date, equipments_needed")
+      .not("equipments_needed", "is", null)
+      .not("travel_date", "is", null)
+      .lte("travel_date", to)
+      .or(`return_date.gte.${from},and(return_date.is.null,travel_date.gte.${from})`)
+      .order("travel_date", { ascending: false })
+      .order("ticket_id", { ascending: false })
+  );
+  const used = tadaRows.filter((r) => (r.equipments_needed || []).length > 0);
+  if (used.length === 0) return [];
+
+  const ticketIds = used.map((r) => r.ticket_id);
+  const uuids = used.map((r) => r.ticket_uuid);
+  const [tickets, visits, approvals] = await Promise.all([
+    fetchByIds(supabase, "sss_tickets", "ticket_id, company_name, client_name, engineer_assign", "ticket_id", ticketIds),
+    fetchByIds(supabase, "sss_site_visit", "ticket_id, engineer_assign", "ticket_id", ticketIds),
+    fetchByIds(supabase, "sss_senior_approval", "ticket_uuid, status", "ticket_uuid", uuids),
+  ]);
+  const ticketBy = new Map(tickets.map((t) => [t.ticket_id, t]));
+  const visitBy = new Map(visits.map((v) => [v.ticket_id, v]));
+  const rejectedSet = new Set(approvals.filter((a) => a.status === "rejected").map((a) => a.ticket_uuid));
+
+  return used
+    .filter((r) => !rejectedSet.has(r.ticket_uuid))
+    .map((r) => {
+      const t = ticketBy.get(r.ticket_id);
+      return {
+        ticketId: r.ticket_id,
+        companyName: t?.company_name || t?.client_name || "",
+        travelDate: r.travel_date,
+        returnDate: r.return_date || r.travel_date,
+        equipments: r.equipments_needed,
+        engineer: visitBy.get(r.ticket_id)?.engineer_assign || t?.engineer_assign || "",
+      };
+    });
+}
