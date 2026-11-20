@@ -6,6 +6,7 @@ import { supabase } from "../../lib/supabase/client";
 import { sendTadaApprovalEmail } from "../../lib/notifications/email";
 import { ListToolbar, ListTable, StatusBadge } from "../../components/shared";
 import { useClientList } from "../../hooks/useClientList";
+import { fetchTicketEngineers } from "../../lib/supabase/engineers";
 
 // Kept local: unlike lib/format, an unparseable value is shown as-is.
 const formatDate = (dateString) => {
@@ -33,7 +34,8 @@ const COLUMNS = [
   { key: "sentAt", label: "Sent At", defaultVisible: true, tabs: ["pending"], text: (r) => formatDate(r.sentAt) },
   { key: "ticketId", label: "Ticket ID", defaultVisible: true, strong: true, text: (r) => r.ticketId },
   { key: "companyName", label: "Company Name", defaultVisible: true, text: (r) => r.companyName },
-  { key: "engineerAssign", label: "Engineer", defaultVisible: true, text: (r) => r.engineerAssign },
+  { key: "svEngineer", label: "Site Visit Engineer", defaultVisible: true, text: (r) => r.svEngineer },
+  { key: "vcEngineer", label: "Video Call Engineer", defaultVisible: true, text: (r) => r.vcEngineer },
   { key: "travelDate", label: "Travel Date", defaultVisible: true, tabs: ["pending"], text: (r) => formatDate(r.travelDate) },
   { key: "returnDate", label: "Return Date", defaultVisible: true, tabs: ["pending"], text: (r) => formatDate(r.returnDate) },
   { key: "amount", label: "Amount", defaultVisible: true, text: (r) => `₹${r.amount || "0"}` },
@@ -93,6 +95,8 @@ export default function TadaApproval() {
 
       const tadaByTicket = new Map((tadaRows || []).map((t) => [t.ticket_id, t]));
 
+      const engineersByTicket = await fetchTicketEngineers(ticketIds);
+
       const pending = [];
       const history = [];
 
@@ -113,7 +117,9 @@ export default function TadaApproval() {
           clientName: t.client_name || "",
           siteAddress: t.site_address || "",
           machineName: t.machine_name || "",
-          engineerAssign: tada.engineer_assign || t.engineer_assign || "",
+          engineerAssign: engineersByTicket.get(a.ticket_id)?.siteVisit || t.engineer_assign || "",
+          svEngineer: engineersByTicket.get(a.ticket_id)?.siteVisit || "",
+          vcEngineer: engineersByTicket.get(a.ticket_id)?.videoCall || "",
           travelDate: tada.travel_date || "",
           returnDate: tada.return_date || "",
           destination: tada.destination || "",

@@ -3,6 +3,7 @@ import { ListToolbar, ListTable } from "../../components/shared";
 import { useClientList } from "../../hooks/useClientList";
 import { useToast } from "../../hooks/use-toast";
 import { supabase } from "../../lib/supabase/client";
+import { fetchTicketEngineers } from "../../lib/supabase/engineers";
 import { COLUMNS } from "./columns";
 import SiteVisitOtpModal from "./SiteVisitOtpModal";
 
@@ -63,6 +64,8 @@ export default function SiteVisitOTPVerification() {
 
       const otpByTicket = new Map((otpRows || []).map((o) => [o.ticket_id, o]));
 
+      const engineersByTicket = await fetchTicketEngineers(ticketIds);
+
       const pending = [];
       const history = [];
 
@@ -77,7 +80,9 @@ export default function SiteVisitOTPVerification() {
           companyName: t.company_name || "",
           phoneNumber: t.phone_number || "",
           machineName: t.machine_name || "",
-          engineerAssign: t.engineer_assign || "",
+          engineerAssign: engineersByTicket.get(t.ticket_id)?.siteVisit || t.engineer_assign || "",
+          svEngineer: engineersByTicket.get(t.ticket_id)?.siteVisit || "",
+          vcEngineer: engineersByTicket.get(t.ticket_id)?.videoCall || "",
           CREName: t.cre_name || "",
           travelDate: tada?.travel_date || "",
           returnDate: tada?.return_date || "",

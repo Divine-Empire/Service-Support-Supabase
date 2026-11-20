@@ -48,13 +48,18 @@ export default function SiteVisitPlanForm({ ticket, masterData, onClose, onSaved
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (!formData.engineerAssign) {
+      toast({ title: "Validation Error", description: "Please select Engineer Assign", variant: "destructive" });
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
       const { error } = await supabase.from("sss_site_visit").insert({
         ticket_id: selectedTicket.ticketId,
         ticket_uuid: selectedTicket.ticketUuid,
-        engineer_assign: formData.engineerAssign || selectedTicket.engineerAssign || null,
+        engineer_assign: formData.engineerAssign,
         date_of_visit: formData.dateOfVisit || null,
         travel_time: formData.travelTime || null,
         transportation: formData.transportation || null,
@@ -199,7 +204,7 @@ export default function SiteVisitPlanForm({ ticket, masterData, onClose, onSaved
           {!isCancelled && (
             <>
               <div>
-                <Label htmlFor="svp-engineerAssign">Engineer Assign</Label>
+                <Label htmlFor="svp-engineerAssign">Engineer Assign *</Label>
                 <Select
                   value={formData.engineerAssign || undefined}
                   onValueChange={(value) =>

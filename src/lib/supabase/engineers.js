@@ -16,6 +16,45 @@ export async function fetchEngineerNames() {
   return [...new Set((data || []).map((r) => r.engineer_name))].filter(Boolean);
 }
 
+// Who is assigned at each stage, per ticket. They are stored separately:
+//   siteVisit -> sss_site_visit.engineer_assign (active, non-rescheduled row)
+//   videoCall -> sss_video_call.alternate_engineer (latest non-empty)
+// Returns Map(ticket_id -> { siteVisit, videoCall }).
+export async function fetchTicketEngineers(ticketIds) {
+  const out = new Map();
+  if (!ticketIds || ticketIds.length === 0) return out;
+  const get = (id) => {
+    if (!out.has(id)) out.set(id, { siteVisit: "", videoCall: "" });
+    return out.get(id);
+  };
+
+  const [sv, vc] = await Promise.all([
+    supabase
+      .from("sss_site_visit")
+      .select("ticket_id, engineer_assign, created_at")
+      .in("ticket_id", ticketIds)
+      .is("rescheduled_at", null)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("sss_video_call")
+      .select("ticket_id, alternate_engineer, created_at")
+      .in("ticket_id", ticketIds)
+      .order("created_at", { ascending: false }),
+  ]);
+  if (sv.error) throw sv.error;
+  if (vc.error) throw vc.error;
+
+  (sv.data || []).forEach((r) => {
+    const e = get(r.ticket_id);
+    if (!e.siteVisit && r.engineer_assign) e.siteVisit = r.engineer_assign;
+  });
+  (vc.data || []).forEach((r) => {
+    const e = get(r.ticket_id);
+    if (!e.videoCall && r.alternate_engineer) e.videoCall = r.alternate_engineer;
+  });
+  return out;
+}
+
 // Engineer name + WhatsApp number pairs from Master > Engineer List, for dropdowns that need both.
 export async function fetchEngineerContacts() {
   const { data, error } = await supabase

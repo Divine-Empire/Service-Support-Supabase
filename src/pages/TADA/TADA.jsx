@@ -5,6 +5,7 @@ import useAuth from "../../hooks/useAuth";
 import { useToast } from "../../hooks/use-toast";
 import { supabase } from "../../lib/supabase/client";
 import { fetchEquipmentOptions, formatEquipments } from "../../lib/supabase/equipment";
+import { fetchTicketEngineers } from "../../lib/supabase/engineers";
 import { COLUMNS } from "./columns";
 import TadaFormModal from "./TadaFormModal";
 import RescheduleModal from "./RescheduleModal";
@@ -46,7 +47,11 @@ export default function TADA() {
         return;
       }
 
-      const siteVisitByTicket = new Map((siteVisitRows || []).map((s) => [s.ticket_id, s]));
+      // Rows are newest-first; keep the newest per ticket (a Map built straight from the list keeps the oldest).
+      const siteVisitByTicket = new Map();
+      (siteVisitRows || []).forEach((s) => {
+        if (!siteVisitByTicket.has(s.ticket_id)) siteVisitByTicket.set(s.ticket_id, s);
+      });
 
       const { data: ticketsData, error: ticketsError } = await supabase
         .from("sss_tickets")
@@ -75,6 +80,8 @@ export default function TADA() {
       if (quotationError) throw quotationError;
 
       const quotationByTicket = new Map((quotationRows || []).map((q) => [q.ticket_id, q]));
+
+      const engineersByTicket = await fetchTicketEngineers(ticketIds);
 
       const equipmentLabels = new Map((await fetchEquipmentOptions()).map((o) => [o.id, o.label]));
 
@@ -114,6 +121,8 @@ export default function TADA() {
           enquiryType: t.enquiry_type || "",
           CREName: t.cre_name || "",
           engineerAssign: sv?.engineer_assign || t.engineer_assign || "",
+          svEngineer: engineersByTicket.get(t.ticket_id)?.siteVisit || "",
+          vcEngineer: engineersByTicket.get(t.ticket_id)?.videoCall || "",
           siteName: t.site_address || "",
           warrantyCheck: warrantyByTicket.get(t.ticket_id) || "",
           quotationNo: q?.quotation_no || "",
@@ -192,7 +201,7 @@ export default function TADA() {
     onRetry: fetchData,
     searchKeys: ["ticketId", "clientName", "companyName", "phoneNumber"],
     filters: [
-      { key: "engineer", label: "Engineer", allLabel: "All Engineers", get: (r) => r.engineerAssign },
+      { key: "engineer", label: "Engineer", allLabel: "All Engineers", get: (r) => r.svEngineer },
       { key: "category", label: "Category", allLabel: "All Categories", get: (r) => r.category },
       { key: "transportation", label: "Transportation", allLabel: "All Transportation", get: (r) => r.transportation, tabs: ["pending"] },
     ],

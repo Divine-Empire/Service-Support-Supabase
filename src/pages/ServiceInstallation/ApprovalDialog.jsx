@@ -102,6 +102,7 @@ export default function ApprovalDialog({ item, serviceTypes, employeeNames, onCl
         updatePayload.actual = submittedAt.toISOString();
         updatePayload.service_type = approvalData.serviceType;
         updatePayload.engineer_name = approvalData.engineerName;
+        if (approvalData.videoCallTime) updatePayload.video_call_time = approvalData.videoCallTime;
         if (finalFileUrl) updatePayload.service_report_file = finalFileUrl;
         updatePayload.what_did_customer_say = approvalData.remarks;
         // Readiness stamp for the Engineer-Dashboard's own "Service
