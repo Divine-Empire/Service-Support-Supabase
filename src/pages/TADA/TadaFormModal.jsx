@@ -135,6 +135,29 @@ export default function TadaFormModal({ ticket: selectedTicket, onClose, onSaved
       return;
     }
 
+    // Everything the Senior Approval email needs. The email function rejects a send when any of these is blank,
+    // so block the submit here instead of saving a TADA whose approval email can never go out.
+    const blank = (v) => v === "" || v === undefined || v === null || String(v).trim() === "";
+    const missing = [
+      [formData.travelDate, "Travel Date"],
+      [formData.returnDate, "Return Date"],
+      [formData.destination, "Destination"],
+      [formData.purposeOfTravel, "Purpose of Travel"],
+      [formData.amount, "Amount"],
+      [formData.machineName, "Machine Name"],
+      [formData.siteName, "Site Name"],
+      [formData.engineerAssign, "Engineer Assign"],
+    ].filter(([v]) => blank(v)).map(([, label]) => label);
+
+    if (missing.length > 0) {
+      toast({
+        title: "Error",
+        description: `Please fill / set: ${missing.join(", ")}`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (needsEquipments && formData.equipmentsNeeded.length === 0) {
       toast({
         title: "Error",
@@ -300,6 +323,7 @@ export default function TadaFormModal({ ticket: selectedTicket, onClose, onSaved
                   type="date"
                   value={formData.returnDate || ""}
                   onChange={(e) => handleInputChange("returnDate", e.target.value)}
+                  required
                   data-testid="input-return-date"
                 />
               </div>
@@ -311,6 +335,7 @@ export default function TadaFormModal({ ticket: selectedTicket, onClose, onSaved
                   placeholder="Enter destination"
                   value={formData.destination || ""}
                   onChange={(e) => handleInputChange("destination", e.target.value)}
+                  required
                   data-testid="input-destination"
                 />
               </div>
@@ -322,6 +347,7 @@ export default function TadaFormModal({ ticket: selectedTicket, onClose, onSaved
                   placeholder="Enter purpose"
                   value={formData.purposeOfTravel || ""}
                   onChange={(e) => handleInputChange("purposeOfTravel", e.target.value)}
+                  required
                   data-testid="input-purpose"
                 />
               </div>
@@ -367,6 +393,8 @@ export default function TadaFormModal({ ticket: selectedTicket, onClose, onSaved
                 <Input
                   id="tada-amount"
                   type="number"
+                  min="0"
+                  required
                   placeholder="Enter amount"
                   value={formData.amount || ""}
                   onChange={(e) => handleInputChange("amount", e.target.value)}

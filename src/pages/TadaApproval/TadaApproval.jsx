@@ -124,7 +124,7 @@ export default function TadaApproval() {
           returnDate: tada.return_date || "",
           destination: tada.destination || "",
           purposeOfTravel: tada.purpose_of_travel || "",
-          amount: tada.amount || "",
+          amount: tada.amount ?? "",
           previousAdvanceDate: tada.previous_advance_date || "",
           previousAdvanceSettlementDate: tada.previous_advance_settlement_date || "",
           previousAdvanceBalance: tada.previous_advance_balance || "",

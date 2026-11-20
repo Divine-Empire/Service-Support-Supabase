@@ -15,6 +15,18 @@ import { supabase } from "../supabase/client";
 // itself from sss_tada_approval_recipients (Master-page managed) plus the
 // assigned engineer's own email (sss_engineer_contacts), so there's nothing
 // to keep in sync on the frontend.
+// supabase-js reports any non-2xx as the generic "Edge Function returned a non-2xx status code" and hides the
+// real reason in error.context (the Response). Pull the function's own message out so the user sees it.
+async function functionErrorMessage(error, fallback) {
+  try {
+    const body = await error?.context?.json?.();
+    if (body?.error) return body.error;
+  } catch {
+    // body was not JSON; use the generic message
+  }
+  return error?.message || fallback;
+}
+
 export async function sendTadaApprovalEmail({
   token,
   ticketId,
@@ -41,7 +53,8 @@ export async function sendTadaApprovalEmail({
         machineName,
         travelDate,
         returnDate,
-        amount,
+        // String() so a legitimate 0 is not mistaken for "missing" by the function's required-field check.
+        amount: amount === null || amount === undefined ? "" : String(amount),
         purposeOfTravel,
         previousAdvanceDate,
         previousAdvanceSettlementDate,
@@ -53,7 +66,7 @@ export async function sendTadaApprovalEmail({
 
     if (error) {
       console.error("TADA approval email failed:", error);
-      return { success: false, error: error.message || "Failed to send approval email" };
+      return { success: false, error: await functionErrorMessage(error, "Failed to send approval email") };
     }
 
     if (!data?.success) {
