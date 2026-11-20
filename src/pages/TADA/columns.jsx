@@ -42,7 +42,7 @@ export const COLUMNS = [
       )}
     </div>
   ) },
-  { key: "date", label: "Date", defaultVisible: true, strong: true, text: (r) => formatDate(r.timeStemp) },
+  { key: "plannedDate", label: "Planned Date", defaultVisible: true, strong: true, text: (r) => formatDate(r.tadaPlanned) },
   { key: "ticketId", label: "Ticket ID", defaultVisible: true, strong: true, text: (r) => r.ticketId },
   { key: "sourceOfEnquiry", label: "Source of enquiry", defaultVisible: false, text: (r) => r.sourceOfEnquiry },
   { key: "callType", label: "Call type", defaultVisible: false, text: (r) => r.callType },

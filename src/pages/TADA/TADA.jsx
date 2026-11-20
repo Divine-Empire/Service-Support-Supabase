@@ -105,6 +105,7 @@ export default function TADA() {
           ticketId: t.ticket_id,
           ticketUuid: t.uuid,
           timeStemp: t.created_at || "",
+          tadaPlanned: sv?.tada_planned || "",
           sourceOfEnquiry: t.source_of_enquiry || "",
           callType: t.call_type || "",
           enquiryReceiverName: t.enquiry_receiver_name || "",
